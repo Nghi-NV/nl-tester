@@ -1,0 +1,21 @@
+flow: Google Maps GPS Simulation
+appId: com.google.android.apps.maps
+defaultTimeout: 10000
+commands:
+  - open:
+      appId: com.google.android.apps.maps
+      clearState: false
+
+  - wait: 5000 # Wait for Maps to load
+
+  # Start GPS Simulation
+  # Note: Ensure "Mock Location App" is set if required by specific driver implementation,
+  - mockLocation:
+      file: Location.gpx
+      speed: 100.0 # Simulate driving speed (km/h)
+      loop: true
+
+  - wait: 60000 # Let the simulation run for 60 seconds
+
+  - stopMockLocation
+  - stopApp

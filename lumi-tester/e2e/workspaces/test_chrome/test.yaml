@@ -1,0 +1,5 @@
+platform: web
+---
+- open: "https://www.google.com"
+- wait: 3000
+- takeScreenshot: "test_chrome.png"

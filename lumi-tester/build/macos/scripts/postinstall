@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Ensure lumi-tester is executable
+chmod +x /usr/local/bin/lumi-tester
+
+# Run initialization
+echo "Initializing system components (ADB, Playwright)..."
+/usr/local/bin/lumi-tester system install --all
+
+exit 0

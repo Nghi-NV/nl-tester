@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="nl-tester sample">
+  <trk>
+    <name>Highway Speed Test Route</name>
+    <desc>Simulated highway driving for speed alert testing</desc>
+    <trkseg>
+      <!-- Start: District 1, Ho Chi Minh City (50 km/h zone) -->
+      <trkpt lat="10.762622" lon="106.660172">
+        <ele>10</ele>
+        <time>2024-01-01T10:00:00Z</time>
+      </trkpt>
+      
+      <!-- After 10 seconds, moved ~140m (50 km/h) -->
+      <trkpt lat="10.763800" lon="106.660500">
+        <ele>11</ele>
+        <time>2024-01-01T10:00:10Z</time>
+      </trkpt>
+      
+      <!-- After 10 seconds, starting to speed up to 80 km/h zone -->
+      <trkpt lat="10.765750" lon="106.661000">
+        <ele>12</ele>
+        <time>2024-01-01T10:00:20Z</time>
+      </trkpt>
+      
+      <!-- Highway entry: 100 km/h -->
+      <trkpt lat="10.769000" lon="106.662000">
+        <ele>15</ele>
+        <time>2024-01-01T10:00:30Z</time>
+      </trkpt>
+      
+      <!-- Highway cruising: 120 km/h (SHOULD TRIGGER SPEED ALERT) -->
+      <trkpt lat="10.773200" lon="106.663500">
+        <ele>18</ele>
+        <time>2024-01-01T10:00:40Z</time>
+      </trkpt>
+      
+      <!-- Still speeding: 130 km/h -->
+      <trkpt lat="10.778000" lon="106.665300">
+        <ele>20</ele>
+        <time>2024-01-01T10:00:50Z</time>
+      </trkpt>
+      
+      <!-- Slowing down: 90 km/h -->
+      <trkpt lat="10.781500" lon="106.666800">
+        <ele>18</ele>
+        <time>2024-01-01T10:01:00Z</time>
+      </trkpt>
+      
+      <!-- Exit highway, back to city: 60 km/h -->
+      <trkpt lat="10.783500" lon="106.667800">
+        <ele>15</ele>
+        <time>2024-01-01T10:01:10Z</time>
+      </trkpt>
+      
+      <!-- Stopped at destination -->
+      <trkpt lat="10.784000" lon="106.668000">
+        <ele>12</ele>
+        <time>2024-01-01T10:01:20Z</time>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

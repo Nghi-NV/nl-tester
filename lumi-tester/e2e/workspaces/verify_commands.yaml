@@ -1,0 +1,35 @@
+flow: New Commands Verification
+defaultTimeout: 5000
+commands:
+  # Network
+  - setNetwork:
+      wifi: false
+  - wait: 2000
+  - setNetwork:
+      wifi: true
+  - wait: 5000 # Wait for wifi to reconnect
+
+  # System
+  - setVolume: 10
+  - openNotifications
+  - wait: 2000
+  - back
+  - openQuickSettings
+  - wait: 2000
+  - back
+
+  # Orientation
+  - setOrientation: LANDSCAPE
+  - wait: 2000
+  - setOrientation: PORTRAIT
+  - wait: 2000
+
+  # Lock/Unlock
+  - lockDevice
+  - wait: 2000
+  - unlockDevice
+  - wait: 2000
+
+  # App Management
+  - backgroundApp:
+      duration: 3000

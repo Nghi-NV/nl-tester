@@ -1,0 +1,22 @@
+name: Android Auto Demo
+version: 1.0
+---
+# 1. Auto-detect and select the Android Auto display
+- selectDisplay: "auto"
+
+# 2. Wait for UI to be ready
+- wait: 2000
+
+# 3. Simulate D-Pad Navigation
+- press: dpad_right
+- wait: 500
+- press: dpad_right
+- wait: 500
+- press: dpad_center
+- wait: 1000
+
+# 4. Take a screenshot
+- takeScreenshot: "aa_head_unit_capture.png"
+
+# 5. Return to default display
+- selectDisplay: "0"

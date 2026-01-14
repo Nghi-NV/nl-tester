@@ -1,0 +1,31 @@
+appId: org.wikimedia.wikipedia
+tags:
+  - ios
+  - passing
+  - advanced
+---
+- runFlow: subflows/onboarding-ios.yaml
+
+# Dismiss the auth modal if visible
+- runFlow:
+    when:
+      visible: "You have been logged out"
+    commands:
+      - tapOn:
+          text: "Continue without logging in"
+- tapOn:
+    text: "Non existent view"
+    optional: true
+# Tap on nav bar area to open search
+- tapOn:
+    id: Explore
+- wait: 500
+- tapOn: Search Wikipedia
+- runScript: scripts/getSearchQuery.js
+# - inputText: ${output.result}
+- inputText: thập lý đào hoa
+- eraseText
+- inputText: qwerty
+- wait: 5000
+- assertVisible: ${output.result}
+- runFlow: subflows/launch-clearstate-ios.yaml

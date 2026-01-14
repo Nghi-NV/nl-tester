@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lumi-Tester Web Verification</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        section {
+            margin-bottom: 30px;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .scroll-box {
+            height: 100px;
+            overflow-y: scroll;
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+
+        #status-message {
+            border: 1px solid #000;
+            padding: 10px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Lumi-Tester Web Command Verification Page</h1>
+
+    <section id="basics">
+        <h2>1. Basic Interactions</h2>
+        <button id="btn-tap" onclick="updateStatus('Tapped!')">Tap Me</button>
+        <button id="btn-double-tap" ondblclick="updateStatus('Double Tapped!')">Double Tap Me</button>
+        <button id="btn-right-click" oncontextmenu="event.preventDefault(); updateStatus('Right Clicked!')">Right Click
+            Me</button>
+        <p id="status-message">Ready</p>
+    </section>
+
+    <section id="inputs">
+        <h2>2. Inputs</h2>
+        <div>
+            <label for="input-text">Text Input:</label>
+            <input type="text" id="input-text" placeholder="Type here...">
+        </div>
+        <div>
+            <label for="input-id">ID Input:</label>
+            <input type="text" id="email-field" name="email" placeholder="Email...">
+        </div>
+        <div id="results">
+            <p>Text Result: <span id="input-result"></span></p>
+            <p>Email Result: <span id="email-result"></span></p>
+        </div>
+        <button id="btn-show-results" onclick="showResults()">Show result</button>
+    </section>
+
+    <section id="list-section">
+        <h2>3. Indexed Elements (Lists)</h2>
+        <ul id="item-list">
+            <li><button class="list-item">Item 0</button></li>
+            <li><button class="list-item">Item 1</button></li>
+            <li><button class="list-item">Item 2</button></li>
+        </ul>
+    </section>
+
+    <section id="scrolling">
+        <h2>4. Scrolling & Swipe</h2>
+        <div class="scroll-box" id="scroll-container">
+            <p>Scroll down to find the secret...</p>
+            <div style="height: 200px;"></div>
+            <button id="secret-button" onclick="updateStatus('Found Secret!')">Secret Button</button>
+        </div>
+    </section>
+
+    <section id="visibility">
+        <h2>5. Visibility & Async</h2>
+        <button id="btn-show" onclick="showElement()">Show Hidden Element</button>
+        <div id="hidden-el" class="hidden">I was hidden!</div>
+
+        <button id="btn-loading" onclick="startLoading()">Start Loading</button>
+        <div id="loading-spinner" class="hidden">Loading...</div>
+    </section>
+
+    <section id="location">
+        <h2>6. Location & Logs</h2>
+        <button id="btn-location" onclick="getLocation()">Get Location</button>
+        <p>Location: <span id="location-result">Unknown</span></p>
+
+        <button id="btn-log" onclick="console.log('Log Message')">Log Message</button>
+    </section>
+
+    <script>
+        function updateStatus(msg) {
+            document.getElementById('status-message').innerText = msg;
+        }
+
+        function showResults() {
+            document.getElementById('input-result').innerText = document.getElementById('input-text').value;
+            document.getElementById('email-result').innerText = document.getElementById('email-field').value;
+        }
+
+        function showElement() {
+            setTimeout(() => {
+                document.getElementById('hidden-el').classList.remove('hidden');
+            }, 1000);
+        }
+
+        function startLoading() {
+            const spinner = document.getElementById('loading-spinner');
+            spinner.classList.remove('hidden');
+            setTimeout(() => {
+                spinner.classList.add('hidden');
+                updateStatus('Loading Finished');
+            }, 3000);
+        }
+
+        function getLocation() {
+            const el = document.getElementById('location-result');
+            el.innerText = "Locating...";
+
+            if (!navigator.geolocation) {
+                el.innerText = "Geolocation not supported";
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const lat = pos.coords.latitude.toFixed(4);
+                    const lon = pos.coords.longitude.toFixed(4);
+                    el.innerText = `${lat}, ${lon}`;
+                },
+                (err) => {
+                    el.innerText = "Error: " + err.message;
+                },
+                { enableHighAccuracy: true }
+            );
+        }
+    </script>
+</body>
+
+</html>

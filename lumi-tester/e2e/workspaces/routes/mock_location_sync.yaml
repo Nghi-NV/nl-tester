@@ -1,0 +1,51 @@
+flow: mock_location_sync
+description: Verify mock location synchronization commands with speed modes
+label: Mock Location Synchronization
+
+env:
+    LAT_CHECKPOINT: 21.0305
+    LON_CHECKPOINT: 105.8500
+    LAT_END: 21.0310
+    LON_END: 105.8500
+
+commands:
+  - launchApp:
+      appId: com.google.android.apps.maps
+      clearState: false
+
+  # Wait for map to load
+  - wait: 3000
+
+  # Start mock location with speed noise simulation
+  # This simulates realistic driving with speed variations
+  - mockLocation:
+      name: route1
+      file: Location.gpx
+      speed: 100.0
+      speedMode: noise
+      speedNoise: 10.0
+      loop: false
+
+  # Interleaved action
+  - wait: 1000
+
+  # Wait for a checkpoint (roughly start of route)
+  - waitForLocation:
+      name: route1
+      lat: 20.56865
+      lon: 105.91726
+      tolerance: 100
+      timeout: 60000
+  
+  # Dynamic speed control - speed up to 150 km/h
+  - mockLocationControl:
+      name: route1
+      speed: 150.0
+      speedMode: linear
+
+  # Wait for completion (without timeout, waits indefinitely)
+  - waitForMockCompletion:
+      name: route1
+      timeout: 180000
+
+  - stopMockLocation

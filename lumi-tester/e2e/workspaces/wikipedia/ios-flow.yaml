@@ -1,0 +1,11 @@
+appId: org.wikimedia.wikipedia
+tags:
+  - ios
+  - passing
+---
+- launchApp
+
+- swipe:
+  direction: up
+  distance: 100
+  duration: 300

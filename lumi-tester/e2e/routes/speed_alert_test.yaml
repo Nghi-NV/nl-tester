@@ -1,0 +1,34 @@
+appId: com.speedalert.app
+---
+# Speed Alert App Test with Mock GPS
+
+# 1. Load GPS route từ file GPX
+- mockLocation:
+    file: "./routes/highway_speed_test.gpx"
+    speed: 120  # Override: 120 km/h để trigger cảnh báo nhanh
+
+# 2. Mở app cảnh báo tốc độ
+- open: "com.speedalert.app"
+- wait: 3000
+
+# 3. Verify app đang tracking vị trí
+- see: "Đang theo dõi"
+
+# 4. Đợi cảnh báo vượt tốc hiển thị
+- wait: 5000
+- see: "Vượt tốc độ"
+
+# 5. Chụp screenshot khi có cảnh báo
+- takeScreenshot: "speed_warning_triggered.png"
+
+# 6. Verify log có phát cảnh báo âm thanh
+- runScript:
+    command: "adb logcat -d | grep -i 'audio\\|sound\\|media' | tail -10"
+    saveOutput: "audio_log"
+
+# 7. Stop mock location
+- stopMockLocation
+
+# 8. Kết thúc test
+- back
+- stopApp

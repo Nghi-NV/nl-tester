@@ -1,0 +1,648 @@
+<?xml version="1.0"?>
+<gpx version="1.1" creator="hiennv">
+<wpt lat="20.56287" lon="105.92087">
+ <name>Point73</name>
+ <time>2024-01-30T10:48:03.423+00:00Z</time>
+</wpt>
+<wpt lat="20.562915" lon="105.920775">
+ <name>Point74</name>
+ <time>2024-01-30T10:48:03.523+00:00Z</time>
+</wpt>
+<wpt lat="20.56296" lon="105.92068">
+ <name>Point75</name>
+ <time>2024-01-30T10:48:03.623+00:00Z</time>
+</wpt>
+<wpt lat="20.563028" lon="105.920573">
+ <name>Point76</name>
+ <time>2024-01-30T10:48:03.723+00:00Z</time>
+</wpt>
+<wpt lat="20.563095" lon="105.920465">
+ <name>Point77</name>
+ <time>2024-01-30T10:48:03.823+00:00Z</time>
+</wpt>
+<wpt lat="20.563163" lon="105.920358">
+ <name>Point78</name>
+ <time>2024-01-30T10:48:03.923+00:00Z</time>
+</wpt>
+<wpt lat="20.56323" lon="105.92025">
+ <name>Point79</name>
+ <time>2024-01-30T10:48:04.023+00:00Z</time>
+</wpt>
+<wpt lat="20.56333" lon="105.920105">
+ <name>Point80</name>
+ <time>2024-01-30T10:48:04.123+00:00Z</time>
+</wpt>
+<wpt lat="20.56343" lon="105.91996">
+ <name>Point81</name>
+ <time>2024-01-30T10:48:04.223+00:00Z</time>
+</wpt>
+<wpt lat="20.563528" lon="105.919848">
+ <name>Point82</name>
+ <time>2024-01-30T10:48:04.323+00:00Z</time>
+</wpt>
+<wpt lat="20.563625" lon="105.919735">
+ <name>Point83</name>
+ <time>2024-01-30T10:48:04.423+00:00Z</time>
+</wpt>
+<wpt lat="20.563723" lon="105.919623">
+ <name>Point84</name>
+ <time>2024-01-30T10:48:04.523+00:00Z</time>
+</wpt>
+<wpt lat="20.56382" lon="105.91951">
+ <name>Point85</name>
+ <time>2024-01-30T10:48:04.623+00:00Z</time>
+</wpt>
+<wpt lat="20.56392" lon="105.919375">
+ <name>Point86</name>
+ <time>2024-01-30T10:48:04.723+00:00Z</time>
+</wpt>
+<wpt lat="20.56402" lon="105.91924">
+ <name>Point87</name>
+ <time>2024-01-30T10:48:04.823+00:00Z</time>
+</wpt>
+<wpt lat="20.56413" lon="105.919135">
+ <name>Point88</name>
+ <time>2024-01-30T10:48:04.923+00:00Z</time>
+</wpt>
+<wpt lat="20.56424" lon="105.91903">
+ <name>Point89</name>
+ <time>2024-01-30T10:48:05.023+00:00Z</time>
+</wpt>
+<wpt lat="20.564378" lon="105.918963">
+ <name>Point90</name>
+ <time>2024-01-30T10:48:05.123+00:00Z</time>
+</wpt>
+<wpt lat="20.564515" lon="105.918895">
+ <name>Point91</name>
+ <time>2024-01-30T10:48:05.223+00:00Z</time>
+</wpt>
+<wpt lat="20.564653" lon="105.918828">
+ <name>Point92</name>
+ <time>2024-01-30T10:48:05.323+00:00Z</time>
+</wpt>
+<wpt lat="20.56479" lon="105.91876">
+ <name>Point93</name>
+ <time>2024-01-30T10:48:05.423+00:00Z</time>
+</wpt>
+<wpt lat="20.564915" lon="105.918753">
+ <name>Point94</name>
+ <time>2024-01-30T10:48:05.523+00:00Z</time>
+</wpt>
+<wpt lat="20.56504" lon="105.918745">
+ <name>Point95</name>
+ <time>2024-01-30T10:48:05.623+00:00Z</time>
+</wpt>
+<wpt lat="20.565165" lon="105.918738">
+ <name>Point96</name>
+ <time>2024-01-30T10:48:05.723+00:00Z</time>
+</wpt>
+<wpt lat="20.56529" lon="105.91873">
+ <name>Point97</name>
+ <time>2024-01-30T10:48:05.823+00:00Z</time>
+</wpt>
+<wpt lat="20.565449" lon="105.91871">
+ <name>Point98</name>
+ <time>2024-01-30T10:48:05.923+00:00Z</time>
+</wpt>
+<wpt lat="20.565608" lon="105.91869">
+ <name>Point99</name>
+ <time>2024-01-30T10:48:06.023+00:00Z</time>
+</wpt>
+<wpt lat="20.565767" lon="105.91867">
+ <name>Point100</name>
+ <time>2024-01-30T10:48:06.123+00:00Z</time>
+</wpt>
+<wpt lat="20.565925" lon="105.91865">
+ <name>Point101</name>
+ <time>2024-01-30T10:48:06.223+00:00Z</time>
+</wpt>
+<wpt lat="20.566084" lon="105.91863">
+ <name>Point102</name>
+ <time>2024-01-30T10:48:06.323+00:00Z</time>
+</wpt>
+<wpt lat="20.566243" lon="105.91861">
+ <name>Point103</name>
+ <time>2024-01-30T10:48:06.423+00:00Z</time>
+</wpt>
+<wpt lat="20.566402" lon="105.91859">
+ <name>Point104</name>
+ <time>2024-01-30T10:48:06.523+00:00Z</time>
+</wpt>
+<wpt lat="20.56656" lon="105.91857">
+ <name>Point105</name>
+ <time>2024-01-30T10:48:06.623+00:00Z</time>
+</wpt>
+<wpt lat="20.566728" lon="105.918552">
+ <name>Point106</name>
+ <time>2024-01-30T10:48:06.723+00:00Z</time>
+</wpt>
+<wpt lat="20.566895" lon="105.918533">
+ <name>Point107</name>
+ <time>2024-01-30T10:48:06.823+00:00Z</time>
+</wpt>
+<wpt lat="20.567063" lon="105.918514">
+ <name>Point108</name>
+ <time>2024-01-30T10:48:06.923+00:00Z</time>
+</wpt>
+<wpt lat="20.56723" lon="105.918495">
+ <name>Point109</name>
+ <time>2024-01-30T10:48:07.023+00:00Z</time>
+</wpt>
+<wpt lat="20.567398" lon="105.918477">
+ <name>Point110</name>
+ <time>2024-01-30T10:48:07.123+00:00Z</time>
+</wpt>
+<wpt lat="20.567565" lon="105.918458">
+ <name>Point111</name>
+ <time>2024-01-30T10:48:07.223+00:00Z</time>
+</wpt>
+<wpt lat="20.567733" lon="105.918439">
+ <name>Point112</name>
+ <time>2024-01-30T10:48:07.323+00:00Z</time>
+</wpt>
+<wpt lat="20.5679" lon="105.91842">
+ <name>Point113</name>
+ <time>2024-01-30T10:48:07.423+00:00Z</time>
+</wpt>
+<wpt lat="20.56802" lon="105.918375">
+ <name>Point114</name>
+ <time>2024-01-30T10:48:07.523+00:00Z</time>
+</wpt>
+<wpt lat="20.56814" lon="105.91833">
+ <name>Point115</name>
+ <time>2024-01-30T10:48:07.623+00:00Z</time>
+</wpt>
+<wpt lat="20.56823" lon="105.918265">
+ <name>Point116</name>
+ <time>2024-01-30T10:48:07.723+00:00Z</time>
+</wpt>
+<wpt lat="20.56832" lon="105.9182">
+ <name>Point117</name>
+ <time>2024-01-30T10:48:07.823+00:00Z</time>
+</wpt>
+<wpt lat="20.568365" lon="105.918095">
+ <name>Point118</name>
+ <time>2024-01-30T10:48:07.923+00:00Z</time>
+</wpt>
+<wpt lat="20.56841" lon="105.91799">
+ <name>Point119</name>
+ <time>2024-01-30T10:48:08.023+00:00Z</time>
+</wpt>
+<wpt lat="20.568455" lon="105.917885">
+ <name>Point120</name>
+ <time>2024-01-30T10:48:08.123+00:00Z</time>
+</wpt>
+<wpt lat="20.5685" lon="105.91778">
+ <name>Point121</name>
+ <time>2024-01-30T10:48:08.223+00:00Z</time>
+</wpt>
+<wpt lat="20.568538" lon="105.91765">
+ <name>Point122</name>
+ <time>2024-01-30T10:48:08.323+00:00Z</time>
+</wpt>
+<wpt lat="20.568575" lon="105.91752">
+ <name>Point123</name>
+ <time>2024-01-30T10:48:08.423+00:00Z</time>
+</wpt>
+<wpt lat="20.568613" lon="105.91739">
+ <name>Point124</name>
+ <time>2024-01-30T10:48:08.523+00:00Z</time>
+</wpt>
+<wpt lat="20.56865" lon="105.91726">
+ <name>Point125</name>
+ <time>2024-01-30T10:48:08.623+00:00Z</time>
+</wpt>
+<wpt lat="20.5687" lon="105.917093">
+ <name>Point126</name>
+ <time>2024-01-30T10:48:08.723+00:00Z</time>
+</wpt>
+<wpt lat="20.56875" lon="105.916925">
+ <name>Point127</name>
+ <time>2024-01-30T10:48:08.823+00:00Z</time>
+</wpt>
+<wpt lat="20.5688" lon="105.916758">
+ <name>Point128</name>
+ <time>2024-01-30T10:48:08.923+00:00Z</time>
+</wpt>
+<wpt lat="20.56885" lon="105.91659">
+ <name>Point129</name>
+ <time>2024-01-30T10:48:09.023+00:00Z</time>
+</wpt>
+<wpt lat="20.568903" lon="105.916508">
+ <name>Point130</name>
+ <time>2024-01-30T10:48:09.123+00:00Z</time>
+</wpt>
+<wpt lat="20.568955" lon="105.916425">
+ <name>Point131</name>
+ <time>2024-01-30T10:48:09.223+00:00Z</time>
+</wpt>
+<wpt lat="20.569008" lon="105.916343">
+ <name>Point132</name>
+ <time>2024-01-30T10:48:09.323+00:00Z</time>
+</wpt>
+<wpt lat="20.56906" lon="105.91626">
+ <name>Point133</name>
+ <time>2024-01-30T10:48:09.423+00:00Z</time>
+</wpt>
+<wpt lat="20.5692" lon="105.916155">
+ <name>Point134</name>
+ <time>2024-01-30T10:48:09.523+00:00Z</time>
+</wpt>
+<wpt lat="20.56934" lon="105.91605">
+ <name>Point135</name>
+ <time>2024-01-30T10:48:09.623+00:00Z</time>
+</wpt>
+<wpt lat="20.569475" lon="105.91599">
+ <name>Point136</name>
+ <time>2024-01-30T10:48:09.723+00:00Z</time>
+</wpt>
+<wpt lat="20.56961" lon="105.91593">
+ <name>Point137</name>
+ <time>2024-01-30T10:48:09.823+00:00Z</time>
+</wpt>
+<wpt lat="20.56976" lon="105.91587">
+ <name>Point138</name>
+ <time>2024-01-30T10:48:09.923+00:00Z</time>
+</wpt>
+<wpt lat="20.56991" lon="105.91581">
+ <name>Point139</name>
+ <time>2024-01-30T10:48:10.023+00:00Z</time>
+</wpt>
+<wpt lat="20.570013" lon="105.915768">
+ <name>Point140</name>
+ <time>2024-01-30T10:48:10.123+00:00Z</time>
+</wpt>
+<wpt lat="20.570115" lon="105.915725">
+ <name>Point141</name>
+ <time>2024-01-30T10:48:10.223+00:00Z</time>
+</wpt>
+<wpt lat="20.570218" lon="105.915683">
+ <name>Point142</name>
+ <time>2024-01-30T10:48:10.323+00:00Z</time>
+</wpt>
+<wpt lat="20.57032" lon="105.91564">
+ <name>Point143</name>
+ <time>2024-01-30T10:48:10.423+00:00Z</time>
+</wpt>
+<wpt lat="20.570403" lon="105.915602">
+ <name>Point144</name>
+ <time>2024-01-30T10:48:10.523+00:00Z</time>
+</wpt>
+<wpt lat="20.570485" lon="105.915563">
+ <name>Point145</name>
+ <time>2024-01-30T10:48:10.623+00:00Z</time>
+</wpt>
+<wpt lat="20.570568" lon="105.915524">
+ <name>Point146</name>
+ <time>2024-01-30T10:48:10.723+00:00Z</time>
+</wpt>
+<wpt lat="20.57065" lon="105.915485">
+ <name>Point147</name>
+ <time>2024-01-30T10:48:10.823+00:00Z</time>
+</wpt>
+<wpt lat="20.570733" lon="105.915447">
+ <name>Point148</name>
+ <time>2024-01-30T10:48:10.923+00:00Z</time>
+</wpt>
+<wpt lat="20.570815" lon="105.915408">
+ <name>Point149</name>
+ <time>2024-01-30T10:48:11.023+00:00Z</time>
+</wpt>
+<wpt lat="20.570898" lon="105.915369">
+ <name>Point150</name>
+ <time>2024-01-30T10:48:11.123+00:00Z</time>
+</wpt>
+<wpt lat="20.57098" lon="105.91533">
+ <name>Point151</name>
+ <time>2024-01-30T10:48:11.223+00:00Z</time>
+</wpt>
+<wpt lat="20.571113" lon="105.915233">
+ <name>Point152</name>
+ <time>2024-01-30T10:48:11.323+00:00Z</time>
+</wpt>
+<wpt lat="20.571245" lon="105.915135">
+ <name>Point153</name>
+ <time>2024-01-30T10:48:11.423+00:00Z</time>
+</wpt>
+<wpt lat="20.571378" lon="105.915038">
+ <name>Point154</name>
+ <time>2024-01-30T10:48:11.523+00:00Z</time>
+</wpt>
+<wpt lat="20.57151" lon="105.91494">
+ <name>Point155</name>
+ <time>2024-01-30T10:48:11.623+00:00Z</time>
+</wpt>
+<wpt lat="20.57161" lon="105.914855">
+ <name>Point156</name>
+ <time>2024-01-30T10:48:11.723+00:00Z</time>
+</wpt>
+<wpt lat="20.57171" lon="105.91477">
+ <name>Point157</name>
+ <time>2024-01-30T10:48:11.823+00:00Z</time>
+</wpt>
+<wpt lat="20.57181" lon="105.914685">
+ <name>Point158</name>
+ <time>2024-01-30T10:48:11.923+00:00Z</time>
+</wpt>
+<wpt lat="20.57191" lon="105.9146">
+ <name>Point159</name>
+ <time>2024-01-30T10:48:12.023+00:00Z</time>
+</wpt>
+<wpt lat="20.57205" lon="105.914495">
+ <name>Point160</name>
+ <time>2024-01-30T10:48:12.123+00:00Z</time>
+</wpt>
+<wpt lat="20.57219" lon="105.91439">
+ <name>Point161</name>
+ <time>2024-01-30T10:48:12.223+00:00Z</time>
+</wpt>
+<wpt lat="20.57233" lon="105.914285">
+ <name>Point162</name>
+ <time>2024-01-30T10:48:12.323+00:00Z</time>
+</wpt>
+<wpt lat="20.57247" lon="105.91418">
+ <name>Point163</name>
+ <time>2024-01-30T10:48:12.423+00:00Z</time>
+</wpt>
+<wpt lat="20.572533" lon="105.9141">
+ <name>Point164</name>
+ <time>2024-01-30T10:48:12.523+00:00Z</time>
+</wpt>
+<wpt lat="20.572595" lon="105.91402">
+ <name>Point165</name>
+ <time>2024-01-30T10:48:12.623+00:00Z</time>
+</wpt>
+<wpt lat="20.572658" lon="105.91394">
+ <name>Point166</name>
+ <time>2024-01-30T10:48:12.723+00:00Z</time>
+</wpt>
+<wpt lat="20.57272" lon="105.91386">
+ <name>Point167</name>
+ <time>2024-01-30T10:48:12.823+00:00Z</time>
+</wpt>
+<wpt lat="20.572765" lon="105.913768">
+ <name>Point168</name>
+ <time>2024-01-30T10:48:12.923+00:00Z</time>
+</wpt>
+<wpt lat="20.57281" lon="105.913675">
+ <name>Point169</name>
+ <time>2024-01-30T10:48:13.023+00:00Z</time>
+</wpt>
+<wpt lat="20.572855" lon="105.913583">
+ <name>Point170</name>
+ <time>2024-01-30T10:48:13.123+00:00Z</time>
+</wpt>
+<wpt lat="20.5729" lon="105.91349">
+ <name>Point171</name>
+ <time>2024-01-30T10:48:13.223+00:00Z</time>
+</wpt>
+<wpt lat="20.572935" lon="105.913325">
+ <name>Point172</name>
+ <time>2024-01-30T10:48:13.323+00:00Z</time>
+</wpt>
+<wpt lat="20.57297" lon="105.91316">
+ <name>Point173</name>
+ <time>2024-01-30T10:48:13.423+00:00Z</time>
+</wpt>
+<wpt lat="20.57297" lon="105.91304">
+ <name>Point174</name>
+ <time>2024-01-30T10:48:13.523+00:00Z</time>
+</wpt>
+<wpt lat="20.57297" lon="105.91292">
+ <name>Point175</name>
+ <time>2024-01-30T10:48:13.623+00:00Z</time>
+</wpt>
+<wpt lat="20.572973" lon="105.912823">
+ <name>Point176</name>
+ <time>2024-01-30T10:48:13.723+00:00Z</time>
+</wpt>
+<wpt lat="20.572975" lon="105.912725">
+ <name>Point177</name>
+ <time>2024-01-30T10:48:13.823+00:00Z</time>
+</wpt>
+<wpt lat="20.572978" lon="105.912628">
+ <name>Point178</name>
+ <time>2024-01-30T10:48:13.923+00:00Z</time>
+</wpt>
+<wpt lat="20.57298" lon="105.91253">
+ <name>Point179</name>
+ <time>2024-01-30T10:48:14.023+00:00Z</time>
+</wpt>
+<wpt lat="20.572975" lon="105.91239">
+ <name>Point180</name>
+ <time>2024-01-30T10:48:14.123+00:00Z</time>
+</wpt>
+<wpt lat="20.57297" lon="105.91225">
+ <name>Point181</name>
+ <time>2024-01-30T10:48:14.223+00:00Z</time>
+</wpt>
+<wpt lat="20.572965" lon="105.91211">
+ <name>Point182</name>
+ <time>2024-01-30T10:48:14.323+00:00Z</time>
+</wpt>
+<wpt lat="20.57296" lon="105.91197">
+ <name>Point183</name>
+ <time>2024-01-30T10:48:14.423+00:00Z</time>
+</wpt>
+<wpt lat="20.572967" lon="105.911867">
+ <name>Point184</name>
+ <time>2024-01-30T10:48:14.523+00:00Z</time>
+</wpt>
+<wpt lat="20.572973" lon="105.911763">
+ <name>Point185</name>
+ <time>2024-01-30T10:48:14.623+00:00Z</time>
+</wpt>
+<wpt lat="20.572979" lon="105.911659">
+ <name>Point186</name>
+ <time>2024-01-30T10:48:14.723+00:00Z</time>
+</wpt>
+<wpt lat="20.572985" lon="105.911555">
+ <name>Point187</name>
+ <time>2024-01-30T10:48:14.823+00:00Z</time>
+</wpt>
+<wpt lat="20.572992" lon="105.911452">
+ <name>Point188</name>
+ <time>2024-01-30T10:48:14.923+00:00Z</time>
+</wpt>
+<wpt lat="20.572998" lon="105.911348">
+ <name>Point189</name>
+ <time>2024-01-30T10:48:15.023+00:00Z</time>
+</wpt>
+<wpt lat="20.573004" lon="105.911244">
+ <name>Point190</name>
+ <time>2024-01-30T10:48:15.123+00:00Z</time>
+</wpt>
+<wpt lat="20.57301" lon="105.91114">
+ <name>Point191</name>
+ <time>2024-01-30T10:48:15.223+00:00Z</time>
+</wpt>
+<wpt lat="20.573013" lon="105.911023">
+ <name>Point192</name>
+ <time>2024-01-30T10:48:15.323+00:00Z</time>
+</wpt>
+<wpt lat="20.573015" lon="105.910905">
+ <name>Point193</name>
+ <time>2024-01-30T10:48:15.423+00:00Z</time>
+</wpt>
+<wpt lat="20.573018" lon="105.910788">
+ <name>Point194</name>
+ <time>2024-01-30T10:48:15.523+00:00Z</time>
+</wpt>
+<wpt lat="20.57302" lon="105.91067">
+ <name>Point195</name>
+ <time>2024-01-30T10:48:15.623+00:00Z</time>
+</wpt>
+<wpt lat="20.573023" lon="105.910553">
+ <name>Point196</name>
+ <time>2024-01-30T10:48:15.723+00:00Z</time>
+</wpt>
+<wpt lat="20.573025" lon="105.910435">
+ <name>Point197</name>
+ <time>2024-01-30T10:48:15.823+00:00Z</time>
+</wpt>
+<wpt lat="20.573028" lon="105.910318">
+ <name>Point198</name>
+ <time>2024-01-30T10:48:15.923+00:00Z</time>
+</wpt>
+<wpt lat="20.57303" lon="105.9102">
+ <name>Point199</name>
+ <time>2024-01-30T10:48:16.023+00:00Z</time>
+</wpt>
+<wpt lat="20.573025" lon="105.9101">
+ <name>Point200</name>
+ <time>2024-01-30T10:48:16.123+00:00Z</time>
+</wpt>
+<wpt lat="20.57302" lon="105.91">
+ <name>Point201</name>
+ <time>2024-01-30T10:48:16.223+00:00Z</time>
+</wpt>
+<wpt lat="20.573015" lon="105.90987">
+ <name>Point202</name>
+ <time>2024-01-30T10:48:16.323+00:00Z</time>
+</wpt>
+<wpt lat="20.57301" lon="105.90974">
+ <name>Point203</name>
+ <time>2024-01-30T10:48:16.423+00:00Z</time>
+</wpt>
+<wpt lat="20.57299" lon="105.90958">
+ <name>Point204</name>
+ <time>2024-01-30T10:48:16.523+00:00Z</time>
+</wpt>
+<wpt lat="20.57297" lon="105.90942">
+ <name>Point205</name>
+ <time>2024-01-30T10:48:16.623+00:00Z</time>
+</wpt>
+<wpt lat="20.57289" lon="105.909297">
+ <name>Point206</name>
+ <time>2024-01-30T10:48:16.723+00:00Z</time>
+</wpt>
+<wpt lat="20.57281" lon="105.909175">
+ <name>Point207</name>
+ <time>2024-01-30T10:48:16.823+00:00Z</time>
+</wpt>
+<wpt lat="20.57273" lon="105.909052">
+ <name>Point208</name>
+ <time>2024-01-30T10:48:16.923+00:00Z</time>
+</wpt>
+<wpt lat="20.57265" lon="105.90893">
+ <name>Point209</name>
+ <time>2024-01-30T10:48:17.023+00:00Z</time>
+</wpt>
+<wpt lat="20.57257" lon="105.90883">
+ <name>Point210</name>
+ <time>2024-01-30T10:48:17.123+00:00Z</time>
+</wpt>
+<wpt lat="20.57249" lon="105.90873">
+ <name>Point211</name>
+ <time>2024-01-30T10:48:17.223+00:00Z</time>
+</wpt>
+<wpt lat="20.57245" lon="105.90865">
+ <name>Point212</name>
+ <time>2024-01-30T10:48:17.323+00:00Z</time>
+</wpt>
+<wpt lat="20.57245" lon="105.90856">
+ <name>Point213</name>
+ <time>2024-01-30T10:48:17.423+00:00Z</time>
+</wpt>
+<wpt lat="20.572495" lon="105.90843">
+ <name>Point214</name>
+ <time>2024-01-30T10:48:17.523+00:00Z</time>
+</wpt>
+<wpt lat="20.57254" lon="105.9083">
+ <name>Point215</name>
+ <time>2024-01-30T10:48:17.623+00:00Z</time>
+</wpt>
+<wpt lat="20.57262" lon="105.90818">
+ <name>Point216</name>
+ <time>2024-01-30T10:48:17.723+00:00Z</time>
+</wpt>
+<wpt lat="20.5727" lon="105.90806">
+ <name>Point217</name>
+ <time>2024-01-30T10:48:17.823+00:00Z</time>
+</wpt>
+<wpt lat="20.572735" lon="105.907935">
+ <name>Point218</name>
+ <time>2024-01-30T10:48:17.923+00:00Z</time>
+</wpt>
+<wpt lat="20.57277" lon="105.90781">
+ <name>Point219</name>
+ <time>2024-01-30T10:48:18.023+00:00Z</time>
+</wpt>
+<wpt lat="20.572755" lon="105.907705">
+ <name>Point220</name>
+ <time>2024-01-30T10:48:18.123+00:00Z</time>
+</wpt>
+<wpt lat="20.57274" lon="105.9076">
+ <name>Point221</name>
+ <time>2024-01-30T10:48:18.223+00:00Z</time>
+</wpt>
+<wpt lat="20.572693" lon="105.907505">
+ <name>Point222</name>
+ <time>2024-01-30T10:48:18.323+00:00Z</time>
+</wpt>
+<wpt lat="20.572645" lon="105.90741">
+ <name>Point223</name>
+ <time>2024-01-30T10:48:18.423+00:00Z</time>
+</wpt>
+<wpt lat="20.572598" lon="105.907315">
+ <name>Point224</name>
+ <time>2024-01-30T10:48:18.523+00:00Z</time>
+</wpt>
+<wpt lat="20.57255" lon="105.90722">
+ <name>Point225</name>
+ <time>2024-01-30T10:48:18.623+00:00Z</time>
+</wpt>
+<wpt lat="20.57249" lon="105.907145">
+ <name>Point226</name>
+ <time>2024-01-30T10:48:18.723+00:00Z</time>
+</wpt>
+<wpt lat="20.57243" lon="105.90707">
+ <name>Point227</name>
+ <time>2024-01-30T10:48:18.823+00:00Z</time>
+</wpt>
+<wpt lat="20.572365" lon="105.90699">
+ <name>Point228</name>
+ <time>2024-01-30T10:48:18.923+00:00Z</time>
+</wpt>
+<wpt lat="20.5723" lon="105.90691">
+ <name>Point229</name>
+ <time>2024-01-30T10:48:19.023+00:00Z</time>
+</wpt>
+<wpt lat="20.57219" lon="105.906825">
+ <name>Point230</name>
+ <time>2024-01-30T10:48:19.123+00:00Z</time>
+</wpt>
+<wpt lat="20.57208" lon="105.90674">
+ <name>Point231</name>
+ <time>2024-01-30T10:48:19.223+00:00Z</time>
+</wpt>
+<wpt lat="20.571975" lon="105.9067">
+ <name>Point232</name>
+ <time>2024-01-30T10:48:19.323+00:00Z</time>
+</wpt>
+<wpt lat="20.57187" lon="105.90666">
+ <name>Point233</name>
+ <time>2024-01-30T10:48:19.423+00:00Z</time>
+</wpt>
+</gpx>
+

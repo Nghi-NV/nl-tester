@@ -1,0 +1,68 @@
+platform: web
+---
+- open: "http://localhost:8000/e2e/web/index.html"
+
+# 1. Basic Interactions
+- tap: "Tap Me"
+- see: "Tapped!"
+
+- doubleTap: "Double Tap Me"
+- see: "Double Tapped!"
+
+- rightClick: "Right Click Me"
+- see: "Right Clicked!"
+
+# 2. Inputs
+- tap: { id: "input-text" }
+- inputText: "Lumi Verification"
+- tap: "Show result"
+- see: "Lumi Verification"
+
+- tap: { id: "input-text" }
+- eraseText: {}
+- tap: "Show result"
+- notSee: "Lumi Verification"
+
+- tap: { id: "email-field" }
+- inputText: "test@lumi.com"
+- tap: "Show result"
+- see: "test@lumi.com"
+
+# 3. Indexed Elements
+- tapAt:
+    type: "Button"
+    index: 3 # This should be "Item 0" since it's the 4th button on page
+- wait: 500
+
+# 4. Scrolling
+- scrollTo:
+    id: "secret-button"
+- tap: "Secret Button"
+- see: "Found Secret!"
+
+# 5. Visibility & Async
+- tap: "Show Hidden Element"
+- extendedWaitUntil:
+    visible: "I was hidden!"
+    timeout: 5000
+
+- tap: "Start Loading"
+- see: "Loading..."
+- waitNotSee:
+    text: "Loading..."
+    timeout: 5000
+- see: "Loading Finished"
+
+# 6. Random Data
+- generate:
+    name: "random_name"
+    type: "name"
+- inputAt:
+    type: "input"
+    index: 0
+    text: "${random_name}"
+- tap: "Show result"
+- see: "${random_name}"
+
+# 7. Media & Metadata
+- takeScreenshot: "web_verification.png"

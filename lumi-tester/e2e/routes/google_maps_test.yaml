@@ -1,0 +1,25 @@
+appId: com.google.android.apps.maps
+---
+# Test Mock Location với Google Maps
+
+# 1. Load GPS route từ file GPX - giả lập đang di chuyển
+- mockLocation:
+    file: "./highway_speed_test.gpx"
+
+# 2. Mở Google Maps
+- open: "com.google.android.apps.maps"
+- wait: 3000
+
+# 3. Chờ vị trí cập nhật và chụp screenshot
+- wait: 5000
+- takeScreenshot: "google_maps_mock_location.png"
+
+# 4. Tiếp tục chờ và chụp screenshot lần 2
+- wait: 5000
+- takeScreenshot: "google_maps_mock_location_2.png"
+
+# 5. Stop mock location
+- stopMockLocation
+
+# 6. Kết thúc
+- back

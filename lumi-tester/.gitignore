@@ -1,0 +1,24 @@
+/target
+**/*.rs.bk
+Cargo.lock.bk
+.DS_Store
+output/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+Thumbs.db
+
+# Private Workspaces
+e2e/workspaces/lumi_life/
+

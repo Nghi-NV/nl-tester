@@ -1,0 +1,28 @@
+platform: web
+appId: "http://localhost:8000/e2e/web/index.html"
+---
+- open: "http://localhost:8000/e2e/web/index.html"
+
+# 1. Test Console Logs
+- tap: "Log Message" 
+- runFlow:
+    commands:
+      # Verify we can capture logs (manual verification in report for now)
+      - dumpLogs: 10
+
+# 2. Test Mock Location
+- mockLocation:
+    file: "test.gpx"
+- tap: "Get Location"
+- waitForLocation:
+    lat: 37.7749
+    lon: -122.4194
+    tolerance: 0.001
+    timeout: 5000
+- see: "37.7749, -122.4194"
+
+# 3. Test Network (Offline)
+- setNetworkConnection:
+    wifi: false
+    data: false
+# Note: Offline mode might break further navigation, but we are just testing the toggle.

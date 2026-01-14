@@ -1,0 +1,97 @@
+name: Full Web Coverage Test
+platform: web
+
+steps:
+  # 1. Navigation & Basic Interaction
+  - open: "https://www.saucedemo.com/"
+  - see: "Swag Labs"
+  - takeScreenshot: "steps/1_login_page.png"
+  
+  # 2. Input Text & Erase Text
+  - tap:
+      id: "user-name"
+  - inputText: "wrong_user"
+  - wait: 500
+  
+  - eraseText: 50
+  - wait: 500
+  
+  - inputText: "standard_user"
+      
+  - tap:
+      id: "password"
+  - inputText: "secret_sauce"
+
+  # 3. Tap with different selectors
+  - tap:
+      css: "input[type='submit']"
+  
+  # 4. Assertions (See/NotSee)
+  - see: "Products"
+  - takeScreenshot: "steps/2_logged_in.png"
+
+  # 5. Scroll & ScrollUntilVisible
+  # Scroll to footer
+  - scrollUntilVisible:
+      css: ".footer"
+      max_scrolls: 5
+  - see: "Twitter"
+  - takeScreenshot: "steps/3_scrolled.png"
+  
+  # 6. Run Script (JS)
+  - runScript: "document.body.style.backgroundColor = 'red';"
+  - wait: 1000
+  - takeScreenshot: "steps/4_bg_red.png"
+
+  # 7. Navigation Back
+  # Click on an item then back
+  - tap:
+      css: "#item_4_title_link"
+  - see: "Back to products"
+  - back
+  - see: "Products"
+
+  # 8. Advanced Interaction Verification (Real Site Elements)
+
+  # 8.1 Swipe / Scroll
+  # Scroll to bottom to see social links
+  - swipeUp
+  - swipeUp
+  - wait: 1000
+  - see: "Twitter"
+  
+  # Scroll back up
+  - swipeDown
+  - swipeDown
+  - wait: 1000
+  - see: "Swag Labs"
+
+  # 8.2 State Change & Color Assertion
+  # Add item to cart -> Button becomes "Remove" (Red)
+  - tap:
+      css: "[data-test='add-to-cart-sauce-labs-backpack']"
+  - wait: 500
+  - see: "Remove"
+  
+  # 8.3 Wait Not See
+  # Remove item -> "Remove" button should disappear (revert to Add to cart)
+  - tap:
+      css: "[data-test='remove-sauce-labs-backpack']"
+  - waitNotSee:
+      text: "Remove"
+      timeout: 2000
+  - see: "Add to cart"
+
+  # 8.4 Double Tap
+  # Double tap the "Add to cart" button.
+  # Behavior: Click 1 (Add) -> Becomes Remove. Click 2 (Remove) -> Becomes Add.
+  # Net result: Should end up as "Add to cart" (or "Remove" if second click missed due to update lag).
+  # We will test doubleTap on a static element (Title) just to verify command execution stability.
+  - doubleTap:
+      css: ".app_logo"
+  - see: "Swag Labs"
+  
+  # 11. Point Tap (Coordinate)
+  # Hard to test reliably responsive, but we can try tapping a known large element area
+  # - tap:
+  #     point: "50%,50%"

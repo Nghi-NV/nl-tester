@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>lumi-tester</title>
+    <options customize="never" require-scripts="false"/>
+    <choices-outline>
+        <line choice="default"/>
+    </choices-outline>
+    <choice id="default" visible="false">
+        <pkg-ref id="com.nl.lumitester.pkg"/>
+    </choice>
+    <pkg-ref id="com.nl.lumitester.pkg" auth="Root">lumi-tester-core.pkg</pkg-ref>
+</installer-gui-script>

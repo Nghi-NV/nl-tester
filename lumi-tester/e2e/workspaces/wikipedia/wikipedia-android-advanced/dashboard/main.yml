@@ -1,0 +1,6 @@
+appId: org.wikipedia
+---
+- runFlow: "dashboard/search.yml"
+- runFlow: "dashboard/saved.yml"
+- runFlow: "dashboard/feed.yml"
+- runFlow: "dashboard/copy-paste.yml"

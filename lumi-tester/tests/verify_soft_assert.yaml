@@ -1,0 +1,29 @@
+appId: com.example.softassert
+tags:
+    - verification
+---
+- log: "Testing Soft Assertions - Expecting failures at the end"
+- assertTrue: 
+    condition: "1 == 2"
+    soft: true
+- log: "First soft assert failed, but I am still running!"
+- assertTrue: 
+    condition: "true" 
+    soft: true
+- log: "Second soft assert passed."
+- assertTrue:
+    condition: "false"
+    soft: true
+- log: "Third soft assert failed, still running!"
+
+- log: "Now testing Else branch"
+- conditional:
+    condition:
+        visible: "NonExistentID"
+    then:
+        - log: "Should not be here (Element is visible?)"
+        - assertTrue: { condition: "false", soft: false }
+    else:
+        - log: "Else branch working correctly (Element not visible)!"
+
+- log: "Finished flow. Should see 2 soft errors now."

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lumi Inspector</title>
+</head>
+
+<body>
+  <div class="sidebar">
+    <div class="header">
+      <h1>🔍 Lumi Inspector</h1>
+      <span style="font-size:10px;color:var(--muted)">v5</span>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Test File</div>
+      <input id="file" placeholder="path/to/test.yaml" value="tests/test.yaml">
+      <div class="btn-row">
+        <button class="btn" onclick="openFile()">Open</button>
+        <button class="btn btn-ghost" onclick="newFile()">Create New</button>
+      </div>
+    </div>
+
+
+    <div class="commands-container">
+      <div class="commands-header">
+        <span class="section-title" style="margin:0">Commands</span>
+        <div class="btn-row">
+          <button class="btn btn-ghost" style="font-size:10px" onclick="loadCommands()">↻</button>
+          <button class="btn btn-ghost" style="font-size:10px" onclick="setInsertMode()">+ Insert</button>
+        </div>
+      </div>
+      <div class="commands-list" id="cmds">
+        <div class="placeholder" style="padding:40px 20px">
+          <div style="font-size:10px">Open a file to see commands</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="selectors-panel">
+      <div class="section-title">Selectors</div>
+      <div id="sels">
+        <div style="color:var(--muted);font-size:10px">Right-click on screen to inspect</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen-area">
+    <div class="toolbar">
+      <div class="toggle-row">
+        <span class="toggle-label">Boxes</span>
+        <div class="toggle on" id="boxToggle" onclick="toggleBoxes()"></div>
+      </div>
+      <button class="btn btn-green" id="captureBtn" onclick="capture()">📷 Capture</button>
+    </div>
+
+    <div class="screen-container" id="screenContainer">
+      <div class="placeholder" id="placeholder">
+        <div class="icon">📱</div>
+        <div>Click Capture to start</div>
+      </div>
+      <img id="screen" src="" style="display:none">
+      <canvas id="overlay" class="overlay-canvas"></canvas>
+    </div>
+
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="menu" id="menu">
+    <!-- Items will be injected dynamically -->
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- Confirm Dialog -->
+  <div id="confirmDialog" class="dialog-overlay" style="display:none">
+    <div class="dialog" style="width: 320px; height: auto; min-height: unset; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+      <div class="dialog-header">
+        <span id="confirmTitle">Confirm</span>
+      </div>
+      <div class="dialog-body" style="padding: 20px;">
+        <div id="confirmMsg" style="margin-bottom: 24px; color: var(--text); font-size: 13px; line-height: 1.5;">Are you
+          sure?</div>
+        <div class="btn-row" style="justify-content: flex-end; gap: 8px;">
+          <button class="btn btn-ghost btn-sm" onclick="resolveConfirm(false)">Cancel</button>
+          <button class="btn btn-red btn-sm" onclick="resolveConfirm(true)">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Package Dialog -->
+  <div id="pkgDialog" class="dialog-overlay" style="display:none">
+    <div class="dialog">
+      <div class="dialog-header">
+        <span>Select App</span>
+        <button class="btn-close" onclick="closePkgDialog()">×</button>
+      </div>
+      <div class="dialog-body">
+        <input id="pkgSearch" placeholder="Search packages... (e.g. com.google...)" onkeyup="filterPackages()"
+          style="margin-bottom:8px">
+        <div id="pkgList" class="pkg-list">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+</body>
+
+</html>

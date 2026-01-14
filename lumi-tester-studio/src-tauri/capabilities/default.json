@@ -1,0 +1,52 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "fs:default",
+    "fs:allow-read-file",
+    "fs:allow-read-dir",
+    "fs:allow-write-file",
+    "fs:allow-write-text-file",
+    "fs:allow-remove",
+    "fs:allow-rename",
+    "fs:allow-mkdir",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        "$HOME/**",
+        "$RESOURCE/**",
+        "$APPDATA/**",
+        "$APPCACHE/**",
+        "$APPLOCALDATA/**",
+        "$APPLOG/**",
+        "$AUDIO/**",
+        "$CACHE/**",
+        "$CONFIG/**",
+        "$DATA/**",
+        "$DESKTOP/**",
+        "$DOCUMENT/**",
+        "$DOWNLOAD/**",
+        "$EXE/**",
+        "$FONT/**",
+        "$LOCALDATA/**",
+        "$LOG/**",
+        "$PICTURE/**",
+        "$PUBLIC/**",
+        "$RUNTIME/**",
+        "$TEMP/**",
+        "$TEMPLATE/**",
+        "$VIDEO/**",
+        "**"
+      ]
+    },
+    "dialog:default",
+    "shell:default",
+    "shell:allow-execute"
+  ]
+}

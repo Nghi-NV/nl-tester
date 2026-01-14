@@ -1,0 +1,412 @@
+use crate::driver::traits::RelativeDirection;
+use anyhow::Result;
+use quick_xml::events::Event;
+use quick_xml::Reader;
+use regex::Regex;
+
+/// Represents a UI element from the view hierarchy
+#[derive(Debug, Clone)]
+pub struct UiElement {
+    pub class: String,
+    pub text: String,
+    pub resource_id: String,
+    pub content_desc: String,
+    pub bounds: Bounds,
+    pub clickable: bool,
+    pub enabled: bool,
+    pub focusable: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Bounds {
+    pub left: i32,
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+}
+
+impl Bounds {
+    /// Get the center point of the bounds
+    pub fn center(&self) -> (i32, i32) {
+        let x = (self.left + self.right) / 2;
+        let y = (self.top + self.bottom) / 2;
+        (x, y)
+    }
+
+    /// Parse bounds from string like "[0,0][1080,1920]"
+    pub fn from_string(s: &str) -> Option<Self> {
+        let parts: Vec<&str> = s.split("][").collect();
+        if parts.len() != 2 {
+            return None;
+        }
+
+        let left_top = parts[0].trim_start_matches('[');
+        let right_bottom = parts[1].trim_end_matches(']');
+
+        let lt: Vec<i32> = left_top.split(',').filter_map(|s| s.parse().ok()).collect();
+        let rb: Vec<i32> = right_bottom
+            .split(',')
+            .filter_map(|s| s.parse().ok())
+            .collect();
+
+        if lt.len() == 2 && rb.len() == 2 {
+            Some(Bounds {
+                left: lt[0],
+                top: lt[1],
+                right: rb[0],
+                bottom: rb[1],
+            })
+        } else {
+            None
+        }
+    }
+}
+
+/// Parse UI hierarchy XML from uiautomator dump
+pub fn parse_hierarchy(xml: &str) -> Result<Vec<UiElement>> {
+    let mut elements = Vec::new();
+    let mut reader = Reader::from_str(xml);
+    reader.trim_text(true);
+
+    let mut buf = Vec::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
+                if e.name().as_ref() == b"node" {
+                    let mut element = UiElement {
+                        class: String::new(),
+                        text: String::new(),
+                        resource_id: String::new(),
+                        content_desc: String::new(),
+                        bounds: Bounds::default(),
+                        clickable: false,
+                        enabled: true,
+                        focusable: false,
+                    };
+
+                    for attr in e.attributes().filter_map(|a| a.ok()) {
+                        let key = String::from_utf8_lossy(attr.key.as_ref());
+                        let value = String::from_utf8_lossy(&attr.value);
+
+                        match key.as_ref() {
+                            "class" => element.class = value.to_string(),
+                            "text" => element.text = value.to_string(),
+                            "resource-id" => element.resource_id = value.to_string(),
+                            "content-desc" => element.content_desc = value.to_string(),
+                            "bounds" => {
+                                if let Some(b) = Bounds::from_string(&value) {
+                                    element.bounds = b;
+                                }
+                            }
+                            "clickable" => element.clickable = value == "true",
+                            "enabled" => element.enabled = value == "true",
+                            "focusable" => element.focusable = value == "true",
+                            _ => {}
+                        }
+                    }
+
+                    elements.push(element);
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => {
+                eprintln!("XML parse error: {:?}", e);
+                break;
+            }
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok(elements)
+}
+
+/// Find element by text
+pub fn find_by_text<'a>(elements: &'a [UiElement], text: &str) -> Option<&'a UiElement> {
+    elements
+        .iter()
+        .find(|e| e.text == text || e.content_desc == text)
+}
+
+/// Find element by resource ID
+pub fn find_by_id<'a>(elements: &'a [UiElement], id: &str) -> Option<&'a UiElement> {
+    elements
+        .iter()
+        .find(|e| e.resource_id == id || e.resource_id.ends_with(&format!("/{}", id)))
+}
+
+/// Find element by partial text match
+pub fn find_by_text_contains<'a>(elements: &'a [UiElement], text: &str) -> Option<&'a UiElement> {
+    elements
+        .iter()
+        .find(|e| e.text.contains(text) || e.content_desc.contains(text))
+}
+
+/// Find nth element by partial text match
+/// Normalize text: replace NBSP with space, trim whitespace
+fn normalize_text(s: &str) -> String {
+    s.replace('\u{00A0}', " ").trim().to_string()
+}
+
+/// Find nth element containing text
+pub fn find_nth_by_text_contains<'a>(
+    elements: &'a [UiElement],
+    text: &str,
+    index: u32,
+) -> Option<&'a UiElement> {
+    let text_norm = normalize_text(text);
+    elements
+        .iter()
+        .filter(|e| {
+            normalize_text(&e.text).contains(&text_norm)
+                || normalize_text(&e.content_desc).contains(&text_norm)
+        })
+        .nth(index as usize)
+}
+
+/// Find all elements by class type (e.g., "EditText", "Button")
+pub fn find_all_by_type<'a>(elements: &'a [UiElement], class_type: &str) -> Vec<&'a UiElement> {
+    elements
+        .iter()
+        .filter(|e| e.class.contains(class_type) || e.class.ends_with(&format!(".{}", class_type)))
+        .collect()
+}
+
+/// Find element by class type and index (0-based)
+pub fn find_by_type_index<'a>(
+    elements: &'a [UiElement],
+    class_type: &str,
+    index: u32,
+) -> Option<&'a UiElement> {
+    find_all_by_type(elements, class_type)
+        .get(index as usize)
+        .copied()
+}
+
+/// Find nth element matching text (with case-insensitive fallback)
+pub fn find_nth_by_text<'a>(
+    elements: &'a [UiElement],
+    text: &str,
+    index: u32,
+) -> Option<&'a UiElement> {
+    let text_norm = normalize_text(text);
+
+    // First try exact match (normalized)
+    let exact_match = elements
+        .iter()
+        .filter(|e| {
+            normalize_text(&e.text) == text_norm || normalize_text(&e.content_desc) == text_norm
+        })
+        .nth(index as usize);
+
+    if exact_match.is_some() {
+        return exact_match;
+    }
+
+    // Fallback to case-insensitive match (normalized)
+    let text_lower = text_norm.to_lowercase();
+    elements
+        .iter()
+        .filter(|e| {
+            normalize_text(&e.text).to_lowercase() == text_lower
+                || normalize_text(&e.content_desc).to_lowercase() == text_lower
+        })
+        .nth(index as usize)
+}
+
+/// Find nth element matching text (exact match only, no fallback)
+pub fn find_nth_by_text_exact<'a>(
+    elements: &'a [UiElement],
+    text: &str,
+    index: u32,
+) -> Option<&'a UiElement> {
+    let text_norm = normalize_text(text);
+    elements
+        .iter()
+        .filter(|e| {
+            normalize_text(&e.text) == text_norm || normalize_text(&e.content_desc) == text_norm
+        })
+        .nth(index as usize)
+}
+
+/// Find element matching regex pattern on text or content description
+pub fn find_by_regex<'a>(elements: &'a [UiElement], pattern: &str) -> Option<&'a UiElement> {
+    match Regex::new(pattern) {
+        Ok(re) => elements
+            .iter()
+            .find(|e| re.is_match(&e.text) || re.is_match(&e.content_desc)),
+        Err(e) => {
+            eprintln!("Invalid regex '{}': {}", pattern, e);
+            None
+        }
+    }
+}
+
+pub fn find_all_by_text<'a>(elements: &'a [UiElement], text: &str) -> Vec<&'a UiElement> {
+    elements
+        .iter()
+        .filter(|e| e.text == text || e.content_desc == text)
+        .collect()
+}
+
+pub fn find_all_by_id<'a>(elements: &'a [UiElement], id: &str) -> Vec<&'a UiElement> {
+    elements
+        .iter()
+        .filter(|e| e.resource_id == id || e.resource_id.ends_with(&format!("/{}", id)))
+        .collect()
+}
+
+pub fn find_all_by_regex<'a>(elements: &'a [UiElement], pattern: &str) -> Vec<&'a UiElement> {
+    match Regex::new(pattern) {
+        Ok(re) => elements
+            .iter()
+            .filter(|e| re.is_match(&e.text) || re.is_match(&e.content_desc))
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Find nth element by resource ID
+pub fn find_nth_by_id<'a>(
+    elements: &'a [UiElement],
+    id: &str,
+    index: u32,
+) -> Option<&'a UiElement> {
+    elements
+        .iter()
+        .filter(|e| e.resource_id == id || e.resource_id.ends_with(&format!("/{}", id)))
+        .nth(index as usize)
+}
+
+/// Find nth element matching regex pattern
+pub fn find_nth_by_regex<'a>(
+    elements: &'a [UiElement],
+    pattern: &str,
+    index: u32,
+) -> Option<&'a UiElement> {
+    match Regex::new(pattern) {
+        Ok(re) => elements
+            .iter()
+            .filter(|e| re.is_match(&e.text) || re.is_match(&e.content_desc))
+            .nth(index as usize),
+        Err(e) => {
+            eprintln!("Invalid regex '{}': {}", pattern, e);
+            None
+        }
+    }
+}
+
+pub fn find_relative<'a>(
+    candidates: Vec<&'a UiElement>,
+    anchor: &UiElement,
+    direction: RelativeDirection,
+    max_dist: Option<u32>,
+) -> Option<&'a UiElement> {
+    let mut best_match: Option<&'a UiElement> = None;
+    let mut min_score = f64::MAX;
+    let limit = max_dist.unwrap_or(u32::MAX) as f64;
+
+    let (ax, ay) = anchor.bounds.center();
+
+    for candidate in candidates {
+        // Strict direction check
+        let is_valid = match direction {
+            RelativeDirection::RightOf => candidate.bounds.left >= anchor.bounds.right,
+            RelativeDirection::LeftOf => candidate.bounds.right <= anchor.bounds.left,
+            RelativeDirection::Below => candidate.bounds.top >= anchor.bounds.bottom,
+            RelativeDirection::Above => candidate.bounds.bottom <= anchor.bounds.top,
+            RelativeDirection::Near => true,
+        };
+
+        if !is_valid {
+            continue;
+        }
+
+        // Distance check
+        let (cx, cy) = candidate.bounds.center();
+        let dist = (((cx - ax).pow(2u32) + (cy - ay).pow(2u32)) as f64).sqrt();
+
+        // Alignment bonus (penalize offset in the orthogonal axis)
+        // This makes it "alignment-aware", prioritizing elements directly above/below or left/right
+        let alignment_penalty = match direction {
+            RelativeDirection::Below | RelativeDirection::Above => (cx - ax).abs() as f64 * 1.5,
+            RelativeDirection::LeftOf | RelativeDirection::RightOf => (cy - ay).abs() as f64 * 1.5,
+            RelativeDirection::Near => 0.0,
+        };
+
+        let score = dist + alignment_penalty;
+
+        if score < min_score && dist <= limit {
+            min_score = score;
+            best_match = Some(candidate);
+        }
+    }
+
+    best_match
+}
+
+/// Find nth element matching regex pattern on resource ID
+pub fn find_nth_by_id_regex<'a>(
+    elements: &'a [UiElement],
+    pattern: &str,
+    index: u32,
+) -> Option<&'a UiElement> {
+    match Regex::new(pattern) {
+        Ok(re) => elements
+            .iter()
+            .filter(|e| re.is_match(&e.resource_id))
+            .nth(index as usize),
+        Err(e) => {
+            eprintln!("Invalid regex '{}': {}", pattern, e);
+            None
+        }
+    }
+}
+
+pub fn find_all_by_id_regex<'a>(elements: &'a [UiElement], pattern: &str) -> Vec<&'a UiElement> {
+    match Regex::new(pattern) {
+        Ok(re) => elements
+            .iter()
+            .filter(|e| re.is_match(&e.resource_id))
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+impl Bounds {
+    /// Check if this bounds contains another bounds entirely
+    pub fn contains(&self, other: &Bounds) -> bool {
+        self.left <= other.left
+            && self.top <= other.top
+            && self.right >= other.right
+            && self.bottom >= other.bottom
+    }
+}
+
+/// Find parent element that contains a matching child element
+/// Returns the parent element if found
+pub fn find_parent_with_child<'a>(
+    elements: &'a [UiElement],
+    parent_matcher: impl Fn(&UiElement) -> bool,
+    child_matcher: impl Fn(&UiElement) -> bool,
+) -> Option<&'a UiElement> {
+    // Find all potential parents
+    let parents: Vec<_> = elements.iter().filter(|e| parent_matcher(e)).collect();
+
+    // Find all potential children
+    let children: Vec<_> = elements.iter().filter(|e| child_matcher(e)).collect();
+
+    // For each parent, check if any child is contained within its bounds
+    for parent in parents {
+        for child in &children {
+            if parent.bounds.contains(&child.bounds)
+                && !std::ptr::eq(parent as *const _, *child as *const _)
+            {
+                return Some(parent);
+            }
+        }
+    }
+
+    None
+}
