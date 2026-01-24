@@ -1,0 +1,91 @@
+{
+  "name": "lumi-tester",
+  "displayName": "Lumi Tester",
+  "description": "VSCode extension for lumi-tester: YAML autocomplete, run tests, and status display",
+  "version": "0.1.1",
+  "publisher": "lumijsc",
+  "icon": "resources/icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Testing",
+    "Snippets",
+    "Other"
+  ],
+  "keywords": [
+    "testing",
+    "automation",
+    "yaml",
+    "mobile testing",
+    "web testing",
+    "ui testing"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Nghi-NV/nl-tester"
+  },
+  "homepage": "https://github.com/Nghi-NV/nl-tester/tree/main/lumi-tester-vscode",
+  "activationEvents": [
+    "onLanguage:yaml"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "lumi-tester.runFile",
+        "title": "Lumi: Run Test File",
+        "icon": "$(play)"
+      },
+      {
+        "command": "lumi-tester.runCommand",
+        "title": "Lumi: Run Single Command",
+        "icon": "$(debug-start)"
+      },
+      {
+        "command": "lumi-tester.stopTest",
+        "title": "Lumi: Stop Test",
+        "icon": "$(debug-stop)"
+      }
+    ],
+    "configuration": {
+      "title": "Lumi Tester",
+      "properties": {
+        "lumi-tester.lumiTesterPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to lumi-tester binary or project directory"
+        },
+        "lumi-tester.outputDirectory": {
+          "type": "string",
+          "default": "./output",
+          "description": "Output directory for test artifacts"
+        }
+      }
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "lumi-tester.runFile",
+          "when": "resourceLangId == yaml",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.0"
+  }
+}
