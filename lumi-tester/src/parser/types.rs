@@ -1078,18 +1078,23 @@ impl TestCommand {
                 } else if let Some(image) = &p.image {
                     format!("tapOn(image: \"{}\")", image)
                 } else if let Some(rel) = &p.relative {
-                    let dir = if rel.right_of.is_some() {
-                        "rightOf"
-                    } else if rel.left_of.is_some() {
-                        "leftOf"
-                    } else if rel.above.is_some() {
-                        "above"
-                    } else if rel.below.is_some() {
-                        "below"
+                    // Show direction and anchor text for better clarity
+                    let (dir, anchor) = if let Some(ref text) = rel.right_of {
+                        ("rightOf", text.as_str())
+                    } else if let Some(ref text) = rel.left_of {
+                        ("leftOf", text.as_str())
+                    } else if let Some(ref text) = rel.above {
+                        ("above", text.as_str())
+                    } else if let Some(ref text) = rel.below {
+                        ("below", text.as_str())
                     } else {
-                        "relative"
+                        ("relative", "")
                     };
-                    format!("tapOn(relative: {})", dir)
+                    if anchor.is_empty() {
+                        format!("tapOn(relative: {})", dir)
+                    } else {
+                        format!("tapOn({} \"{}\")", dir, anchor)
+                    }
                 } else {
                     "tapOn".to_string()
                 }

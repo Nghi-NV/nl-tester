@@ -24,7 +24,6 @@ pub async fn get_devices() -> Result<Vec<Device>> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    println!("DEBUG: adb devices stdout:\n{}", stdout);
     if !stderr.is_empty() {
         println!("DEBUG: adb devices stderr:\n{}", stderr);
     }

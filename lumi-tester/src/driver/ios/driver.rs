@@ -254,6 +254,15 @@ impl IosDriver {
             Selector::XPath(_) => None,
             Selector::Css(_) => None,
             Selector::Role(role, index) => accessibility::find_by_type(&elements, role, *index),
+            Selector::AnyClickable(index) => {
+                // On iOS, we look for elements that are enabled and have actions
+                let flat = accessibility::flatten_elements(&elements);
+                let clickables: Vec<_> = flat
+                    .into_iter()
+                    .filter(|e| e.visible && e.enabled)
+                    .collect();
+                clickables.get(*index).copied()
+            }
             Selector::Relative {
                 target,
                 anchor,
@@ -384,6 +393,7 @@ impl IosDriver {
                     false
                 }
             }
+            Selector::AnyClickable(_) => element.visible && element.enabled,
             _ => false,
         }
     }
@@ -917,6 +927,14 @@ impl PlatformDriver for IosDriver {
             Selector::IdRegex(pattern, index) => {
                 let regex = Regex::new(pattern).context("Invalid regex pattern")?;
                 accessibility::find_by_id_regex(&elements, &regex, *index)
+            }
+            Selector::AnyClickable(index) => {
+                let flat = accessibility::flatten_elements(&elements);
+                let clickables: Vec<_> = flat
+                    .into_iter()
+                    .filter(|e| e.visible && e.enabled)
+                    .collect();
+                clickables.get(*index).copied()
             }
             _ => None,
         };

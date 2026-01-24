@@ -474,6 +474,17 @@ impl WebDriver {
                     )
                 }
             }
+            Selector::AnyClickable(index) => {
+                // For web, find any clickable element (buttons, links, elements with onclick)
+                if *index == 0 {
+                    "button, a, [onclick], [role=\"button\"]".to_string()
+                } else {
+                    format!(
+                        "xpath=(//button|//a|//*[@onclick]|//*[@role='button'])[{}]",
+                        index + 1
+                    )
+                }
+            }
             Selector::HasChild { parent, child } => {
                 let p = self.selector_to_playwright(parent);
                 let c = self.selector_to_playwright(child);

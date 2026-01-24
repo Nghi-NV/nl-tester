@@ -103,8 +103,17 @@ pub struct ConsoleEventListener;
 impl ConsoleEventListener {
     pub async fn listen(mut receiver: broadcast::Receiver<TestEvent>) {
         use colored::Colorize;
+        use indicatif::ProgressDrawTarget;
+        use std::io::IsTerminal;
 
-        let multi = MultiProgress::new();
+        // Create MultiProgress with appropriate draw target based on TTY detection
+        let multi = if std::io::stdout().is_terminal() {
+            MultiProgress::new()
+        } else {
+            // When not a TTY (piped output), use hidden target to avoid terminal escape codes
+            MultiProgress::with_draw_target(ProgressDrawTarget::hidden())
+        };
+
         // Keep track of the current spinners by depth
         let mut spinners: Vec<Option<ProgressBar>> = Vec::new();
         let mut command_texts: Vec<String> = Vec::new();
@@ -293,36 +302,33 @@ impl ConsoleEventListener {
                 }
 
                 TestEvent::CommandFailed {
-                    error,
+                    error: _error, // Bind 'error' field to '_error' to ignore unused warning
                     duration_ms,
                     depth,
                     ..
                 } => {
                     if depth < spinners.len() {
                         let indent = "    ".repeat(depth);
-                        let done_msg = format!(
-                            "{}    {} {}({}ms)",
-                            indent,
-                            "✗".red(),
-                            command_texts[depth],
-                            duration_ms
-                        );
 
                         if let Some(pb) = spinners[depth].take() {
-                            // Clear spinner first to remove the animated line
-                            pb.finish_and_clear();
-                            // Small delay to ensure clear is processed before printing
-                            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-                            // Then print the final message directly
-                            println!("{}", done_msg);
+                            let style = ProgressStyle::default_spinner()
+                                .template(&format!("{}    {{msg}}", indent))
+                                .unwrap();
+                            pb.set_style(style);
+                            pb.finish_with_message(format!(
+                                "{} {}({}ms)",
+                                "✗".red(),
+                                command_texts[depth],
+                                duration_ms
+                            ));
                         } else {
-                            // Print directly if no spinner
-                            println!("{}", done_msg);
-                        }
-                        println!("{}      Error: {}", indent, error.red());
-                        // Clear saved style
-                        if depth < spinner_styles.len() {
-                            spinner_styles[depth] = None;
+                            println!(
+                                "{}    {} {}({}ms)",
+                                indent,
+                                "✗".red(),
+                                command_texts[depth],
+                                duration_ms
+                            );
                         }
                     }
                 }

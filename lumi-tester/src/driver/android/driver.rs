@@ -212,7 +212,6 @@ impl AndroidDriver {
                     );
                 }
             } else {
-                println!("  {} ADBKeyBoard APK not found in resources", "ℹ".blue());
             }
         } else {
             println!(
@@ -435,6 +434,11 @@ impl AndroidDriver {
                 uiautomator::find_nth_by_text(elements, placeholder, *index as u32)
             }
 
+            Selector::AnyClickable(index) => {
+                // Find nth clickable element
+                elements.iter().filter(|e| e.clickable).nth(*index)
+            }
+
             Selector::Relative {
                 target,
                 anchor,
@@ -452,6 +456,11 @@ impl AndroidDriver {
                     }
                     Selector::AccessibilityId(id) => {
                         elements.iter().filter(|e| e.content_desc == *id).collect()
+                    }
+                    Selector::AnyClickable(_) => {
+                        // For relative matching, we need ALL clickable elements as candidates
+                        // The index will be applied after find_relative filters by direction/distance
+                        elements.iter().filter(|e| e.clickable).collect()
                     }
                     _ => Vec::new(),
                 };
@@ -514,6 +523,7 @@ impl AndroidDriver {
             Selector::AccessibilityId(id) => e.content_desc == *id,
             Selector::Placeholder(_, _) => false, // Not available in UiElement
             Selector::Role(_, _) => false,        // Not directly supported
+            Selector::AnyClickable(_) => e.clickable, // Match any clickable element
             _ => false,                           // Nested relative/haschild not supported
         }
     }

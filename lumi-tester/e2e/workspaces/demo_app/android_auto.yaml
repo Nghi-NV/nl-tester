@@ -1,22 +1,42 @@
-name: Android Auto Demo
-version: 1.0
+appId: "com.google.android.projection.gearhead"
+platform: "android_auto"
+env:
+  APP_NAME: "Gofa"
 ---
-# 1. Auto-detect and select the Android Auto display
-- selectDisplay: "auto"
+# Android Auto Test Flow
+# Uses DHU console commands for input
 
-# 2. Wait for UI to be ready
+# Test 1: Navigate to Home screen
+- press: "home"
 - wait: 2000
 
-# 3. Simulate D-Pad Navigation
-- press: dpad_right
-- wait: 500
-- press: dpad_right
-- wait: 500
-- press: dpad_center
+# Test 2: Tap at center of screen (800x480 display)
+- tap:
+    point: "400,240"
 - wait: 1000
 
-# 4. Take a screenshot
-- takeScreenshot: "aa_head_unit_capture.png"
+# Test 3: Navigate using D-pad
+- press: "dpad_down"
+- wait: 500
+- press: "dpad_right"
+- wait: 500
 
-# 5. Return to default display
-- selectDisplay: "0"
+# Test 4: Go back
+- press: "back"
+- wait: 1000
+
+# Test 5: Return to home
+- press: "home"
+- wait: 2000
+
+# Test 6: Tap on first app icon (approximate position)
+- tap:
+    point: "150,200"
+- wait: 3000
+
+# Test 7: Press back to return
+- press: "back"
+- wait: 1000
+
+# Final: Screenshot
+- screenshot: "android_auto_final.png"

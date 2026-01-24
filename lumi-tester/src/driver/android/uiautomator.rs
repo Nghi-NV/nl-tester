@@ -4,6 +4,48 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use regex::Regex;
 
+/// Decode common HTML entities in a string
+/// Handles: &amp; &lt; &gt; &quot; &apos; &#NNN; (decimal) &#xHHH; (hex)
+fn decode_html_entities(s: &str) -> String {
+    let mut result = s.to_string();
+
+    // Named entities
+    result = result.replace("&amp;", "&");
+    result = result.replace("&lt;", "<");
+    result = result.replace("&gt;", ">");
+    result = result.replace("&quot;", "\"");
+    result = result.replace("&apos;", "'");
+    result = result.replace("&nbsp;", " ");
+
+    // Numeric entities (decimal): &#NNN;
+    let decimal_re = Regex::new(r"&#(\d+);").unwrap();
+    result = decimal_re
+        .replace_all(&result, |caps: &regex::Captures| {
+            if let Ok(code) = caps[1].parse::<u32>() {
+                if let Some(c) = char::from_u32(code) {
+                    return c.to_string();
+                }
+            }
+            caps[0].to_string()
+        })
+        .to_string();
+
+    // Numeric entities (hex): &#xHHH;
+    let hex_re = Regex::new(r"&#x([0-9A-Fa-f]+);").unwrap();
+    result = hex_re
+        .replace_all(&result, |caps: &regex::Captures| {
+            if let Ok(code) = u32::from_str_radix(&caps[1], 16) {
+                if let Some(c) = char::from_u32(code) {
+                    return c.to_string();
+                }
+            }
+            caps[0].to_string()
+        })
+        .to_string();
+
+    result
+}
+
 /// Represents a UI element from the view hierarchy
 #[derive(Debug, Clone)]
 pub struct UiElement {
@@ -15,6 +57,7 @@ pub struct UiElement {
     pub clickable: bool,
     pub enabled: bool,
     pub focusable: bool,
+    pub hint: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -83,6 +126,7 @@ pub fn parse_hierarchy(xml: &str) -> Result<Vec<UiElement>> {
                         clickable: false,
                         enabled: true,
                         focusable: false,
+                        hint: String::new(),
                     };
 
                     for attr in e.attributes().filter_map(|a| a.ok()) {
@@ -91,9 +135,9 @@ pub fn parse_hierarchy(xml: &str) -> Result<Vec<UiElement>> {
 
                         match key.as_ref() {
                             "class" => element.class = value.to_string(),
-                            "text" => element.text = value.to_string(),
+                            "text" => element.text = decode_html_entities(&value),
                             "resource-id" => element.resource_id = value.to_string(),
-                            "content-desc" => element.content_desc = value.to_string(),
+                            "content-desc" => element.content_desc = decode_html_entities(&value),
                             "bounds" => {
                                 if let Some(b) = Bounds::from_string(&value) {
                                     element.bounds = b;
@@ -102,6 +146,7 @@ pub fn parse_hierarchy(xml: &str) -> Result<Vec<UiElement>> {
                             "clickable" => element.clickable = value == "true",
                             "enabled" => element.enabled = value == "true",
                             "focusable" => element.focusable = value == "true",
+                            "hint" => element.hint = decode_html_entities(&value),
                             _ => {}
                         }
                     }
@@ -196,7 +241,9 @@ pub fn find_nth_by_text<'a>(
     let exact_match = elements
         .iter()
         .filter(|e| {
-            normalize_text(&e.text) == text_norm || normalize_text(&e.content_desc) == text_norm
+            normalize_text(&e.text) == text_norm
+                || normalize_text(&e.content_desc) == text_norm
+                || normalize_text(&e.hint) == text_norm
         })
         .nth(index as usize);
 
@@ -211,6 +258,7 @@ pub fn find_nth_by_text<'a>(
         .filter(|e| {
             normalize_text(&e.text).to_lowercase() == text_lower
                 || normalize_text(&e.content_desc).to_lowercase() == text_lower
+                || normalize_text(&e.hint).to_lowercase() == text_lower
         })
         .nth(index as usize)
 }
@@ -225,7 +273,9 @@ pub fn find_nth_by_text_exact<'a>(
     elements
         .iter()
         .filter(|e| {
-            normalize_text(&e.text) == text_norm || normalize_text(&e.content_desc) == text_norm
+            normalize_text(&e.text) == text_norm
+                || normalize_text(&e.content_desc) == text_norm
+                || normalize_text(&e.hint) == text_norm
         })
         .nth(index as usize)
 }
@@ -235,7 +285,7 @@ pub fn find_by_regex<'a>(elements: &'a [UiElement], pattern: &str) -> Option<&'a
     match Regex::new(pattern) {
         Ok(re) => elements
             .iter()
-            .find(|e| re.is_match(&e.text) || re.is_match(&e.content_desc)),
+            .find(|e| re.is_match(&e.text) || re.is_match(&e.content_desc) || re.is_match(&e.hint)),
         Err(e) => {
             eprintln!("Invalid regex '{}': {}", pattern, e);
             None
@@ -246,7 +296,7 @@ pub fn find_by_regex<'a>(elements: &'a [UiElement], pattern: &str) -> Option<&'a
 pub fn find_all_by_text<'a>(elements: &'a [UiElement], text: &str) -> Vec<&'a UiElement> {
     elements
         .iter()
-        .filter(|e| e.text == text || e.content_desc == text)
+        .filter(|e| e.text == text || e.content_desc == text || e.hint == text)
         .collect()
 }
 
@@ -261,7 +311,9 @@ pub fn find_all_by_regex<'a>(elements: &'a [UiElement], pattern: &str) -> Vec<&'
     match Regex::new(pattern) {
         Ok(re) => elements
             .iter()
-            .filter(|e| re.is_match(&e.text) || re.is_match(&e.content_desc))
+            .filter(|e| {
+                re.is_match(&e.text) || re.is_match(&e.content_desc) || re.is_match(&e.hint)
+            })
             .collect(),
         Err(_) => Vec::new(),
     }
@@ -288,7 +340,9 @@ pub fn find_nth_by_regex<'a>(
     match Regex::new(pattern) {
         Ok(re) => elements
             .iter()
-            .filter(|e| re.is_match(&e.text) || re.is_match(&e.content_desc))
+            .filter(|e| {
+                re.is_match(&e.text) || re.is_match(&e.content_desc) || re.is_match(&e.hint)
+            })
             .nth(index as usize),
         Err(e) => {
             eprintln!("Invalid regex '{}': {}", pattern, e);
@@ -330,8 +384,8 @@ pub fn find_relative<'a>(
         // Alignment bonus (penalize offset in the orthogonal axis)
         // This makes it "alignment-aware", prioritizing elements directly above/below or left/right
         let alignment_penalty = match direction {
-            RelativeDirection::Below | RelativeDirection::Above => (cx - ax).abs() as f64 * 1.5,
-            RelativeDirection::LeftOf | RelativeDirection::RightOf => (cy - ay).abs() as f64 * 1.5,
+            RelativeDirection::Below | RelativeDirection::Above => (cx - ax).abs() as f64 * 50.0,
+            RelativeDirection::LeftOf | RelativeDirection::RightOf => (cy - ay).abs() as f64 * 50.0,
             RelativeDirection::Near => 0.0,
         };
 
@@ -409,4 +463,63 @@ pub fn find_parent_with_child<'a>(
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decode_html_entities_named() {
+        assert_eq!(
+            decode_html_entities("Devices &amp; Groups"),
+            "Devices & Groups"
+        );
+        assert_eq!(decode_html_entities("&lt;tag&gt;"), "<tag>");
+        assert_eq!(decode_html_entities("&quot;quoted&quot;"), "\"quoted\"");
+        assert_eq!(decode_html_entities("it&apos;s"), "it's");
+    }
+
+    #[test]
+    fn test_decode_html_entities_numeric() {
+        assert_eq!(decode_html_entities("Security&#10;Safe"), "Security\nSafe");
+        assert_eq!(decode_html_entities("line&#13;&#10;break"), "line\r\nbreak");
+        assert_eq!(decode_html_entities("&#65;&#66;&#67;"), "ABC");
+    }
+
+    #[test]
+    fn test_decode_html_entities_hex() {
+        assert_eq!(decode_html_entities("&#x41;&#x42;&#x43;"), "ABC");
+        assert_eq!(decode_html_entities("&#x0A;"), "\n");
+    }
+
+    #[test]
+    fn test_decode_html_entities_mixed() {
+        assert_eq!(
+            decode_html_entities("Devices &amp; Groups&#10;2 devices on"),
+            "Devices & Groups\n2 devices on"
+        );
+    }
+
+    #[test]
+    fn test_decode_html_entities_no_entities() {
+        assert_eq!(decode_html_entities("Normal text"), "Normal text");
+        assert_eq!(decode_html_entities(""), "");
+    }
+
+    #[test]
+    fn test_parse_hierarchy_decodes_entities() {
+        let xml = r#"<?xml version='1.0'?><hierarchy><node class="Button" text="" content-desc="Devices &amp; Groups" bounds="[0,0][100,100]" clickable="true" enabled="true" focusable="true"/></hierarchy>"#;
+        let elements = parse_hierarchy(xml).unwrap();
+        assert_eq!(elements.len(), 1);
+        assert_eq!(elements[0].content_desc, "Devices & Groups");
+    }
+
+    #[test]
+    fn test_parse_hierarchy_decodes_newline() {
+        let xml = r#"<?xml version='1.0'?><hierarchy><node class="View" text="Security&#10;Safe" content-desc="" bounds="[0,0][100,100]" clickable="false" enabled="true" focusable="false"/></hierarchy>"#;
+        let elements = parse_hierarchy(xml).unwrap();
+        assert_eq!(elements.len(), 1);
+        assert_eq!(elements[0].text, "Security\nSafe");
+    }
 }

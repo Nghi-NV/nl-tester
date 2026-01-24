@@ -2614,6 +2614,9 @@ impl TestExecutor {
             }
         } else if let Some(x) = xpath {
             Selector::XPath(self.context.substitute_vars(x))
+        } else if relative.is_some() {
+            // When only relative is specified, default to AnyClickable as target
+            Selector::AnyClickable(idx)
         } else {
             return None;
         };
@@ -2650,11 +2653,6 @@ impl TestExecutor {
     /// Handle command failure by dumping UI and taking screenshot
     async fn handle_failure(&self, flow_name: &str, index: usize, error: &str) {
         let safe_flow_name = flow_name.replace("/", "_").replace("\\", "_");
-
-        self.emitter.emit(TestEvent::Log {
-            message: format!("\n  {} Command failed: {}", "❌".red(), error),
-            depth: self.depth,
-        });
 
         if !self.report_enabled {
             return;
@@ -2781,6 +2779,9 @@ impl TestExecutor {
         self.session.finish();
 
         if !self.report_enabled {
+            // Wait for ConsoleEventListener to process remaining events before exiting
+            // This is needed because the listener runs in tokio::spawn and needs time to print output
+            tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
             return Ok(());
         }
 
