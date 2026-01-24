@@ -53,3 +53,29 @@ Run the script:
 ```console
 ./update_samples
 ```
+
+## VS Code Extension Installation
+
+The `lumi-tester-vscode` extension provides CodeLens buttons for running tests directly from YAML files.
+
+### Build and Package
+
+```bash
+cd lumi-tester-vscode
+npm run compile
+npx vsce package --allow-missing-repository
+```
+
+### Install on VS Code
+
+```bash
+code --install-extension lumi-tester-vscode/lumi-tester-*.vsix --force
+```
+
+### Install on Antigravity
+
+```bash
+/Applications/Antigravity.app/Contents/Resources/app/bin/antigravity --install-extension lumi-tester-vscode/lumi-tester-*.vsix --force
+```
+
+After installation, reload the editor (`Cmd+Shift+P` → "Developer: Reload Window").

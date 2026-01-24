@@ -34,6 +34,14 @@ pub struct TestFlow {
     /// Speed profile for this flow: "turbo", "fast", "normal", "safe"
     #[serde(default)]
     pub speed: Option<String>,
+
+    /// Web browser type: "Chrome", "Firefox", "Webkit"
+    #[serde(default)]
+    pub browser: Option<String>,
+
+    /// Whether to close browser when test finishes (default: true)
+    #[serde(default)]
+    pub close_when_finish: Option<bool>,
 }
 
 /// Target platform for testing
@@ -42,6 +50,8 @@ pub struct TestFlow {
 pub enum Platform {
     #[default]
     Android,
+    #[serde(alias = "android_auto")]
+    AndroidAuto,
     #[serde(alias = "iOS")]
     Ios,
     Web,
@@ -165,6 +175,7 @@ pub enum TestCommand {
 
     // Control flow
     WaitForAnimationToEnd,
+    #[serde(alias = "await")]
     Wait(WaitParamsInput),
     Repeat(RepeatParams),
     Retry(RetryParams),

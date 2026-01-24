@@ -1,3 +1,3 @@
 mod driver;
 
-pub use driver::{WebDriver, WebDriverConfig};
+pub use driver::{BrowserType, WebDriver, WebDriverConfig};

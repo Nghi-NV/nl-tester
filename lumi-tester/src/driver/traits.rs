@@ -505,6 +505,11 @@ pub trait PlatformDriver: Send + Sync {
         Ok(()) // Default no-op
     }
 
+    /// Auto-detect Android Auto display ID
+    async fn detect_android_auto_display(&self) -> Result<Option<u32>> {
+        Ok(None)
+    }
+
     /// Set device locale for i18n testing
     ///
     /// # Arguments

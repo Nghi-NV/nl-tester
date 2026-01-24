@@ -31,7 +31,7 @@ pub async fn run_tests(
     let device_serials = match devices {
         Some(d) => d,
         None => {
-            if platform == "android" {
+            if platform == "android" || platform == "android_auto" {
                 let connected = crate::driver::android::adb::get_devices().await?;
                 if connected.is_empty() {
                     anyhow::bail!("No Android devices connected");
@@ -189,15 +189,51 @@ async fn run_on_device(
     command_index: Option<usize>,
     command_name: Option<String>,
 ) -> Result<()> {
-    let driver: Box<dyn crate::driver::traits::PlatformDriver> = match platform {
+    // Pre-parse first file to extract web driver config (for close_when_finish support)
+    let web_config = if platform == "web" && !files.is_empty() {
+        use crate::parser::yaml::parse_test_file;
+
+        // Parse first file to get header config
+        if let Ok(flow) = parse_test_file(&files[0]) {
+            use crate::driver::web::{BrowserType, WebDriverConfig};
+            let mut config = WebDriverConfig::default();
+
+            // Apply close_when_finish from YAML header
+            if let Some(close) = flow.close_when_finish {
+                config.close_when_finish = close;
+            }
+
+            // Apply browser type if specified
+            if let Some(ref b) = flow.browser {
+                config.browser_type = match b.to_lowercase().as_str() {
+                    "firefox" => BrowserType::Firefox,
+                    "webkit" => BrowserType::Webkit,
+                    _ => BrowserType::Chromium,
+                };
+            }
+            Some(config)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Strip quotes from platform if present (YAML parsing quirk)
+    let platform_clean = platform.trim_matches('"').trim_matches('\'');
+
+    let driver: Box<dyn crate::driver::traits::PlatformDriver> = match platform_clean {
         "android" => Box::new(crate::driver::android::AndroidDriver::new(device).await?),
+        "android_auto" => {
+            Box::new(crate::driver::android_auto::AndroidAutoDriver::new(device, true).await?)
+        }
         "web" => {
             use crate::driver::web::{WebDriver, WebDriverConfig};
-            let config = WebDriverConfig::default();
+            let config = web_config.unwrap_or_else(WebDriverConfig::default);
             Box::new(WebDriver::new(config).await?)
         }
         "ios" => Box::new(crate::driver::ios::IosDriver::new(device).await?),
-        _ => anyhow::bail!("Unknown platform: {}", platform),
+        _ => anyhow::bail!("Unknown platform: {}", platform_clean),
     };
 
     let mut executor = executor::TestExecutor::new(

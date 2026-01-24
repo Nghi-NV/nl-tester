@@ -473,6 +473,7 @@ fn detect_platform(path: &std::path::Path) -> Option<String> {
     for line in content.lines().take(20) {
         if let Some(rest) = line.trim().strip_prefix("platform:") {
             let p = rest.trim().to_lowercase();
+            let p = p.trim_matches('"').trim_matches('\'').to_string();
             if !p.is_empty() {
                 return Some(p);
             }

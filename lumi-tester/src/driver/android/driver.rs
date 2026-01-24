@@ -2204,53 +2204,123 @@ impl PlatformDriver for AndroidDriver {
         println!("  {} Set device locale to: {}", "🌐".green(), locale);
         Ok(())
     }
-}
 
-impl AndroidDriver {
-    /// Auto-detect Android Auto display by parsing `dumpsys window displays`
-    pub async fn detect_android_auto_display(&self) -> Result<Option<u32>> {
-        let output = adb::shell(
+    /// Auto-detect Android Auto display by parsing activity and display info
+    async fn detect_android_auto_display(&self) -> Result<Option<u32>> {
+        // Strategy 1: Check dumpsys activity activities for display with running gearhead activity
+        // This is the most reliable method as it finds the display with actual activity
+        let activities_output = adb::shell(
             self.serial.as_deref(),
-            "dumpsys display | grep -E 'Display|mDisplayId'",
+            "dumpsys activity activities | grep -E 'Display #|gearhead.*GhostActivity'",
         )
-        .await?;
+        .await
+        .unwrap_or_default();
 
-        // Look for displays with Android Auto characteristics:
-        // - Contains "Cluster" or "AndroidAuto" or "CarService" in name
-        // - Or is a virtual display with typical AA resolution
-        for line in output.lines() {
-            // Pattern: "Display N" or "mDisplayId=N"
-            if let Some(id_str) = line.split("Display ").nth(1) {
-                if let Some(id) = id_str
+        let mut current_display: Option<u32> = None;
+        for line in activities_output.lines() {
+            let line = line.trim();
+            if line.starts_with("Display #") {
+                // Parse "Display #37 (activities from top to bottom):"
+                current_display = line
+                    .trim_start_matches("Display #")
                     .split_whitespace()
                     .next()
-                    .and_then(|s| s.trim_matches(':').parse::<u32>().ok())
-                {
-                    // Skip display 0 (main display)
+                    .and_then(|s| s.parse::<u32>().ok());
+            } else if line.contains("gearhead") && line.contains("GhostActivity") {
+                if let Some(id) = current_display {
                     if id > 0 {
-                        // Check if this looks like an Android Auto display
-                        if line.to_lowercase().contains("cluster")
-                            || line.to_lowercase().contains("auto")
-                            || line.to_lowercase().contains("car")
-                        {
-                            return Ok(Some(id));
-                        }
+                        println!(
+                            "  {} Found Android Auto Display ID: {} (via activity)",
+                            "📺".cyan(),
+                            id
+                        );
+                        return Ok(Some(id));
                     }
                 }
             }
         }
 
+        // Strategy 2: Parse dumpsys display for gearhead virtual displays
+        let output = adb::shell(self.serial.as_deref(), "dumpsys display").await?;
+
+        // State machine to parse multi-line output
+        let mut current_display_id: Option<u32> = None;
+        let mut current_is_gearhead = false;
+        let mut current_is_on = false;
+
+        let mut candidates: Vec<(u32, bool)> = Vec::new(); // (id, is_on)
+
+        for line in output.lines() {
+            let line = line.trim();
+
+            // New display block starts with "Display ID:"
+            if line.starts_with("Display ") && line.ends_with(":") {
+                // Save previous candidate if valid
+                if let Some(id) = current_display_id {
+                    if current_is_gearhead {
+                        candidates.push((id, current_is_on));
+                    }
+                }
+
+                // Reset state
+                current_display_id = line
+                    .trim_start_matches("Display ")
+                    .trim_end_matches(':')
+                    .parse::<u32>()
+                    .ok();
+                current_is_gearhead = false;
+                current_is_on = false;
+            } else if current_display_id.is_some() {
+                // Check if owned by gearhead
+                if line.contains("owner com.google.android.projection.gearhead")
+                    || line.contains("virtual:com.google.android.projection.gearhead")
+                {
+                    current_is_gearhead = true;
+                }
+
+                // Check state
+                if line.contains("state ON") {
+                    current_is_on = true;
+                }
+            }
+        }
+
+        // Check last block
+        if let Some(id) = current_display_id {
+            if current_is_gearhead {
+                candidates.push((id, current_is_on));
+            }
+        }
+
+        // Sort: ON first, then by ID ascending (prefer lower ID which is often the main AA display)
+        candidates.sort_by(|a, b| {
+            if a.1 != b.1 {
+                b.1.cmp(&a.1) // true (ON) > false (OFF)
+            } else {
+                a.0.cmp(&b.0) // Lower ID first (main display usually has lower ID)
+            }
+        });
+
+        if let Some((id, is_on)) = candidates.first() {
+            println!(
+                "  {} Found Android Auto Display ID: {} (Active: {})",
+                "📺".cyan(),
+                id,
+                is_on
+            );
+            return Ok(Some(*id));
+        }
+
         // Fallback: Find any secondary display (ID > 0)
-        let fallback_output = adb::shell(self.serial.as_deref(), "dumpsys display").await?;
         let re = regex::Regex::new(r"Display (\d+)").unwrap();
         let mut displays: Vec<u32> = re
-            .captures_iter(&fallback_output)
+            .captures_iter(&output)
             .filter_map(|cap| cap.get(1).and_then(|m| m.as_str().parse().ok()))
             .filter(|&id| id > 0)
             .collect();
         displays.sort();
 
-        Ok(displays.first().copied())
+        Ok(displays.first().copied()) // Pick lowest non-zero ID as fallback
     }
 }
 

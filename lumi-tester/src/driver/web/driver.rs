@@ -16,6 +16,14 @@ use crate::driver::common;
 use crate::driver::image_matcher::{find_template, ImageRegion, MatchConfig};
 use crate::driver::traits::{PlatformDriver, RelativeDirection, Selector, SwipeDirection};
 use colored::Colorize;
+use std::sync::Mutex as StdMutex;
+use std::sync::OnceLock;
+
+/// Global storage for persistent browser - prevents browser from closing when closeWhenFinish is false
+fn get_persistent_browser() -> &'static StdMutex<Option<PersistentBrowserState>> {
+    static PERSISTENT_BROWSER: OnceLock<StdMutex<Option<PersistentBrowserState>>> = OnceLock::new();
+    PERSISTENT_BROWSER.get_or_init(|| StdMutex::new(None))
+}
 
 /// Web browser type
 #[derive(Debug, Clone, Copy, Default)]
@@ -34,6 +42,10 @@ pub struct WebDriverConfig {
     pub base_url: Option<String>,
     pub viewport_width: u32,
     pub viewport_height: u32,
+    /// CDP endpoint to connect to existing browser (e.g. http://localhost:9222)
+    pub cdp_endpoint: Option<String>,
+    /// Whether to close browser when test finishes (default: true)
+    pub close_when_finish: bool,
 }
 
 impl Default for WebDriverConfig {
@@ -42,12 +54,17 @@ impl Default for WebDriverConfig {
             .map(|v| v == "true" || v == "1")
             .unwrap_or(false);
 
+        // Check for CDP endpoint from env
+        let cdp_endpoint = std::env::var("LUMI_CDP_ENDPOINT").ok();
+
         Self {
             browser_type: BrowserType::Chromium,
             headless,
             base_url: None,
             viewport_width: 1280,
             viewport_height: 720,
+            cdp_endpoint,
+            close_when_finish: true,
         }
     }
 }
@@ -95,59 +112,84 @@ impl WebDriver {
             .await
             .context("Failed to initialize Playwright")?;
 
-        // Launch browser based on config
+        // Launch or connect to browser based on config
         let browser = match config.browser_type {
             BrowserType::Chromium => {
                 let chromium = playwright.chromium();
-                let mut launcher = chromium.launcher();
-                launcher = launcher.headless(config.headless);
 
-                let env_path = std::env::var("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")
-                    .ok()
-                    .map(std::path::PathBuf::from);
+                // Try to connect to existing browser via CDP if endpoint provided
+                // or if closeWhenFinish is false (persistent mode)
+                let cdp_endpoint = config.cdp_endpoint.clone().or_else(|| {
+                    if !config.close_when_finish {
+                        // Check if browser is running on default port
+                        Some("http://localhost:9222".to_string())
+                    } else {
+                        None
+                    }
+                });
 
-                let system_path = find_system_browser();
-                let chrome_path = find_chrome_explicitly();
-
-                if let Some(ref path) = env_path {
-                    println!("{} Using browser from env: {}", "🌐".blue(), path.display());
-                    launcher = launcher.executable(path);
-                } else if let Some(ref path) = system_path {
+                if let Some(ref endpoint) = cdp_endpoint {
+                    // Try to connect to existing browser
                     println!(
-                        "{} Using discovered browser: {}",
-                        "🌐".blue(),
-                        path.display()
+                        "{} Trying to connect to browser at: {}",
+                        "🔌".blue(),
+                        endpoint
                     );
-                    launcher = launcher.executable(path);
-                } else if let Some(ref path) = chrome_path {
-                    println!(
-                        "{} Using explicitly found Chrome: {}",
-                        "🌐".blue(),
-                        path.display()
-                    );
-                    launcher = launcher.executable(path);
+                    match chromium
+                        .connect_over_cdp_builder(endpoint)
+                        .connect_over_cdp()
+                        .await
+                    {
+                        Ok(b) => {
+                            println!("{} Connected to existing browser!", "✅".green());
+                            b
+                        }
+                        Err(e) => {
+                            println!(
+                                "{} Could not connect to existing browser: {}",
+                                "⚠️".yellow(),
+                                e
+                            );
+                            if !config.close_when_finish {
+                                // Launch Chrome externally to keep it running after test
+                                println!(
+                                    "{} Launching Chrome externally with remote debugging port...",
+                                    "🚀".blue()
+                                );
+                                launch_chrome_externally()?;
+
+                                // Wait a moment for Chrome to start
+                                tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+
+                                // Now connect to it via CDP
+                                match chromium
+                                    .connect_over_cdp_builder(endpoint)
+                                    .connect_over_cdp()
+                                    .await
+                                {
+                                    Ok(b) => {
+                                        println!(
+                                            "{} Connected to externally launched Chrome!",
+                                            "✅".green()
+                                        );
+                                        b
+                                    }
+                                    Err(e2) => {
+                                        anyhow::bail!(
+                                            "Failed to connect to Chrome after external launch: {}",
+                                            e2
+                                        );
+                                    }
+                                }
+                            } else {
+                                // Normal launch via Playwright
+                                launch_chromium_browser(&chromium, &config).await?
+                            }
+                        }
+                    }
                 } else {
-                    println!(
-                        "{} No browser executable found. Attempting default launch if possible...",
-                        "ℹ".blue()
-                    );
+                    launch_chromium_browser(&chromium, &config).await?
                 }
-
-                // Add stability args
-                let args = vec![
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--ignore-certificate-errors",
-                ]
-                .iter()
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>();
-
-                launcher = launcher.args(&args);
-
-                launcher.launch().await?
             }
             BrowserType::Firefox => {
                 playwright
@@ -172,7 +214,22 @@ impl WebDriver {
             .map(|v| v == "true" || v == "1")
             .unwrap_or(false);
 
-        let context = if record_video {
+        // Try to reuse existing context for persistence
+        let reused_context = if !config.close_when_finish {
+            let contexts = browser.contexts()?;
+            if let Some(ctx) = contexts.into_iter().next() {
+                println!("{} Reusing existing browser context", "♻️".green());
+                Some(ctx)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let context = if let Some(ctx) = reused_context {
+            ctx
+        } else if record_video {
             let temp_dir = std::env::temp_dir().join("lumi_tester_videos");
             std::fs::create_dir_all(&temp_dir).ok();
             browser
@@ -187,8 +244,23 @@ impl WebDriver {
             browser.context_builder().build().await?
         };
 
-        // Create new page
-        let page = context.new_page().await?;
+        // Create or reuse page
+        let page = if !config.close_when_finish {
+            // Need a small delay for Playwright to sync pages from CDP
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+            let pages = context.pages().unwrap_or_default();
+
+            if let Some(p) = pages.into_iter().next() {
+                println!("{} Reusing existing page", "📄".green());
+                p.bring_to_front().await.ok();
+                p
+            } else {
+                context.new_page().await?
+            }
+        } else {
+            context.new_page().await?
+        };
 
         // Initialize console logs storage
         let console_logs = Arc::new(Mutex::new(Vec::new()));
@@ -1464,6 +1536,71 @@ fn map_web_type(t: &str) -> String {
     }
 }
 
+/// Launch a new Chromium browser with optional remote debugging support
+async fn launch_chromium_browser(
+    chromium: &playwright::api::BrowserType,
+    config: &WebDriverConfig,
+) -> Result<playwright::api::Browser> {
+    let mut launcher = chromium.launcher();
+    launcher = launcher.headless(config.headless);
+
+    let env_path = std::env::var("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")
+        .ok()
+        .map(std::path::PathBuf::from);
+
+    let system_path = find_system_browser();
+    let chrome_path = find_chrome_explicitly();
+
+    if let Some(ref path) = env_path {
+        println!("{} Using browser from env: {}", "🌐".blue(), path.display());
+        launcher = launcher.executable(path);
+    } else if let Some(ref path) = system_path {
+        println!(
+            "{} Using discovered browser: {}",
+            "🌐".blue(),
+            path.display()
+        );
+        launcher = launcher.executable(path);
+    } else if let Some(ref path) = chrome_path {
+        println!(
+            "{} Using explicitly found Chrome: {}",
+            "🌐".blue(),
+            path.display()
+        );
+        launcher = launcher.executable(path);
+    } else {
+        println!(
+            "{} No browser executable found. Attempting default launch if possible...",
+            "ℹ".blue()
+        );
+    }
+
+    // Build args - add remote debugging port if persistence is enabled
+    let mut args: Vec<String> = vec![
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--ignore-certificate-errors",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+
+    // Enable remote debugging for browser persistence
+    if !config.close_when_finish {
+        args.push("--remote-debugging-port=9222".to_string());
+        println!(
+            "{} Browser will stay open for reuse (closeWhenFinish: false)",
+            "📌".cyan()
+        );
+    }
+
+    launcher = launcher.args(&args);
+
+    Ok(launcher.launch().await?)
+}
+
 fn find_system_browser() -> Option<std::path::PathBuf> {
     let common_paths = [
         // macOS System - Prioritize Google Chrome first
@@ -1488,17 +1625,127 @@ fn find_system_browser() -> Option<std::path::PathBuf> {
             if p.exists() {
                 return Some(p.to_path_buf());
             }
-        } else {
-            // Check relative to home
-            if let Some(home) = dirs::home_dir() {
-                let p = home.join(path);
-                if p.exists() {
-                    return Some(p);
-                }
-            }
         }
     }
     None
+}
+
+/// Explicitly find Google Chrome with additional paths and methods
+struct PersistentBrowserState {
+    #[allow(dead_code)]
+    playwright: Arc<Playwright>,
+    #[allow(dead_code)]
+    browser: Arc<Browser>,
+    #[allow(dead_code)]
+    context: Arc<BrowserContext>,
+    #[allow(dead_code)]
+    page: Arc<Mutex<Page>>,
+}
+
+/// Drop implementation to handle browser lifecycle
+impl Drop for WebDriver {
+    fn drop(&mut self) {
+        // If close_when_finish is false, we should NOT close the browser
+        // Browser will remain open for subsequent test runs
+        if !self.config.close_when_finish {
+            println!(
+                "{} Detaching from browser (closeWhenFinish: false) - browser stays open",
+                "📌".cyan()
+            );
+
+            // Store references in global static to keep them alive
+            // This prevents the browser from being closed when WebDriver is dropped
+            // MUST save page as well, otherwise dropping the only page closes the window
+            let state = PersistentBrowserState {
+                playwright: self.playwright.clone(),
+                browser: self.browser.clone(),
+                context: self.context.clone(),
+                page: self.page.clone(),
+            };
+
+            if let Ok(mut guard) = get_persistent_browser().lock() {
+                *guard = Some(state);
+            }
+        }
+        // If close_when_finish is true (default), browser closes normally via Arc drop
+    }
+}
+
+/// Launch Chrome externally as a detached process (not managed by Playwright)
+/// This allows the browser to stay open after the test ends
+fn launch_chrome_externally() -> Result<()> {
+    // Find Chrome executable
+    let chrome_path = find_chrome_explicitly()
+        .ok_or_else(|| anyhow::anyhow!("Could not find Chrome/Chromium browser"))?;
+
+    // On macOS, try to find .app to use 'open' command for UI interaction
+    #[cfg(target_os = "macos")]
+    {
+        let path_str = chrome_path.to_string_lossy();
+        // If we found the binary inside .app, go up to .app
+        // Common path: .../Google Chrome.app/Contents/MacOS/Google Chrome
+        if let Some(app_idx) = path_str.rfind(".app/") {
+            let app_path = &path_str[..app_idx + 4]; // Include .app
+            println!(
+                "{} Launching Chrome via 'open' command from: {}",
+                "🍎".blue(),
+                app_path
+            );
+
+            // open -n -a "app_path" --args ...
+            let status = std::process::Command::new("open")
+                .args(&["-n", "-a", app_path, "--args"])
+                .args(&[
+                    "--remote-debugging-port=9222",
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    "--disable-default-apps",
+                    "--user-data-dir=/tmp/lumi-chrome-profile",
+                ])
+                .status()
+                .context("Failed to run 'open' command")?;
+
+            if !status.success() {
+                anyhow::bail!("'open' command failed");
+            }
+            println!("{} Chrome launched via open command", "✅".green());
+            return Ok(());
+        }
+    }
+
+    println!(
+        "{} Launching detached Chrome binary from: {}",
+        "🌐".blue(),
+        chrome_path.display()
+    );
+
+    let mut cmd = std::process::Command::new(&chrome_path);
+    cmd.args(&[
+        "--remote-debugging-port=9222",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-default-apps",
+        "--user-data-dir=/tmp/lumi-chrome-profile",
+    ]);
+
+    // Linux/Unix specific detachment (setsid)
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
+        cmd.stdout(std::process::Stdio::null());
+        cmd.stderr(std::process::Stdio::null());
+    }
+
+    let child = cmd.spawn().context("Failed to spawn Chrome process")?;
+    println!("{} Chrome launched with PID: {}", "✅".green(), child.id());
+
+    Ok(())
 }
 
 /// Explicitly find Google Chrome with additional paths and methods
@@ -1506,7 +1753,6 @@ fn find_chrome_explicitly() -> Option<std::path::PathBuf> {
     // Try to find via mdfind on macOS
     #[cfg(target_os = "macos")]
     {
-        // Use mdfind to locate Chrome
         if let Ok(output) = std::process::Command::new("mdfind")
             .args(&["kMDItemCFBundleIdentifier", "com.google.Chrome"])
             .output()
@@ -1540,7 +1786,6 @@ fn find_chrome_explicitly() -> Option<std::path::PathBuf> {
         }
     }
 
-    // Windows (if needed)
     #[cfg(target_os = "windows")]
     {
         if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {

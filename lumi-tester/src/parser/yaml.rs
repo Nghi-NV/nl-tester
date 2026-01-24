@@ -41,6 +41,8 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
                 commands: Vec::new(),
                 tags: Vec::new(),
                 speed: None,
+                browser: None,
+                close_when_finish: None,
             }
         };
         // Parse commands
@@ -60,6 +62,8 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
             commands,
             tags: Vec::new(),
             speed: None,
+            browser: None,
+            close_when_finish: None,
         });
     }
 
@@ -88,6 +92,8 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
             commands: Vec::new(),
             tags: Vec::new(),
             speed: None,
+            browser: None,
+            close_when_finish: None,
         };
 
         if let Some(val) = map.get(&serde_yaml::Value::String("data".to_string())) {
@@ -162,6 +168,10 @@ fn parse_header(header: &str) -> Result<TestFlow> {
         tags: Vec<String>,
         #[serde(default)]
         speed: Option<String>,
+        #[serde(default)]
+        browser: Option<String>,
+        #[serde(default)]
+        close_when_finish: Option<bool>,
     }
 
     let parsed: Header = serde_yaml::from_str(header).context("Failed to parse YAML header")?;
@@ -176,6 +186,8 @@ fn parse_header(header: &str) -> Result<TestFlow> {
         commands: Vec::new(),
         tags: parsed.tags,
         speed: parsed.speed,
+        browser: parsed.browser,
+        close_when_finish: parsed.close_when_finish,
     })
 }
 
@@ -428,7 +440,7 @@ fn parse_command_with_params(
             TestCommand::WaitUntilNotVisible(p)
         }
 
-        "wait" => {
+        "wait" | "await" => {
             let p_input = if let Some(ms) = params.as_u64() {
                 WaitParamsInput::Number(ms)
             } else {

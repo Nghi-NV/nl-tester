@@ -116,6 +116,9 @@ impl TestExecutor {
         // Update context from flow header
         self.context.update_from_flow(&flow);
 
+        // Note: Web driver config (closeWhenFinish, browser type) is now pre-parsed and applied
+        // in run_on_device before executor is created, so no re-init needed here.
+
         // Handle DDT (CSV Data)
         let mut iterations = Vec::new();
         if let Some(ref data_file) = flow.data {
@@ -2470,29 +2473,44 @@ impl TestExecutor {
                     if self.driver.platform_name() == "android" {
                         println!("  {} Auto-detecting secondary display...", "🔍".cyan());
 
-                        // Check if secondary display exists
-                        let display_info = self.driver.dump_logs(1).await.unwrap_or_default();
+                        // 1. Try to detect existing Android Auto display first
+                        if let Ok(Some(id)) = self.driver.detect_android_auto_display().await {
+                            println!("  {} Selected found display ID: {}", "📺".green(), id);
+                            self.driver.select_display(id).await?;
+                        } else {
+                            // 2. If not found, create overlay display for simulation
+                            println!(
+                                "  {} No suitable display found, creating overlay...",
+                                "⚠️".yellow()
+                            );
+                            let _ = std::process::Command::new("adb")
+                                .args(&[
+                                    "shell",
+                                    "settings",
+                                    "put",
+                                    "global",
+                                    "overlay_display_devices",
+                                    "1024x768/120",
+                                ])
+                                .output();
 
-                        // Try to get display list using a shell command workaround
-                        // We'll create an overlay display if none exists
-                        // First, create overlay display for Android Auto testing
-                        let _ = std::process::Command::new("adb")
-                            .args(&[
-                                "shell",
-                                "settings",
-                                "put",
-                                "global",
-                                "overlay_display_devices",
-                                "1024x768/120",
-                            ])
-                            .output();
+                            // Wait for display to be created
+                            tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
 
-                        // Wait for display to be created
-                        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-                        // Use display 2 (typical overlay display ID)
-                        self.driver.select_display(2).await?;
-                        println!("  {} Created overlay display and selected Display 2 (Android Auto simulation)", "📺".green());
+                            // Re-detect to find the new overlay
+                            if let Ok(Some(id)) = self.driver.detect_android_auto_display().await {
+                                println!(
+                                    "  {} Created and selected overlay display ID: {}",
+                                    "📺".green(),
+                                    id
+                                );
+                                self.driver.select_display(id).await?;
+                            } else {
+                                // Fallback to likely ID 2
+                                self.driver.select_display(2).await?;
+                                println!("  {} Created overlay display and selected Display 2 (fallback)", "📺".green());
+                            }
+                        }
                     } else {
                         println!(
                             "  {} Auto-detect display only supported on Android",
