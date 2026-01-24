@@ -263,7 +263,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Scroll & Swipe',
     description: 'Scroll until element is visible',
     hasParams: true,
-    snippet: 'scrollTo:\n    ${1|text,id,regex|}: "$2"\n    direction: "${3|down,up|}"',
+    snippet: 'scrollTo:\n    ${1|text,id,regex|}: "$2"\n    direction: "${3|down,up,left,right|}"',
     params: [
       { name: 'text', type: 'string', description: 'Find by exact text' },
       { name: 'id', type: 'string', description: 'Find by resource ID' },
@@ -670,5 +670,148 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     description: 'Navigate to URL (Web)',
     hasParams: true,
     snippet: 'navigate: "$1"'
+  },
+
+  // Performance & Profiling
+  {
+    name: 'startProfiling',
+    category: 'Performance',
+    description: 'Start collecting performance metrics (CPU, Memory, FPS)',
+    hasParams: true,
+    snippet: 'startProfiling:\n    interval: ${1:1000}\n    output: "${2:profile.json}"',
+    params: [
+      { name: 'interval', type: 'number', description: 'Sampling interval in ms' },
+      { name: 'output', type: 'string', description: 'Output file path' },
+      { name: 'metrics', type: 'string', description: 'Metrics to collect: cpu,memory,fps' }
+    ]
+  },
+  {
+    name: 'stopProfiling',
+    category: 'Performance',
+    description: 'Stop profiling and save results',
+    hasParams: true,
+    snippet: 'stopProfiling:\n    output: "${1:profile.json}"',
+    params: [
+      { name: 'output', type: 'string', description: 'Output file path' }
+    ]
+  },
+  {
+    name: 'assertPerformance',
+    category: 'Performance',
+    description: 'Assert performance metrics are within thresholds',
+    hasParams: true,
+    snippet: 'assertPerformance:\n    ${1|cpu,memory,fps|}: ${2:50}',
+    params: [
+      { name: 'cpu', type: 'number', description: 'Max CPU usage %' },
+      { name: 'memory', type: 'number', description: 'Max memory in MB' },
+      { name: 'fps', type: 'number', description: 'Min FPS' }
+    ]
+  },
+  {
+    name: 'setCpuThrottling',
+    category: 'Performance',
+    description: 'Set CPU throttling rate (Web)',
+    hasParams: true,
+    snippet: 'setCpuThrottling: ${1:4}'
+  },
+  {
+    name: 'setNetworkConditions',
+    category: 'Performance',
+    description: 'Set network conditions (Slow 3G, Fast 3G, Offline)',
+    hasParams: true,
+    snippet: 'setNetworkConditions: "${1|Slow 3G,Fast 3G,Regular 4G,Offline|}"'
+  },
+
+  // Database
+  {
+    name: 'dbQuery',
+    category: 'Database',
+    description: 'Execute database query',
+    hasParams: true,
+    snippet: 'dbQuery:\n    query: "${1:SELECT * FROM users}"\n    connection: "${2:sqlite:./test.db}"',
+    params: [
+      { name: 'query', type: 'string', description: 'SQL query to execute' },
+      { name: 'connection', type: 'string', description: 'Connection string' },
+      { name: 'output', type: 'string', description: 'Variable to store result' }
+    ]
+  },
+
+  // GIF Frame Control
+  {
+    name: 'captureFrame',
+    aliases: ['captureGifFrame'],
+    category: 'Media',
+    description: 'Capture single frame for GIF',
+    hasParams: true,
+    snippet: 'captureFrame:\n    name: "${1:frame}"',
+    params: [
+      { name: 'name', type: 'string', description: 'Frame name/prefix' }
+    ]
+  },
+  {
+    name: 'buildGif',
+    aliases: ['createGif'],
+    category: 'Media',
+    description: 'Build GIF from captured frames',
+    hasParams: true,
+    snippet: 'buildGif:\n    output: "${1:output.gif}"\n    delay: ${2:500}',
+    params: [
+      { name: 'output', type: 'string', description: 'Output GIF file path' },
+      { name: 'delay', type: 'number', description: 'Delay between frames in ms' },
+      { name: 'loop', type: 'boolean', description: 'Loop GIF (default: true)' }
+    ]
+  },
+
+  // Mock Location Sync
+  {
+    name: 'waitForLocation',
+    category: 'Mock Location',
+    description: 'Wait until device reaches a GPS location',
+    hasParams: true,
+    snippet: 'waitForLocation:\n    lat: ${1:10.762}\n    lon: ${2:106.660}\n    tolerance: ${3:50}',
+    params: [
+      { name: 'lat', type: 'number', description: 'Target latitude' },
+      { name: 'lon', type: 'number', description: 'Target longitude' },
+      { name: 'tolerance', type: 'number', description: 'Tolerance in meters' },
+      { name: 'timeout', type: 'number', description: 'Timeout in ms' }
+    ]
+  },
+  {
+    name: 'waitForMockCompletion',
+    category: 'Mock Location',
+    description: 'Wait for mock GPS playback to complete',
+    hasParams: true,
+    snippet: 'waitForMockCompletion:\n    timeout: ${1:60000}',
+    params: [
+      { name: 'name', type: 'string', description: 'Mock instance name' },
+      { name: 'timeout', type: 'number', description: 'Timeout in ms' }
+    ]
+  },
+
+  // Extended Wait
+  {
+    name: 'extendedWaitUntil',
+    category: 'Control Flow',
+    description: 'Wait with multiple conditions',
+    hasParams: true,
+    snippet: 'extendedWaitUntil:\n    conditions:\n        - see: "$1"\n    timeout: ${2:10000}',
+    params: [
+      { name: 'conditions', type: 'object', description: 'List of conditions' },
+      { name: 'timeout', type: 'number', description: 'Timeout in ms' },
+      { name: 'interval', type: 'number', description: 'Check interval in ms' }
+    ]
+  },
+
+  // Report
+  {
+    name: 'exportReport',
+    category: 'Report',
+    description: 'Export test report',
+    hasParams: true,
+    snippet: 'exportReport:\n    format: "${1|html,json|}"\n    output: "${2:report}"',
+    params: [
+      { name: 'format', type: 'string', description: 'Report format: html, json' },
+      { name: 'output', type: 'string', description: 'Output file path' }
+    ]
   }
 ];

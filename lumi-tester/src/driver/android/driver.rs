@@ -1171,7 +1171,10 @@ impl PlatformDriver for AndroidDriver {
         duration_ms: Option<u64>,
         from: Option<Selector>,
     ) -> Result<()> {
-        let (width, height) = self.screen_size;
+        // Get current screen size dynamically to handle rotation
+        let (width, height) = adb::get_screen_size(self.serial.as_deref())
+            .await
+            .unwrap_or(self.screen_size);
         let duration = duration_ms.unwrap_or(300);
 
         // Determine swipe area

@@ -258,25 +258,44 @@ pub async fn push(serial: Option<&str>, local: &str, remote: &str) -> Result<()>
     Ok(())
 }
 
-/// Get screen resolution
+/// Get screen resolution (handles rotation)
 pub async fn get_screen_size(serial: Option<&str>) -> Result<(u32, u32)> {
     let output = shell(serial, "wm size").await?;
 
     // Parse "Physical size: 1080x1920" or similar
+    let mut width: u32 = 1080;
+    let mut height: u32 = 1920;
+
     for line in output.lines() {
-        if line.contains("Physical size:") || line.contains("Override size:") {
+        // Prefer Override size if set, otherwise Physical size
+        if line.contains("Override size:") || line.contains("Physical size:") {
             if let Some(size_str) = line.split(':').nth(1) {
                 let size_str = size_str.trim();
                 let parts: Vec<&str> = size_str.split('x').collect();
                 if parts.len() == 2 {
-                    let width: u32 = parts[0].trim().parse().unwrap_or(1080);
-                    let height: u32 = parts[1].trim().parse().unwrap_or(1920);
-                    return Ok((width, height));
+                    width = parts[0].trim().parse().unwrap_or(1080);
+                    height = parts[1].trim().parse().unwrap_or(1920);
+                    // If Override size found, use it and break
+                    if line.contains("Override size:") {
+                        break;
+                    }
                 }
             }
         }
     }
 
-    // Default if parsing fails
-    Ok((1080, 1920))
+    // Check rotation to swap dimensions for landscape
+    // mRotation=1 (90°) or mRotation=3 (270°) means landscape
+    let rotation_output = shell(serial, "dumpsys window displays | grep mRotation")
+        .await
+        .unwrap_or_default();
+    let is_landscape =
+        rotation_output.contains("mRotation=1") || rotation_output.contains("mRotation=3");
+
+    if is_landscape && height > width {
+        // Swap for landscape
+        Ok((height, width))
+    } else {
+        Ok((width, height))
+    }
 }
