@@ -384,8 +384,8 @@ pub fn find_relative<'a>(
         // Alignment bonus (penalize offset in the orthogonal axis)
         // This makes it "alignment-aware", prioritizing elements directly above/below or left/right
         let alignment_penalty = match direction {
-            RelativeDirection::Below | RelativeDirection::Above => (cx - ax).abs() as f64 * 50.0,
-            RelativeDirection::LeftOf | RelativeDirection::RightOf => (cy - ay).abs() as f64 * 50.0,
+            RelativeDirection::Below | RelativeDirection::Above => (cx - ax).abs() as f64 * 2.0,
+            RelativeDirection::LeftOf | RelativeDirection::RightOf => (cy - ay).abs() as f64 * 2.0,
             RelativeDirection::Near => 0.0,
         };
 

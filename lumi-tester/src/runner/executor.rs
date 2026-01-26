@@ -2622,26 +2622,51 @@ impl TestExecutor {
         };
 
         if let Some(rel) = relative {
-            let (dir, anchor_str) = if let Some(s) = &rel.right_of {
-                (crate::driver::traits::RelativeDirection::RightOf, s)
-            } else if let Some(s) = &rel.left_of {
-                (crate::driver::traits::RelativeDirection::LeftOf, s)
-            } else if let Some(s) = &rel.above {
-                (crate::driver::traits::RelativeDirection::Above, s)
-            } else if let Some(s) = &rel.below {
-                (crate::driver::traits::RelativeDirection::Below, s)
+            let (dir, anchor_input) = if let Some(input) = &rel.right_of {
+                (crate::driver::traits::RelativeDirection::RightOf, input)
+            } else if let Some(input) = &rel.left_of {
+                (crate::driver::traits::RelativeDirection::LeftOf, input)
+            } else if let Some(input) = &rel.above {
+                (crate::driver::traits::RelativeDirection::Above, input)
+            } else if let Some(input) = &rel.below {
+                (crate::driver::traits::RelativeDirection::Below, input)
             } else {
                 return Some(primary);
             };
 
-            let subst_anchor = self.context.substitute_vars(anchor_str);
-            // Default to matching anchor as Text.
-            // TODO: Support ID matching if string looks like an ID or allow explicit anchor param.
-            let anchor = Selector::Text(subst_anchor, 0, false);
+            let anchor_selector = match anchor_input {
+                crate::parser::types::RelativeAnchorInput::String(s) => {
+                    let subst = self.context.substitute_vars(s);
+                    // Smart detection: use existing logic
+                    if crate::parser::types::is_regex_string(&subst) {
+                        Selector::TextRegex(subst, 0)
+                    } else {
+                        Selector::Text(subst, 0, false)
+                    }
+                }
+                crate::parser::types::RelativeAnchorInput::Struct(p) => {
+                    // Build selector from AnchorParams
+                    if let Some(r) = &p.regex {
+                        Selector::TextRegex(self.context.substitute_vars(r), 0)
+                    } else if let Some(t) = &p.text {
+                        Selector::Text(self.context.substitute_vars(t), 0, false)
+                    } else if let Some(id) = &p.id {
+                        Selector::Id(self.context.substitute_vars(id), 0)
+                    } else if let Some(aid) = &p.accessibility_id {
+                        // Assuming AnchorParams has this, need to check types.rs if not added, wait.
+                        // AnchorParams in types.rs line 1771 has text, regex, id, css.
+                        // Let's stick to what AnchorParams has.
+                        Selector::AccessibilityId(self.context.substitute_vars(aid))
+                    } else {
+                        // Default fallback if empty struct?
+                        return None; // Or log error
+                    }
+                }
+            };
 
             Some(Selector::Relative {
                 target: Box::new(primary),
-                anchor: Box::new(anchor),
+                anchor: Box::new(anchor_selector),
                 direction: dir,
                 max_dist: rel.max_dist,
             })

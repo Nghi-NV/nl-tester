@@ -472,16 +472,16 @@ pub struct TapParams {
 
     // Relative position aliases (shorthand for relative param)
     #[serde(default, alias = "rightOf")]
-    pub right_of: Option<String>,
+    pub right_of: Option<RelativeAnchorInput>,
 
     #[serde(default, alias = "leftOf")]
-    pub left_of: Option<String>,
+    pub left_of: Option<RelativeAnchorInput>,
 
     #[serde(default)]
-    pub above: Option<String>,
+    pub above: Option<RelativeAnchorInput>,
 
     #[serde(default)]
-    pub below: Option<String>,
+    pub below: Option<RelativeAnchorInput>,
 }
 
 /// Tap element by type and index (e.g., tap 2nd EditText)
@@ -508,7 +508,6 @@ pub struct InputAtParams {
     /// 0-based index of the element
     #[serde(default)]
     pub index: u32,
-
     /// Text to input
     pub text: String,
 }
@@ -663,13 +662,13 @@ pub struct AssertParams {
     pub contains_child: Option<Box<AssertParams>>,
 
     #[serde(default)]
-    pub right_of: Option<String>,
+    pub right_of: Option<RelativeAnchorInput>,
     #[serde(default)]
-    pub left_of: Option<String>,
+    pub left_of: Option<RelativeAnchorInput>,
     #[serde(default)]
-    pub above: Option<String>,
+    pub above: Option<RelativeAnchorInput>,
     #[serde(default)]
-    pub below: Option<String>,
+    pub below: Option<RelativeAnchorInput>,
 
     #[serde(default)]
     pub soft: bool,
@@ -1079,14 +1078,14 @@ impl TestCommand {
                     format!("tapOn(image: \"{}\")", image)
                 } else if let Some(rel) = &p.relative {
                     // Show direction and anchor text for better clarity
-                    let (dir, anchor) = if let Some(ref text) = rel.right_of {
-                        ("rightOf", text.as_str())
-                    } else if let Some(ref text) = rel.left_of {
-                        ("leftOf", text.as_str())
-                    } else if let Some(ref text) = rel.above {
-                        ("above", text.as_str())
-                    } else if let Some(ref text) = rel.below {
-                        ("below", text.as_str())
+                    let (dir, anchor) = if let Some(ref input) = rel.right_of {
+                        ("rightOf", input.as_string().unwrap_or("..."))
+                    } else if let Some(ref input) = rel.left_of {
+                        ("leftOf", input.as_string().unwrap_or("..."))
+                    } else if let Some(ref input) = rel.above {
+                        ("above", input.as_string().unwrap_or("..."))
+                    } else if let Some(ref input) = rel.below {
+                        ("below", input.as_string().unwrap_or("..."))
                     } else {
                         ("relative", "")
                     };
@@ -1744,13 +1743,29 @@ pub struct Condition {
     pub not_visible_regex: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RelativeAnchorInput {
+    String(String),
+    Struct(AnchorParams),
+}
+
+impl RelativeAnchorInput {
+    pub fn as_string(&self) -> Option<&str> {
+        match self {
+            Self::String(s) => Some(s),
+            Self::Struct(p) => p.text.as_deref(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RelativeParams {
-    pub right_of: Option<String>,
-    pub left_of: Option<String>,
-    pub above: Option<String>,
-    pub below: Option<String>,
+    pub right_of: Option<RelativeAnchorInput>,
+    pub left_of: Option<RelativeAnchorInput>,
+    pub above: Option<RelativeAnchorInput>,
+    pub below: Option<RelativeAnchorInput>,
     #[serde(alias = "maxDistance")]
     pub max_dist: Option<u32>,
 }
@@ -1771,18 +1786,28 @@ pub enum RelativeDirection {
 pub struct AnchorParams {
     #[serde(default)]
     pub text: Option<String>,
-    #[serde(default)]
+
+    #[serde(default, alias = "textRegex")]
     pub regex: Option<String>,
-    #[serde(default)]
+
+    #[serde(default, alias = "resourceId")]
     pub id: Option<String>,
+
     #[serde(default)]
     pub css: Option<String>,
+
     #[serde(default)]
     pub xpath: Option<String>,
+
     #[serde(default)]
     pub placeholder: Option<String>,
+
     #[serde(default)]
     pub role: Option<String>,
+
+    #[serde(default, alias = "desc", alias = "contentDesc")]
+    pub accessibility_id: Option<String>,
+
     #[serde(default)]
     pub index: Option<u32>,
 }
@@ -1815,7 +1840,7 @@ impl Default for ScrollUntilVisibleParams {
     }
 }
 
-fn is_regex_string(s: &str) -> bool {
+pub fn is_regex_string(s: &str) -> bool {
     s.contains(".*")
         || s.contains(".+")
         || (s.starts_with('^') && s.ends_with('$'))
