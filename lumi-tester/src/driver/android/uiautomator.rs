@@ -356,14 +356,14 @@ pub fn find_relative<'a>(
     anchor: &UiElement,
     direction: RelativeDirection,
     max_dist: Option<u32>,
-) -> Option<&'a UiElement> {
+) -> Option<(&'a UiElement, bool)> {
     let mut best_match: Option<&'a UiElement> = None;
     let mut min_score = f64::MAX;
     let limit = max_dist.unwrap_or(u32::MAX) as f64;
 
     let (ax, ay) = anchor.bounds.center();
 
-    for candidate in candidates {
+    for candidate in &candidates {
         // Strict direction check
         let is_valid = match direction {
             RelativeDirection::RightOf => candidate.bounds.left >= anchor.bounds.right,
@@ -393,11 +393,17 @@ pub fn find_relative<'a>(
 
         if score < min_score && dist <= limit {
             min_score = score;
-            best_match = Some(candidate);
+            best_match = Some(*candidate);
         }
     }
 
-    best_match
+    if best_match.is_none() {
+        if let Some(&anchor_in_candidates) = candidates.iter().find(|&&c| std::ptr::eq(c, anchor)) {
+            return Some((anchor_in_candidates, true));
+        }
+    }
+
+    best_match.map(|e| (e, false))
 }
 
 /// Find nth element matching regex pattern on resource ID

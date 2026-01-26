@@ -334,6 +334,7 @@ mod tests {
             clickable: true,
             enabled: true,
             focusable: true,
+            hint: String::new(),
         }
     }
 

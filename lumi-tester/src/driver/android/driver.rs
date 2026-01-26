@@ -351,7 +351,7 @@ impl AndroidDriver {
 
         let elements = self.get_ui_hierarchy().await?;
 
-        if let Some(elem) = self.find_element_impl(selector, &elements) {
+        if let Some((elem, _)) = self.find_element_impl(selector, &elements) {
             Ok(Some(elem.clone()))
         } else {
             Ok(None)
@@ -371,7 +371,30 @@ impl AndroidDriver {
 
         let elements = self.get_ui_hierarchy().await?;
 
-        if let Some(elem) = self.find_element_impl(selector, &elements) {
+        if let Some((elem, is_fallback)) = self.find_element_impl(selector, &elements) {
+            // For Relative selectors, adjust the tap point based on direction
+            // ONLY if fallback was triggered (meaning we are targeting a composite element like Switch)
+            if let Selector::Relative { direction, .. } = selector {
+                if is_fallback {
+                    use crate::driver::traits::RelativeDirection;
+                    let bounds = &elem.bounds;
+                    let w = bounds.right - bounds.left;
+                    let h = bounds.bottom - bounds.top;
+
+                    match direction {
+                        RelativeDirection::RightOf => {
+                            // Tap at 90% width (right side) for fallback composite switches
+                            return Ok(Some((bounds.left + (w * 9 / 10), bounds.top + h / 2)));
+                        }
+                        RelativeDirection::LeftOf => {
+                            // Tap at 10% width
+                            return Ok(Some((bounds.left + (w / 10), bounds.top + h / 2)));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
             Ok(Some(elem.bounds.center()))
         } else {
             Ok(None)
@@ -382,40 +405,46 @@ impl AndroidDriver {
         &self,
         selector: &Selector,
         elements: &'a [uiautomator::UiElement],
-    ) -> Option<&'a uiautomator::UiElement> {
+    ) -> Option<(&'a uiautomator::UiElement, bool)> {
         match selector {
             Selector::Point { .. } => None,
             Selector::Image { .. } => None, // Handled by find_image_on_screen
 
-            Selector::Text(text, index, exact) => {
-                if *exact {
-                    uiautomator::find_nth_by_text_exact(elements, text, *index as u32).or_else(
-                        || uiautomator::find_nth_by_text_contains(elements, text, *index as u32),
-                    )
-                } else {
-                    uiautomator::find_nth_by_text(elements, text, *index as u32).or_else(|| {
-                        uiautomator::find_nth_by_text_contains(elements, text, *index as u32)
-                    })
-                }
+            Selector::Text(text, index, exact) => if *exact {
+                uiautomator::find_nth_by_text_exact(elements, text, *index as u32).or_else(|| {
+                    uiautomator::find_nth_by_text_contains(elements, text, *index as u32)
+                })
+            } else {
+                uiautomator::find_nth_by_text(elements, text, *index as u32).or_else(|| {
+                    uiautomator::find_nth_by_text_contains(elements, text, *index as u32)
+                })
             }
+            .map(|e| (e, false)),
 
             Selector::TextRegex(pattern, index) => {
-                uiautomator::find_nth_by_regex(elements, pattern, *index as u32)
+                uiautomator::find_nth_by_regex(elements, pattern, *index as u32).map(|e| (e, false))
             }
 
-            Selector::Id(id, index) => uiautomator::find_nth_by_id(elements, id, *index as u32),
+            Selector::Id(id, index) => {
+                uiautomator::find_nth_by_id(elements, id, *index as u32).map(|e| (e, false))
+            }
 
             Selector::IdRegex(pattern, index) => {
                 uiautomator::find_nth_by_id_regex(elements, pattern, *index as u32)
+                    .map(|e| (e, false))
             }
 
             Selector::Type(type_name, index) => uiautomator::find_by_type_index(
                 elements,
                 map_android_type(type_name),
                 *index as u32,
-            ),
+            )
+            .map(|e| (e, false)),
 
-            Selector::AccessibilityId(id) => elements.iter().find(|e| e.content_desc == *id),
+            Selector::AccessibilityId(id) => elements
+                .iter()
+                .find(|e| e.content_desc == *id)
+                .map(|e| (e, false)),
 
             Selector::XPath(_) => None,
             Selector::Css(_) => None,
@@ -427,16 +456,22 @@ impl AndroidDriver {
                     _ => role,
                 };
                 uiautomator::find_by_type_index(elements, android_type, *index as u32)
+                    .map(|e| (e, false))
             }
             Selector::Placeholder(placeholder, index) => {
                 // Android doesn't always expose placeholder,
                 // falling back to searching by text as they are often the same in the dump
                 uiautomator::find_nth_by_text(elements, placeholder, *index as u32)
+                    .map(|e| (e, false))
             }
 
             Selector::AnyClickable(index) => {
                 // Find nth clickable element
-                elements.iter().filter(|e| e.clickable).nth(*index)
+                elements
+                    .iter()
+                    .filter(|e| e.clickable)
+                    .nth(*index)
+                    .map(|e| (e, false))
             }
 
             Selector::Relative {
@@ -466,7 +501,7 @@ impl AndroidDriver {
                 };
 
                 // Find anchor
-                let anchor_elem = self.find_element_impl(anchor, elements)?;
+                let (anchor_elem, _) = self.find_element_impl(anchor, elements)?;
 
                 uiautomator::find_relative(candidates, anchor_elem, *direction, *max_dist)
             }
@@ -489,7 +524,7 @@ impl AndroidDriver {
                         if p.bounds.contains(&c.bounds)
                             && !std::ptr::eq(p as *const _, *c as *const _)
                         {
-                            return Some(p);
+                            return Some((p, false));
                         }
                     }
                 }
@@ -1322,7 +1357,7 @@ impl PlatformDriver for AndroidDriver {
         let elements = self.get_ui_hierarchy().await?;
 
         match self.find_element_impl(selector, &elements) {
-            Some(element) => {
+            Some((element, _)) => {
                 // Return text or content_desc, preferring text
                 if !element.text.is_empty() {
                     Ok(element.text.clone())
