@@ -8,8 +8,6 @@ commands:
       name: route1
       file: Location.gpx
       speed: 100.0
-      speedMode: noise
-      speedNoise: 10.0
       loop: false
 
   # Wait a bit

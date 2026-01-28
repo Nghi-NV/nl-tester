@@ -2,7 +2,7 @@
   "name": "lumi-tester",
   "displayName": "Lumi Tester",
   "description": "VSCode extension for lumi-tester: YAML autocomplete, run tests, and status display",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "lumijsc",
   "icon": "resources/icon.png",
   "engines": {
@@ -47,6 +47,16 @@
         "command": "lumi-tester.stopTest",
         "title": "Lumi: Stop Test",
         "icon": "$(debug-stop)"
+      },
+      {
+        "command": "lumi-tester.selectDevice",
+        "title": "Lumi: Select Device",
+        "icon": "$(device-mobile)"
+      },
+      {
+        "command": "lumi-tester.refreshDevices",
+        "title": "Lumi: Refresh Devices",
+        "icon": "$(refresh)"
       }
     ],
     "configuration": {

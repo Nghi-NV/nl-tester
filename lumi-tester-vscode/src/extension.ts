@@ -4,13 +4,21 @@ import { LumiCompletionProvider } from './completionProvider';
 import { LumiCodeLensProvider } from './codeLensProvider';
 import { LumiDecorationProvider } from './decorationProvider';
 import { LumiTestRunner } from './testRunner';
+import { DeviceManager } from './deviceManager';
 
 let terminal: vscode.Terminal | undefined;
 let testRunner: LumiTestRunner | undefined;
 let decorationProvider: LumiDecorationProvider | undefined;
+let deviceManager: DeviceManager | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Lumi Tester extension is now active!');
+
+  // Initialize device manager
+  deviceManager = DeviceManager.getInstance();
+  context.subscriptions.push({
+    dispose: () => deviceManager?.dispose()
+  });
 
   // Register completion provider for YAML files
   const completionProvider = new LumiCompletionProvider();
@@ -69,6 +77,20 @@ export function activate(context: vscode.ExtensionContext) {
       if (terminal) {
         terminal.sendText('\x03'); // Send Ctrl+C
       }
+    })
+  );
+
+  // Device selection commands
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lumi-tester.selectDevice', async () => {
+      await deviceManager?.showDevicePicker();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lumi-tester.refreshDevices', async () => {
+      const devices = await deviceManager?.refreshDevices(true);
+      vscode.window.showInformationMessage(`Found ${devices?.length || 0} devices`);
     })
   );
 
@@ -136,6 +158,14 @@ function findLumiTesterPath(testFilePath: string): string | null {
   return null;
 }
 
+function buildDeviceArgs(): string {
+  const device = deviceManager?.getSelectedDevice();
+  if (!device) {
+    return '';
+  }
+  return `--platform ${device.platform} --device "${device.id}"`;
+}
+
 async function runTestFile(uri: vscode.Uri): Promise<void> {
   const filePath = uri.fsPath;
   const lumiPath = findLumiTesterPath(filePath);
@@ -145,11 +175,18 @@ async function runTestFile(uri: vscode.Uri): Promise<void> {
     return;
   }
 
+  // Ensure device is selected (auto-select if only 1, prompt if multiple)
+  await deviceManager?.ensureDeviceSelected();
+
   const term = getOrCreateTerminal();
   term.show(true);
 
-  // Change to lumi-tester directory and run
-  term.sendText(`cd "${lumiPath}" && cargo run -- run "${filePath}"`);
+  const deviceArgs = buildDeviceArgs();
+  const command = deviceArgs
+    ? `cd "${lumiPath}" && cargo run -- run "${filePath}" ${deviceArgs}`
+    : `cd "${lumiPath}" && cargo run -- run "${filePath}"`;
+
+  term.sendText(command);
 }
 
 async function runSingleCommand(uri: vscode.Uri, commandIndex: number): Promise<void> {
@@ -161,11 +198,18 @@ async function runSingleCommand(uri: vscode.Uri, commandIndex: number): Promise<
     return;
   }
 
+  // Ensure device is selected (auto-select if only 1, prompt if multiple)
+  await deviceManager?.ensureDeviceSelected();
+
   const term = getOrCreateTerminal();
   term.show(true);
 
-  // Run specific command
-  term.sendText(`cd "${lumiPath}" && cargo run -- run "${filePath}" --command-index ${commandIndex}`);
+  const deviceArgs = buildDeviceArgs();
+  const command = deviceArgs
+    ? `cd "${lumiPath}" && cargo run -- run "${filePath}" --command-index ${commandIndex} ${deviceArgs}`
+    : `cd "${lumiPath}" && cargo run -- run "${filePath}" --command-index ${commandIndex}`;
+
+  term.sendText(command);
 }
 
 export function deactivate() {
@@ -175,4 +219,8 @@ export function deactivate() {
   if (decorationProvider) {
     decorationProvider.dispose();
   }
+  if (deviceManager) {
+    deviceManager.dispose();
+  }
 }
+
