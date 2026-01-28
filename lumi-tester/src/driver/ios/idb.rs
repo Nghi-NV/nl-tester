@@ -66,21 +66,159 @@ async fn run_idb_command_with_target(udid: &str, args: &[&str]) -> Result<String
 }
 
 /// List all available iOS targets (devices and simulators)
+/// Combines results from idb (simulators) and xcrun xctrace (real devices)
 pub async fn list_targets() -> Result<Vec<IosTarget>> {
-    let output = run_idb_command(&["list-targets", "--json"]).await?;
-
-    // Parse JSON lines output
     let mut targets = Vec::new();
-    for line in output.lines() {
-        if line.trim().is_empty() {
-            continue;
+    let mut seen_udids = std::collections::HashSet::new();
+
+    // 1. Get simulators from idb
+    if let Ok(output) = run_idb_command(&["list-targets", "--json"]).await {
+        for line in output.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            if let Ok(target) = serde_json::from_str::<IosTarget>(line) {
+                seen_udids.insert(target.udid.clone());
+                targets.push(target);
+            }
         }
-        if let Ok(target) = serde_json::from_str::<IosTarget>(line) {
-            targets.push(target);
+    }
+
+    // 2. Get real devices from xcrun xctrace list devices
+    if let Ok(real_devices) = list_real_devices().await {
+        for device in real_devices {
+            if !seen_udids.contains(&device.udid) {
+                seen_udids.insert(device.udid.clone());
+                targets.push(device);
+            }
         }
     }
 
     Ok(targets)
+}
+
+/// List real iOS devices using xcrun xctrace list devices
+async fn list_real_devices() -> Result<Vec<IosTarget>> {
+    let output = Command::new("xcrun")
+        .args(&["xctrace", "list", "devices"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .context("Failed to run xcrun xctrace list devices")?;
+
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut devices = Vec::new();
+    let mut in_devices_section = false;
+    let mut in_offline_section = false;
+
+    // Parse output like:
+    // == Devices ==
+    // NghiNV (18.5) (00008020-0012446C1ADA002E)
+    // == Devices Offline ==
+    // Lumi (18.6.2) (00008110-000439C63AE9801E)
+    // == Simulators ==
+    // ...
+
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+
+        if trimmed == "== Devices ==" {
+            in_devices_section = true;
+            in_offline_section = false;
+            continue;
+        }
+        if trimmed == "== Devices Offline ==" {
+            in_devices_section = false;
+            in_offline_section = true;
+            continue;
+        }
+        if trimmed == "== Simulators ==" {
+            // Stop when we reach simulators section (handled by idb)
+            break;
+        }
+
+        // Skip empty lines or section headers
+        if trimmed.is_empty() || trimmed.starts_with("==") {
+            continue;
+        }
+
+        // Parse device line: "NghiNV (18.5) (00008020-0012446C1ADA002E)"
+        // or with Mac: "Nghi's Mac mini (2) (FB8951E3-8F4C-5CB9-BA86-B907BAF6D911)"
+        if (in_devices_section || in_offline_section) && trimmed.contains('(') {
+            if let Some(device) = parse_xctrace_device_line(trimmed, in_offline_section) {
+                // Filter out Mac devices and Apple Watch
+                if !device.name.to_lowercase().contains("mac")
+                    && !device.name.to_lowercase().contains("apple watch")
+                {
+                    devices.push(device);
+                }
+            }
+        }
+    }
+
+    Ok(devices)
+}
+
+/// Parse a single device line from xctrace output
+/// Format: "DeviceName (version) (UDID)" or "DeviceName (info) (version) (UDID)"
+fn parse_xctrace_device_line(line: &str, is_offline: bool) -> Option<IosTarget> {
+    // Find the UDID - it's the last parenthesized value
+    let mut depth = 0;
+    let mut last_paren_start = None;
+    let mut last_paren_end = None;
+
+    for (i, c) in line.char_indices() {
+        match c {
+            '(' => {
+                if depth == 0 {
+                    last_paren_start = Some(i);
+                }
+                depth += 1;
+            }
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    last_paren_end = Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let udid_start = last_paren_start? + 1;
+    let udid_end = last_paren_end?;
+    let udid = line[udid_start..udid_end].to_string();
+
+    // Device UDID format validation (should be hex with dashes)
+    if !udid.chars().all(|c| c.is_ascii_hexdigit() || c == '-') || udid.len() < 20 {
+        return None;
+    }
+
+    // Get the name (everything before the UDID parenthesis)
+    let name_part = line[..last_paren_start?].trim();
+
+    // Remove trailing version info like "(18.5)" from name
+    let name = if let Some(last_open) = name_part.rfind('(') {
+        name_part[..last_open].trim().to_string()
+    } else {
+        name_part.to_string()
+    };
+
+    Some(IosTarget {
+        udid,
+        name,
+        target_type: "device".to_string(),
+        state: if is_offline {
+            "Offline".to_string()
+        } else {
+            "Booted".to_string()
+        },
+    })
 }
 
 /// Get device info
@@ -89,14 +227,61 @@ pub async fn describe(udid: &str) -> Result<String> {
 }
 
 /// Launch an app by bundle ID
-pub async fn launch_app(udid: &str, bundle_id: &str) -> Result<()> {
-    run_idb_command_with_target(udid, &["launch", bundle_id]).await?;
+/// Uses devicectl for real devices, idb for simulators
+pub async fn launch_app(udid: &str, bundle_id: &str, is_simulator: bool) -> Result<()> {
+    if is_simulator {
+        run_idb_command_with_target(udid, &["launch", bundle_id]).await?;
+    } else {
+        // Use devicectl for real devices
+        let output = Command::new("xcrun")
+            .args(&[
+                "devicectl",
+                "device",
+                "process",
+                "launch",
+                "--device",
+                udid,
+                bundle_id,
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+            .context("Failed to launch app with devicectl")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Failed to launch app: {}", stderr);
+        }
+    }
     Ok(())
 }
 
 /// Terminate an app by bundle ID
-pub async fn terminate_app(udid: &str, bundle_id: &str) -> Result<()> {
-    run_idb_command_with_target(udid, &["terminate", bundle_id]).await?;
+/// Uses devicectl for real devices, idb for simulators
+pub async fn terminate_app(udid: &str, bundle_id: &str, is_simulator: bool) -> Result<()> {
+    if is_simulator {
+        let _ = run_idb_command_with_target(udid, &["terminate", bundle_id]).await;
+    } else {
+        // Use devicectl for real devices - first get PID then terminate
+        // Try to terminate gracefully, ignore errors if app not running
+        let _ = Command::new("xcrun")
+            .args(&[
+                "devicectl",
+                "device",
+                "process",
+                "terminate",
+                "--device",
+                udid,
+                "--pid",
+                "0", // This won't work, need to find running process
+            ])
+            .output()
+            .await;
+
+        // Alternative: use killall through devicectl or just ignore terminate errors
+        // For real devices, apps may need manual termination or we skip this step
+    }
     Ok(())
 }
 

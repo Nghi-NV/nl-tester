@@ -531,7 +531,7 @@ impl PlatformDriver for IosDriver {
         self.invalidate_cache().await;
 
         // Always terminate first if running
-        let _ = idb::terminate_app(&self.udid, bundle_id).await;
+        let _ = idb::terminate_app(&self.udid, bundle_id, self.is_simulator).await;
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         if clear_state {
@@ -584,7 +584,7 @@ impl PlatformDriver for IosDriver {
         }
 
         // Launch the app (silently)
-        idb::launch_app(&self.udid, bundle_id).await?;
+        idb::launch_app(&self.udid, bundle_id, self.is_simulator).await?;
 
         // Wait longer for app to fully stabilize (especially after clear state)
         let wait_time = if clear_state { 2000 } else { 1000 };
@@ -595,7 +595,7 @@ impl PlatformDriver for IosDriver {
     }
 
     async fn stop_app(&self, bundle_id: &str) -> Result<()> {
-        idb::terminate_app(&self.udid, bundle_id).await?;
+        idb::terminate_app(&self.udid, bundle_id, self.is_simulator).await?;
         self.invalidate_cache().await;
         Ok(())
     }
@@ -1100,7 +1100,7 @@ impl PlatformDriver for IosDriver {
 
     async fn clear_app_data(&self, app_id: &str) -> Result<()> {
         // Just terminate for now
-        idb::terminate_app(&self.udid, app_id).await
+        idb::terminate_app(&self.udid, app_id, self.is_simulator).await
     }
 
     async fn set_clipboard(&self, text: &str) -> Result<()> {
