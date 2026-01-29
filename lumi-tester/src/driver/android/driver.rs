@@ -1915,11 +1915,13 @@ impl PlatformDriver for AndroidDriver {
     }
 
     async fn press_key(&self, key: &str) -> Result<()> {
-        let keycode = match key.to_lowercase().as_str() {
+        let keycode_str = key.to_lowercase();
+        let keycode = match keycode_str.as_str() {
             "home" => "3",
             "back" => "4",
             "search" => "84",
-            "enter" => "66",
+            "enter" | "done" => "66",
+            "numpad_enter" => "160",
             "power" => "26",
             "volume_up" => "24",
             "volume_down" => "25",
@@ -1932,8 +1934,9 @@ impl PlatformDriver for AndroidDriver {
             "dpad_left" | "left" => "21",
             "dpad_right" | "right" => "22",
             "dpad_center" | "center" => "23",
+            s if s.chars().all(|c| c.is_ascii_digit()) => s,
             _ => anyhow::bail!(
-                "Unsupported key: {}. Use raw keycode via runScript if needed",
+                "Unsupported key: {}. Use raw keycode (e.g. '66') or runScript if needed",
                 key
             ),
         };

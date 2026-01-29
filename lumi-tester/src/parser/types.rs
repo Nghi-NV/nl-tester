@@ -139,6 +139,51 @@ pub struct RandomTextParams {
 }
 
 /// Parameters for extendedWaitUntil (forward declaration - uses AssertParams)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PressKeyParams {
+    pub key: String,
+    #[serde(default = "default_press_times_value")]
+    pub times: serde_json::Value,
+}
+
+fn default_press_times_value() -> serde_json::Value {
+    serde_json::Value::Number(1.into())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PressKeyParamsInput {
+    String(String),
+    Struct(PressKeyParams),
+}
+
+impl PressKeyParamsInput {
+    pub fn key(&self) -> &str {
+        match self {
+            Self::String(s) => s,
+            Self::Struct(p) => &p.key,
+        }
+    }
+
+    pub fn times(&self) -> u32 {
+        match self {
+            Self::String(_) => 1,
+            Self::Struct(p) => match &p.times {
+                serde_json::Value::Number(n) => n.as_u64().unwrap_or(1) as u32,
+                _ => 1, // Will be handled by executor if it's a string
+            },
+        }
+    }
+
+    pub fn times_value(&self) -> serde_json::Value {
+        match self {
+            Self::String(_) => serde_json::Value::Number(1.into()),
+            Self::Struct(p) => p.times.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtendedWaitParams {
@@ -258,7 +303,7 @@ pub enum TestCommand {
     #[serde(alias = "rotate")]
     RotateScreen(RotationParamsInput),
     #[serde(alias = "press")]
-    PressKey(String),
+    PressKey(PressKeyParamsInput),
 
     // File Management
     PushFile(FileTransferParams),
@@ -1406,7 +1451,19 @@ impl TestCommand {
                 let p = p_input.clone().into_inner();
                 format!("rotate(\"{}\")", p.mode)
             }
-            TestCommand::PressKey(k) => format!("press(\"{}\")", k),
+            TestCommand::PressKey(k) => {
+                let times = k.times_value();
+                let times_str = match times {
+                    serde_json::Value::Number(n) => n.to_string(),
+                    serde_json::Value::String(s) => s,
+                    _ => "1".to_string(),
+                };
+                if times_str != "1" {
+                    format!("press(\"{}\", times: {})", k.key(), times_str)
+                } else {
+                    format!("press(\"{}\")", k.key())
+                }
+            }
             TestCommand::PushFile(p) => format!("pushFile({} -> {})", p.source, p.destination),
             TestCommand::PullFile(p) => format!("pullFile({} -> {})", p.source, p.destination),
             TestCommand::ClearAppData(pkg) => format!("clearAppData({})", pkg),

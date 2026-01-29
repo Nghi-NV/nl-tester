@@ -158,7 +158,7 @@ fn parse_header(header: &str) -> Result<TestFlow> {
         url: Option<String>,
         #[serde(default)]
         platform: Option<Platform>,
-        #[serde(default)]
+        #[serde(default, alias = "vars", alias = "var")]
         env: Option<std::collections::HashMap<String, String>>,
         #[serde(default)]
         data: Option<String>,
@@ -661,11 +661,9 @@ fn parse_command_with_params(
         }
 
         "press" | "pressKey" => {
-            let key = match params {
-                serde_yaml::Value::String(s) => s.clone(),
-                _ => serde_yaml::from_value(params.clone())?,
-            };
-            TestCommand::PressKey(key)
+            let p: crate::parser::types::PressKeyParamsInput =
+                serde_yaml::from_value(params.clone())?;
+            TestCommand::PressKey(p)
         }
 
         "pushFile" => {

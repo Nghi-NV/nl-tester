@@ -1813,7 +1813,22 @@ impl TestExecutor {
                 self.driver.background_app(app_id, params.duration_ms).await
             }
 
-            TestCommand::PressKey(key) => self.driver.press_key(key).await,
+            TestCommand::PressKey(params) => {
+                let key = params.key();
+                let times_val = params.times_value();
+                let times = match times_val {
+                    serde_json::Value::Number(n) => n.as_u64().unwrap_or(1) as u32,
+                    serde_json::Value::String(s) => {
+                        let substituted = self.context.substitute_vars(&s);
+                        substituted.parse::<u32>().unwrap_or(1)
+                    }
+                    _ => 1,
+                };
+                for _ in 0..times {
+                    self.driver.press_key(key).await?;
+                }
+                Ok(())
+            }
 
             TestCommand::PushFile(params) => {
                 let source = self.context.resolve_path(&params.source);
