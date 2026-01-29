@@ -356,54 +356,84 @@ pub fn find_relative<'a>(
     anchor: &UiElement,
     direction: RelativeDirection,
     max_dist: Option<u32>,
-) -> Option<(&'a UiElement, bool)> {
-    let mut best_match: Option<&'a UiElement> = None;
-    let mut min_score = f64::MAX;
+) -> Vec<&'a UiElement> {
     let limit = max_dist.unwrap_or(u32::MAX) as f64;
-
     let (ax, ay) = anchor.bounds.center();
 
-    for candidate in &candidates {
-        // Strict direction check
-        let is_valid = match direction {
-            RelativeDirection::RightOf => candidate.bounds.left >= anchor.bounds.right,
-            RelativeDirection::LeftOf => candidate.bounds.right <= anchor.bounds.left,
-            RelativeDirection::Below => candidate.bounds.top >= anchor.bounds.bottom,
-            RelativeDirection::Above => candidate.bounds.bottom <= anchor.bounds.top,
-            RelativeDirection::Near => true,
-        };
+    let mut scored_candidates: Vec<(&UiElement, f64)> = candidates
+        .into_iter()
+        .filter_map(|candidate| {
+            // Strict direction check
+            let is_valid = match direction {
+                RelativeDirection::RightOf => candidate.bounds.left >= anchor.bounds.right,
+                RelativeDirection::LeftOf => candidate.bounds.right <= anchor.bounds.left,
+                RelativeDirection::Below => candidate.bounds.top >= anchor.bounds.bottom,
+                RelativeDirection::Above => candidate.bounds.bottom <= anchor.bounds.top,
+                RelativeDirection::Near => true,
+            };
 
-        if !is_valid {
-            continue;
-        }
+            if !is_valid {
+                return None;
+            }
 
-        // Distance check
-        let (cx, cy) = candidate.bounds.center();
-        let dist = (((cx - ax).pow(2u32) + (cy - ay).pow(2u32)) as f64).sqrt();
+            // Distance check
+            let (cx, cy) = candidate.bounds.center();
+            let dist = (((cx - ax).pow(2u32) + (cy - ay).pow(2u32)) as f64).sqrt();
 
-        // Alignment bonus (penalize offset in the orthogonal axis)
-        // This makes it "alignment-aware", prioritizing elements directly above/below or left/right
-        let alignment_penalty = match direction {
-            RelativeDirection::Below | RelativeDirection::Above => (cx - ax).abs() as f64 * 2.0,
-            RelativeDirection::LeftOf | RelativeDirection::RightOf => (cy - ay).abs() as f64 * 2.0,
-            RelativeDirection::Near => 0.0,
-        };
+            if dist > limit {
+                return None;
+            }
 
-        let score = dist + alignment_penalty;
+            // Overlap bonus: prioritize elements that overlap on the orthogonal axis
+            // For LeftOf/RightOf, check Y-axis overlap. For Above/Below, check X-axis overlap.
+            let overlap_bonus = match direction {
+                RelativeDirection::RightOf | RelativeDirection::LeftOf => {
+                    let y_overlap = std::cmp::max(
+                        0,
+                        std::cmp::min(candidate.bounds.bottom, anchor.bounds.bottom)
+                            - std::cmp::max(candidate.bounds.top, anchor.bounds.top),
+                    );
+                    if y_overlap > 0 {
+                        -1_000_000.0
+                    } else {
+                        0.0
+                    }
+                }
+                RelativeDirection::Below | RelativeDirection::Above => {
+                    let x_overlap = std::cmp::max(
+                        0,
+                        std::cmp::min(candidate.bounds.right, anchor.bounds.right)
+                            - std::cmp::max(candidate.bounds.left, anchor.bounds.left),
+                    );
+                    if x_overlap > 0 {
+                        -1_000_000.0
+                    } else {
+                        0.0
+                    }
+                }
+                RelativeDirection::Near => 0.0,
+            };
 
-        if score < min_score && dist <= limit {
-            min_score = score;
-            best_match = Some(*candidate);
-        }
-    }
+            // Alignment bonus (penalize offset in the orthogonal axis)
+            let alignment_penalty = match direction {
+                RelativeDirection::Below | RelativeDirection::Above => {
+                    (cx - ax).abs() as f64 * 10.0
+                }
+                RelativeDirection::LeftOf | RelativeDirection::RightOf => {
+                    (cy - ay).abs() as f64 * 10.0
+                }
+                RelativeDirection::Near => 0.0,
+            };
 
-    if best_match.is_none() {
-        if let Some(&anchor_in_candidates) = candidates.iter().find(|&&c| std::ptr::eq(c, anchor)) {
-            return Some((anchor_in_candidates, true));
-        }
-    }
+            let score = dist + alignment_penalty + overlap_bonus;
+            Some((candidate, score))
+        })
+        .collect();
 
-    best_match.map(|e| (e, false))
+    // Sort by score (ascending)
+    scored_candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    scored_candidates.into_iter().map(|(e, _)| e).collect()
 }
 
 /// Find nth element matching regex pattern on resource ID
@@ -469,6 +499,37 @@ pub fn find_parent_with_child<'a>(
     }
 
     None
+}
+
+/// Find nth element match regex pattern on content description
+pub fn find_nth_by_description_regex<'a>(
+    elements: &'a [UiElement],
+    pattern: &str,
+    index: u32,
+) -> Option<&'a UiElement> {
+    match Regex::new(pattern) {
+        Ok(re) => elements
+            .iter()
+            .filter(|e| re.is_match(&e.content_desc))
+            .nth(index as usize),
+        Err(e) => {
+            eprintln!("Invalid regex '{}': {}", pattern, e);
+            None
+        }
+    }
+}
+
+pub fn find_all_by_description_regex<'a>(
+    elements: &'a [UiElement],
+    pattern: &str,
+) -> Vec<&'a UiElement> {
+    match Regex::new(pattern) {
+        Ok(re) => elements
+            .iter()
+            .filter(|e| re.is_match(&e.content_desc))
+            .collect(),
+        Err(_) => Vec::new(),
+    }
 }
 
 #[cfg(test)]

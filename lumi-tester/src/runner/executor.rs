@@ -565,6 +565,7 @@ impl TestExecutor {
                             &params.text,
                             &params.regex,
                             &params.id,
+                            &params.description,
                             &relative,
                             &params.css,
                             &params.xpath,
@@ -609,6 +610,7 @@ impl TestExecutor {
                         &params.text,
                         &params.regex,
                         &params.id,
+                        &params.description,
                         &params.relative,
                         &params.css,
                         &params.xpath,
@@ -634,6 +636,7 @@ impl TestExecutor {
                         &params.text,
                         &params.regex,
                         &params.id,
+                        &params.description,
                         &params.relative,
                         &params.css,
                         &params.xpath,
@@ -658,6 +661,7 @@ impl TestExecutor {
                         &params.text,
                         &params.regex,
                         &params.id,
+                        &params.description,
                         &params.relative,
                         &params.css,
                         &params.xpath,
@@ -747,6 +751,7 @@ impl TestExecutor {
                             &params.text,
                             &params.regex,
                             &params.id,
+                            &params.description,
                             &relative,
                             &params.css,
                             &params.xpath,
@@ -769,6 +774,7 @@ impl TestExecutor {
                                 &child_params.text,
                                 &child_params.regex,
                                 &child_params.id,
+                                &child_params.description,
                                 &child_params.relative,
                                 &child_params.css,
                                 &child_params.xpath,
@@ -839,6 +845,7 @@ impl TestExecutor {
                             &params.text,
                             &params.regex,
                             &params.id,
+                            &params.description,
                             &relative,
                             &params.css,
                             &params.xpath,
@@ -861,6 +868,7 @@ impl TestExecutor {
                                 &child_params.text,
                                 &child_params.regex,
                                 &child_params.id,
+                                &child_params.description,
                                 &child_params.relative,
                                 &child_params.css,
                                 &child_params.xpath,
@@ -933,6 +941,7 @@ impl TestExecutor {
                             &params.text,
                             &params.regex,
                             &params.id,
+                            &params.description,
                             &relative,
                             &params.css,
                             &params.xpath,
@@ -954,6 +963,7 @@ impl TestExecutor {
                                 &child_params.text,
                                 &child_params.regex,
                                 &child_params.id,
+                                &child_params.description,
                                 &child_params.relative,
                                 &child_params.css,
                                 &child_params.xpath,
@@ -1020,6 +1030,7 @@ impl TestExecutor {
                         &params.text,
                         &params.regex,
                         &params.id,
+                        &params.description,
                         &relative,
                         &params.css,
                         &params.xpath,
@@ -1041,6 +1052,7 @@ impl TestExecutor {
                             &child_params.text,
                             &child_params.regex,
                             &child_params.id,
+                            &child_params.description,
                             &child_params.relative,
                             &child_params.css,
                             &child_params.xpath,
@@ -1324,6 +1336,7 @@ impl TestExecutor {
                         &params.text,
                         &params.regex,
                         &params.id,
+                        &params.description,
                         &params.relative,
                         &params.css,
                         &params.xpath,
@@ -1354,6 +1367,7 @@ impl TestExecutor {
                         &from.text,
                         &from.regex,
                         &from.id,
+                        &from.description,
                         &from.relative,
                         &from.css,
                         &from.xpath,
@@ -1863,6 +1877,7 @@ impl TestExecutor {
                     &params.text,
                     &None, // regex
                     &params.id,
+                    &params.description,
                     &None, // relative
                     &None, // css
                     &None, // xpath
@@ -2290,6 +2305,7 @@ impl TestExecutor {
                             &from.text,
                             &from.regex,
                             &from.id,
+                            &from.description,
                             &from.relative,
                             &from.css,
                             &from.xpath,
@@ -2570,6 +2586,7 @@ impl TestExecutor {
         text: &Option<String>,
         regex: &Option<String>,
         id: &Option<String>,
+        description: &Option<String>,
         relative: &Option<crate::parser::types::RelativeParams>,
         css: &Option<String>,
         xpath: &Option<String>,
@@ -2590,13 +2607,17 @@ impl TestExecutor {
             Selector::Text(self.context.substitute_vars(t), idx, exact)
         } else if let Some(i) = id {
             let subst_id = self.context.substitute_vars(i);
-            if subst_id.contains(".*")
-                || subst_id.contains(".+")
-                || (subst_id.starts_with('^') && subst_id.ends_with('$'))
-            {
+            if crate::parser::types::is_regex_string(&subst_id) {
                 Selector::IdRegex(subst_id, idx)
             } else {
                 Selector::Id(subst_id, idx)
+            }
+        } else if let Some(d) = description {
+            let subst = self.context.substitute_vars(d);
+            if crate::parser::types::is_regex_string(&subst) {
+                Selector::DescriptionRegex(subst, idx)
+            } else {
+                Selector::Description(subst, idx)
             }
         } else if let Some(p) = placeholder {
             Selector::Placeholder(self.context.substitute_vars(p), idx)
@@ -2645,21 +2666,47 @@ impl TestExecutor {
                     }
                 }
                 crate::parser::types::RelativeAnchorInput::Struct(p) => {
-                    // Build selector from AnchorParams
+                    // Recursive build for anchor (simplified manual recursion)
+                    // We map AnchorParams fields to build_selector-like logic
+                    let idx = p.index.unwrap_or(0) as usize;
+
                     if let Some(r) = &p.regex {
-                        Selector::TextRegex(self.context.substitute_vars(r), 0)
+                        Selector::TextRegex(self.context.substitute_vars(r), idx)
                     } else if let Some(t) = &p.text {
-                        Selector::Text(self.context.substitute_vars(t), 0, false)
+                        Selector::Text(self.context.substitute_vars(t), idx, p.exact)
                     } else if let Some(id) = &p.id {
-                        Selector::Id(self.context.substitute_vars(id), 0)
-                    } else if let Some(aid) = &p.accessibility_id {
-                        // Assuming AnchorParams has this, need to check types.rs if not added, wait.
-                        // AnchorParams in types.rs line 1771 has text, regex, id, css.
-                        // Let's stick to what AnchorParams has.
-                        Selector::AccessibilityId(self.context.substitute_vars(aid))
+                        let s = self.context.substitute_vars(id);
+                        if crate::parser::types::is_regex_string(&s) {
+                            Selector::IdRegex(s, idx)
+                        } else {
+                            Selector::Id(s, idx)
+                        }
+                    } else if let Some(d) = &p.description {
+                        let s = self.context.substitute_vars(d);
+                        if crate::parser::types::is_regex_string(&s) {
+                            Selector::DescriptionRegex(s, idx)
+                        } else {
+                            Selector::Description(s, idx)
+                        }
+                    } else if let Some(img) = &p.image {
+                        let resolved = self.context.resolve_path(img);
+                        Selector::Image {
+                            path: resolved.to_string_lossy().to_string(),
+                            region: None,
+                        }
+                    } else if let Some(e) = &p.element_type {
+                        Selector::Type(self.context.substitute_vars(e), idx)
+                    } else if let Some(c) = &p.css {
+                        Selector::Css(self.context.substitute_vars(c))
+                    } else if let Some(x) = &p.xpath {
+                        Selector::XPath(self.context.substitute_vars(x))
+                    } else if let Some(role) = &p.role {
+                        Selector::Role(self.context.substitute_vars(role), idx)
+                    } else if let Some(ph) = &p.placeholder {
+                        Selector::Placeholder(self.context.substitute_vars(ph), idx)
                     } else {
-                        // Default fallback if empty struct?
-                        return None; // Or log error
+                        // Fallback?
+                        return None;
                     }
                 }
             };

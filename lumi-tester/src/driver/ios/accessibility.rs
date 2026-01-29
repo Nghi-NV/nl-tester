@@ -153,6 +153,11 @@ impl IosElement {
             .map_or(false, |p| p.contains(placeholder_text))
     }
 
+    /// Check if element label matches text
+    pub fn matches_label(&self, text: &str) -> bool {
+        self.label.as_deref().unwrap_or("") == text
+    }
+
     /// Get the center coordinates of this element
     pub fn center(&self) -> (i32, i32) {
         self.frame.center()
@@ -312,6 +317,46 @@ pub fn find_at_point<'a>(elements: &'a [IosElement], x: i32, y: i32) -> Option<&
                 .partial_cmp(&area_b)
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
+}
+
+/// Find elements by accessibility ID (matches label or identifier)
+/// This is for the `description` selector - matches accessibilityLabel or accessibilityIdentifier
+pub fn find_by_accessibility_id<'a>(
+    elements: &'a [IosElement],
+    desc: &str,
+    index: usize,
+) -> Option<&'a IosElement> {
+    let flat = flatten_elements(elements);
+    let matches: Vec<_> = flat
+        .into_iter()
+        .filter(|e| {
+            e.visible
+                && (e
+                    .label
+                    .as_ref()
+                    .map_or(false, |l| l == desc || l.contains(desc))
+                    || e.identifier.as_ref().map_or(false, |i| i == desc))
+        })
+        .collect();
+    matches.get(index).copied()
+}
+
+/// Find elements by accessibility ID with regex
+pub fn find_by_accessibility_id_regex<'a>(
+    elements: &'a [IosElement],
+    pattern: &regex::Regex,
+    index: usize,
+) -> Option<&'a IosElement> {
+    let flat = flatten_elements(elements);
+    let matches: Vec<_> = flat
+        .into_iter()
+        .filter(|e| {
+            e.visible
+                && (e.label.as_ref().map_or(false, |l| pattern.is_match(l))
+                    || e.identifier.as_ref().map_or(false, |i| pattern.is_match(i)))
+        })
+        .collect();
+    matches.get(index).copied()
 }
 
 #[cfg(test)]

@@ -95,6 +95,14 @@ pub struct CopyTextFromParams {
     pub text: Option<String>,
     #[serde(default)]
     pub id: Option<String>,
+    /// Accessibility description/content-desc selector
+    #[serde(
+        default,
+        alias = "desc",
+        alias = "contentDesc",
+        alias = "accessibilityId"
+    )]
+    pub description: Option<String>,
     #[serde(default)]
     pub index: Option<usize>,
 }
@@ -442,6 +450,15 @@ pub struct TapParams {
     #[serde(default)]
     pub placeholder: Option<String>,
 
+    /// Accessibility description/content-desc selector
+    #[serde(
+        default,
+        alias = "desc",
+        alias = "contentDesc",
+        alias = "accessibilityId"
+    )]
+    pub description: Option<String>,
+
     #[serde(default)]
     pub point: Option<String>, // "x,y" format
 
@@ -600,6 +617,15 @@ pub struct ScrollUntilVisibleParams {
     #[serde(default)]
     pub placeholder: Option<String>,
 
+    /// Accessibility description/content-desc selector
+    #[serde(
+        default,
+        alias = "desc",
+        alias = "contentDesc",
+        alias = "accessibilityId"
+    )]
+    pub description: Option<String>,
+
     #[serde(default, alias = "type")]
     pub element_type: Option<String>,
 
@@ -645,6 +671,15 @@ pub struct AssertParams {
 
     #[serde(default)]
     pub placeholder: Option<String>,
+
+    /// Accessibility description/content-desc selector
+    #[serde(
+        default,
+        alias = "desc",
+        alias = "contentDesc",
+        alias = "accessibilityId"
+    )]
+    pub description: Option<String>,
 
     #[serde(default, alias = "type")]
     pub element_type: Option<String>,
@@ -1805,8 +1840,23 @@ pub struct AnchorParams {
     #[serde(default)]
     pub role: Option<String>,
 
-    #[serde(default, alias = "desc", alias = "contentDesc")]
-    pub accessibility_id: Option<String>,
+    /// Accessibility description/content-desc selector
+    #[serde(
+        default,
+        alias = "desc",
+        alias = "contentDesc",
+        alias = "accessibilityId"
+    )]
+    pub description: Option<String>,
+
+    #[serde(default, alias = "type")]
+    pub element_type: Option<String>,
+
+    #[serde(default)]
+    pub image: Option<String>,
+
+    #[serde(default)]
+    pub exact: bool,
 
     #[serde(default)]
     pub index: Option<u32>,
@@ -1830,7 +1880,8 @@ impl Default for ScrollUntilVisibleParams {
             css: None,
             xpath: None,
             placeholder: None,
-            role: None, // Updated this line
+            description: None,
+            role: None,
             max_scrolls: default_max_scrolls(),
             direction: None,
             element_type: None,

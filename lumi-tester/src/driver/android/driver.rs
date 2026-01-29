@@ -441,10 +441,15 @@ impl AndroidDriver {
             )
             .map(|e| (e, false)),
 
-            Selector::AccessibilityId(id) => elements
+            Selector::AccessibilityId(id) | Selector::Description(id, _) => elements
                 .iter()
                 .find(|e| e.content_desc == *id)
                 .map(|e| (e, false)),
+
+            Selector::DescriptionRegex(pattern, index) => {
+                uiautomator::find_nth_by_description_regex(elements, pattern, *index as u32)
+                    .map(|e| (e, false))
+            }
 
             Selector::XPath(_) => None,
             Selector::Css(_) => None,
@@ -489,8 +494,11 @@ impl AndroidDriver {
                     Selector::Type(t, _) => {
                         uiautomator::find_all_by_type(elements, map_android_type(t))
                     }
-                    Selector::AccessibilityId(id) => {
+                    Selector::AccessibilityId(id) | Selector::Description(id, _) => {
                         elements.iter().filter(|e| e.content_desc == *id).collect()
+                    }
+                    Selector::DescriptionRegex(r, _) => {
+                        uiautomator::find_all_by_description_regex(elements, r)
                     }
                     Selector::AnyClickable(_) => {
                         // For relative matching, we need ALL clickable elements as candidates
@@ -503,7 +511,29 @@ impl AndroidDriver {
                 // Find anchor
                 let (anchor_elem, _) = self.find_element_impl(anchor, elements)?;
 
-                uiautomator::find_relative(candidates, anchor_elem, *direction, *max_dist)
+                let sorted_matches =
+                    uiautomator::find_relative(candidates, anchor_elem, *direction, *max_dist);
+
+                // Get index from target selector
+                let target_index = match target.as_ref() {
+                    Selector::Text(_, idx, _) => *idx,
+                    Selector::TextRegex(_, idx) => *idx,
+                    Selector::Id(_, idx) => *idx,
+                    Selector::IdRegex(_, idx) => *idx,
+                    Selector::Type(_, idx) => *idx,
+                    Selector::AccessibilityId(_) => 0, // No index in AccessibilityId variant, implicit 0
+                    Selector::Role(_, idx) => *idx,
+                    Selector::Description(_, idx) => *idx,
+                    Selector::DescriptionRegex(_, idx) => *idx,
+                    Selector::AnyClickable(idx) => *idx,
+                    Selector::Placeholder(_, idx) => *idx,
+                    _ => 0,
+                };
+
+                sorted_matches
+                    .into_iter()
+                    .nth(target_index)
+                    .map(|e| (e, false))
             }
             Selector::HasChild { parent, child } => {
                 // Find all elements matching parent selector
@@ -555,7 +585,14 @@ impl AndroidDriver {
                 }
             }
             Selector::Type(t, _) => e.class.contains(t),
-            Selector::AccessibilityId(id) => e.content_desc == *id,
+            Selector::AccessibilityId(id) | Selector::Description(id, _) => e.content_desc == *id,
+            Selector::DescriptionRegex(pattern, _) => {
+                if let Ok(re) = regex::Regex::new(pattern) {
+                    re.is_match(&e.content_desc)
+                } else {
+                    false
+                }
+            }
             Selector::Placeholder(_, _) => false, // Not available in UiElement
             Selector::Role(_, _) => false,        // Not directly supported
             Selector::AnyClickable(_) => e.clickable, // Match any clickable element

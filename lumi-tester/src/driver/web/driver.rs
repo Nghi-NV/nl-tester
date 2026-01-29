@@ -409,7 +409,20 @@ impl WebDriver {
                 format!("xpath=(//*[@placeholder=\"{}\"])[{}]", p, index + 1)
             }
             Selector::Point { .. } => String::new(), // Handle separately
-            Selector::AccessibilityId(id) => format!("[aria-label=\"{}\"]", id),
+            Selector::AccessibilityId(id) | Selector::Description(id, _) => {
+                format!("[aria-label=\"{}\"]", id)
+            }
+            Selector::DescriptionRegex(regex, index) => {
+                if *index == 0 {
+                    format!("text=/{}/", regex) // Fallback to text match for now as aria-label regex needs different strategy or purely xpath
+                } else {
+                    format!(
+                        "xpath=(//*[matches(@aria-label, \"{}\")])[{}]",
+                        regex,
+                        index + 1
+                    )
+                }
+            }
             Selector::Image { .. } => unimplemented!("Image selector not supported for Web"),
             Selector::Relative {
                 target,

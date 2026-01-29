@@ -254,6 +254,13 @@ impl IosDriver {
             Selector::XPath(_) => None,
             Selector::Css(_) => None,
             Selector::Role(role, index) => accessibility::find_by_type(&elements, role, *index),
+            Selector::Description(desc, index) => {
+                accessibility::find_by_accessibility_id(&elements, desc, *index)
+            }
+            Selector::DescriptionRegex(pattern, index) => {
+                let regex = Regex::new(pattern).context("Invalid regex pattern")?;
+                accessibility::find_by_accessibility_id_regex(&elements, &regex, *index)
+            }
             Selector::AnyClickable(index) => {
                 // On iOS, we look for elements that are enabled and have actions
                 let flat = accessibility::flatten_elements(&elements);
@@ -356,6 +363,9 @@ impl IosDriver {
             .collect();
 
         // Filter by direction and distance
+        // Calculate scores and collect matches
+        let mut scored_matches: Vec<(&IosElement, f64)> = Vec::new();
+
         use crate::driver::traits::RelativeDirection::*;
         for element in target_base_matches {
             let (ex, ey) = element.center();
@@ -371,11 +381,81 @@ impl IosDriver {
             };
 
             if matches {
-                return Some(element);
+                // Overlap bonus: prioritize elements that overlap on the orthogonal axis
+                let overlap_bonus = match direction {
+                    RightOf | LeftOf => {
+                        // Revised logic using proper f64 comparisons
+                        let cy = ey as f64;
+                        let cy_anchor = ay as f64;
+
+                        let candidate_top = cy - element.frame.height / 2.0;
+                        let candidate_bottom = cy + element.frame.height / 2.0;
+                        let anchor_top = cy_anchor - anchor_element.frame.height / 2.0;
+                        let anchor_bottom = cy_anchor + anchor_element.frame.height / 2.0;
+
+                        let overlap_start = candidate_top.max(anchor_top);
+                        let overlap_end = candidate_bottom.min(anchor_bottom);
+
+                        if overlap_end > overlap_start {
+                            -1_000_000.0
+                        } else {
+                            0.0
+                        }
+                    }
+                    Below | Above => {
+                        let cx = ex as f64;
+                        let cx_anchor = ax as f64;
+
+                        let candidate_left = cx - element.frame.width / 2.0;
+                        let candidate_right = cx + element.frame.width / 2.0;
+                        let anchor_left = cx_anchor - anchor_element.frame.width / 2.0;
+                        let anchor_right = cx_anchor + anchor_element.frame.width / 2.0;
+
+                        let overlap_start = candidate_left.max(anchor_left);
+                        let overlap_end = candidate_right.min(anchor_right);
+
+                        if overlap_end > overlap_start {
+                            -1_000_000.0
+                        } else {
+                            0.0
+                        }
+                    }
+                    Near => 0.0,
+                };
+
+                // Calculate score (distance + alignment penalty)
+                let dist = (((ex - ax).pow(2) + (ey - ay).pow(2)) as f64).sqrt();
+
+                let alignment_penalty = match direction {
+                    Below | Above => (ex - ax).abs() as f64 * 10.0,
+                    LeftOf | RightOf => (ey - ay).abs() as f64 * 10.0,
+                    Near => 0.0,
+                };
+
+                scored_matches.push((element, dist + alignment_penalty + overlap_bonus));
             }
         }
 
-        None
+        // Sort by score
+        scored_matches.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Get index from target selector
+        let target_index = match target {
+            Selector::Text(_, idx, _) => *idx,
+            Selector::TextRegex(_, idx) => *idx,
+            Selector::Id(_, idx) => *idx,
+            Selector::IdRegex(_, idx) => *idx,
+            Selector::Type(_, idx) => *idx,
+            Selector::Role(_, idx) => *idx,
+            Selector::Placeholder(_, idx) => *idx,
+            Selector::AccessibilityId(_) => 0,
+            Selector::Description(_, idx) => *idx,
+            Selector::DescriptionRegex(_, idx) => *idx,
+            Selector::AnyClickable(idx) => *idx,
+            _ => 0,
+        };
+
+        scored_matches.into_iter().nth(target_index).map(|(e, _)| e)
     }
 
     /// Check if element matches a selector (for relative finding)
@@ -394,6 +474,20 @@ impl IosDriver {
                 }
             }
             Selector::AnyClickable(_) => element.visible && element.enabled,
+            Selector::AccessibilityId(id) | Selector::Description(id, _) => {
+                element.matches_label(id)
+            }
+            Selector::DescriptionRegex(pattern, _) => {
+                if let Ok(regex) = Regex::new(pattern) {
+                    element
+                        .label
+                        .as_ref()
+                        .map(|l| regex.is_match(l))
+                        .unwrap_or(false)
+                } else {
+                    false
+                }
+            }
             _ => false,
         }
     }

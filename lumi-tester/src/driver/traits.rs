@@ -36,6 +36,10 @@ pub enum Selector {
     Placeholder(String, usize),
     /// Select by role with index
     Role(String, usize),
+    /// Select by accessibility description/content-desc with index
+    Description(String, usize),
+    /// Select by Regex pattern on description with index
+    DescriptionRegex(String, usize),
     /// Select any clickable element (used as default target for relative-only selectors)
     AnyClickable(usize),
     /// Select relative to another element
