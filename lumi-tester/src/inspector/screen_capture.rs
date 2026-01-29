@@ -4,7 +4,6 @@
 
 use anyhow::Result;
 use base64::{engine::general_purpose::STANDARD, Engine};
-use std::path::Path;
 
 use crate::driver::android::adb;
 

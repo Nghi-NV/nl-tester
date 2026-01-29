@@ -574,6 +574,7 @@ impl TestExecutor {
                             &params.element_type,
                             &params.image,
                             params.index,
+                            &params.scrollable,
                             params.exact,
                         )
                         .ok_or_else(|| anyhow::anyhow!("No selector specified for tapOn"))?;
@@ -619,6 +620,7 @@ impl TestExecutor {
                         &params.element_type,
                         &params.image,
                         params.index,
+                        &params.scrollable,
                         params.exact,
                     )
                     .ok_or_else(|| anyhow::anyhow!("No selector specified for longPressOn"))?;
@@ -645,6 +647,7 @@ impl TestExecutor {
                         &params.element_type,
                         &params.image,
                         params.index,
+                        &params.scrollable,
                         params.exact,
                     )
                     .ok_or_else(|| anyhow::anyhow!("No selector specified for doubleTapOn"))?;
@@ -668,9 +671,10 @@ impl TestExecutor {
                         &params.placeholder,
                         &params.role,
                         &params.element_type,
-                        &None,
-                        None,
-                        false,
+                        &None, // image
+                        None,  // index
+                        &None, // scrollable
+                        false, // exact
                     )
                     .ok_or_else(|| anyhow::anyhow!("No selector specified for rightClick"))?;
                 let timeout = self.context.default_timeout_ms;
@@ -760,6 +764,7 @@ impl TestExecutor {
                             &params.element_type,
                             &params.image,
                             params.index,
+                            &params.scrollable,
                             false,
                         )
                         .ok_or_else(|| {
@@ -783,6 +788,7 @@ impl TestExecutor {
                                 &child_params.element_type,
                                 &child_params.image,
                                 child_params.index,
+                                &params.scrollable,
                                 false,
                             )
                             .ok_or(anyhow::anyhow!("Invalid child selector in containsChild"))?;
@@ -854,6 +860,7 @@ impl TestExecutor {
                             &params.element_type,
                             &params.image,
                             params.index,
+                            &params.scrollable,
                             false,
                         )
                         .ok_or_else(|| {
@@ -877,6 +884,7 @@ impl TestExecutor {
                                 &child_params.element_type,
                                 &child_params.image,
                                 child_params.index,
+                                &params.scrollable,
                                 false,
                             )
                             .ok_or(anyhow::anyhow!("Invalid child selector in containsChild"))?;
@@ -950,6 +958,7 @@ impl TestExecutor {
                             &params.element_type,
                             &params.image,
                             params.index,
+                            &params.scrollable,
                             false,
                         )
                         .ok_or_else(|| {
@@ -972,6 +981,7 @@ impl TestExecutor {
                                 &child_params.element_type,
                                 &child_params.image,
                                 child_params.index,
+                                &params.scrollable,
                                 false,
                             )
                             .ok_or(anyhow::anyhow!("Invalid child selector"))?;
@@ -1039,6 +1049,7 @@ impl TestExecutor {
                         &params.element_type,
                         &params.image,
                         params.index,
+                        &params.scrollable,
                         false,
                     )
                     .ok_or_else(|| {
@@ -1061,6 +1072,7 @@ impl TestExecutor {
                             &child_params.element_type,
                             &child_params.image,
                             child_params.index,
+                            &params.scrollable,
                             false,
                         )
                         .ok_or(anyhow::anyhow!("Invalid child selector"))?;
@@ -1345,6 +1357,7 @@ impl TestExecutor {
                         &params.element_type,
                         &params.image,
                         None,
+                        &params.scrollable,
                         false,
                     )
                     .ok_or_else(|| {
@@ -1354,10 +1367,10 @@ impl TestExecutor {
                 // Parse direction: "up" = swipe up (scroll content down), "down" = swipe down (scroll content up)
                 let direction = params.direction.as_ref().map(|d| {
                     match d.to_lowercase().as_str() {
-                        "up" => SwipeDirection::Down, // To scroll content UP, we swipe DOWN
-                        "down" => SwipeDirection::Up, // To scroll content DOWN, we swipe UP
-                        "left" => SwipeDirection::Right,
-                        "right" => SwipeDirection::Left,
+                        "up" => SwipeDirection::Up,
+                        "down" => SwipeDirection::Down,
+                        "left" => SwipeDirection::Left,
+                        "right" => SwipeDirection::Right,
                         _ => SwipeDirection::Up, // Default
                     }
                 });
@@ -1376,21 +1389,76 @@ impl TestExecutor {
                         &from.element_type,
                         &from.image,
                         from.index,
+                        &from.scrollable,
                         from.exact,
                     )
+                } else if let Some(ref scrollable) = params.scrollable {
+                    // Fallback: swipe the scrollable container itself
+                    Some(crate::driver::traits::Selector::Scrollable(
+                        scrollable.index.unwrap_or(0) as usize,
+                    ))
                 } else {
                     None
                 };
 
-                let found = self
-                    .driver
-                    .scroll_until_visible(&selector, params.max_scrolls, direction, from_selector)
-                    .await?;
+                println!(
+                    "      📜 Scrolling until visible (max_scrolls: {}, timeout: {:?})",
+                    params.max_scrolls, params.timeout
+                );
+
+                let scroll_fut = self.driver.scroll_until_visible(
+                    &selector,
+                    params.max_scrolls,
+                    direction,
+                    from_selector,
+                );
+
+                let found = if let Some(timeout_ms) = params.timeout {
+                    match tokio::time::timeout(
+                        std::time::Duration::from_millis(timeout_ms),
+                        scroll_fut,
+                    )
+                    .await
+                    {
+                        Ok(res) => res?,
+                        Err(_) => {
+                            println!("      ⚠️  Scroll timeout reached after {}ms", timeout_ms);
+                            false
+                        }
+                    }
+                } else {
+                    scroll_fut.await?
+                };
 
                 if found {
                     Ok(())
                 } else {
-                    anyhow::bail!("Element not found after scrolling: {:?}", selector)
+                    // "Blind scroll" logic: If the user only provided a scrollable container
+                    // without an itemIndex or any other selective criteria (text, id, etc.),
+                    // we consider it a success after it has finished scrolling (or timed out).
+                    let is_blind_scroll = params
+                        .scrollable
+                        .as_ref()
+                        .map(|s| s.item_index.is_none())
+                        .unwrap_or(false)
+                        && params.text.is_none()
+                        && params.regex.is_none()
+                        && params.id.is_none()
+                        && params.description.is_none()
+                        && params.xpath.is_none()
+                        && params.css.is_none()
+                        && params.placeholder.is_none()
+                        && params.role.is_none()
+                        && params.element_type.is_none()
+                        && params.image.is_none()
+                        && params.relative.is_none();
+
+                    if is_blind_scroll {
+                        println!("      ✅ Blind scroll completed (no target specified)");
+                        Ok(())
+                    } else {
+                        anyhow::bail!("Element not found after scrolling: {:?}", selector)
+                    }
                 }
             }
 
@@ -1886,6 +1954,7 @@ impl TestExecutor {
                     &None, // element_type
                     &None, // image
                     params.index.map(|i| i as u32),
+                    &None,
                     false,
                 );
 
@@ -2314,6 +2383,7 @@ impl TestExecutor {
                             &from.element_type,
                             &from.image,
                             from.index,
+                            &from.scrollable,
                             from.exact,
                         )
                     } else {
@@ -2595,6 +2665,7 @@ impl TestExecutor {
         element_type: &Option<String>,
         image: &Option<String>,
         index: Option<u32>,
+        scrollable: &Option<crate::parser::types::ScrollableParams>,
         exact: bool,
     ) -> Option<crate::driver::traits::Selector> {
         use crate::driver::traits::Selector;
@@ -2635,6 +2706,11 @@ impl TestExecutor {
             }
         } else if let Some(x) = xpath {
             Selector::XPath(self.context.substitute_vars(x))
+        } else if let Some(scroll_params) = scrollable {
+            Selector::ScrollableItem {
+                scrollable_index: scroll_params.index.unwrap_or(0) as usize,
+                item_index: scroll_params.item_index.map(|i| i as usize),
+            }
         } else if relative.is_some() {
             // When only relative is specified, default to AnyClickable as target
             Selector::AnyClickable(idx)
@@ -2723,7 +2799,7 @@ impl TestExecutor {
     }
 
     /// Handle command failure by dumping UI and taking screenshot
-    async fn handle_failure(&self, flow_name: &str, index: usize, error: &str) {
+    async fn handle_failure(&self, flow_name: &str, index: usize, _error: &str) {
         let safe_flow_name = flow_name.replace("/", "_").replace("\\", "_");
 
         if !self.report_enabled {

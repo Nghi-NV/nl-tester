@@ -57,6 +57,21 @@ pub enum Platform {
     Web,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ScrollableParams {
+    #[serde(default)]
+    pub enable: Option<bool>,
+
+    /// Index of the scrollable container (if multiple exist)
+    #[serde(default)]
+    pub index: Option<u32>,
+
+    /// 'index' attribute of the child item within the scrollable container
+    #[serde(default, alias = "itemIndex")]
+    pub item_index: Option<u32>,
+}
+
 /// Device orientation modes
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -499,6 +514,9 @@ pub struct TapParams {
 
     #[serde(default)]
     pub below: Option<RelativeAnchorInput>,
+
+    #[serde(default)]
+    pub scrollable: Option<ScrollableParams>,
 }
 
 /// Tap element by type and index (e.g., tap 2nd EditText)
@@ -610,6 +628,9 @@ pub struct ScrollUntilVisibleParams {
     pub css: Option<String>,
 
     #[serde(default)]
+    pub scrollable: Option<ScrollableParams>,
+
+    #[serde(default)]
     pub xpath: Option<String>,
     #[serde(default)]
     pub role: Option<String>,
@@ -632,7 +653,7 @@ pub struct ScrollUntilVisibleParams {
     #[serde(default)]
     pub image: Option<String>,
 
-    #[serde(default = "default_max_scrolls")]
+    #[serde(default = "default_max_scrolls", alias = "numberScroll")]
     pub max_scrolls: u32,
 
     #[serde(default)]
@@ -640,6 +661,9 @@ pub struct ScrollUntilVisibleParams {
 
     #[serde(default)]
     pub from: Option<TapParams>,
+
+    #[serde(default)]
+    pub timeout: Option<u64>,
 }
 
 fn default_max_scrolls() -> u32 {
@@ -704,6 +728,9 @@ pub struct AssertParams {
     pub above: Option<RelativeAnchorInput>,
     #[serde(default)]
     pub below: Option<RelativeAnchorInput>,
+
+    #[serde(default)]
+    pub scrollable: Option<ScrollableParams>,
 
     #[serde(default)]
     pub soft: bool,
@@ -1887,6 +1914,8 @@ impl Default for ScrollUntilVisibleParams {
             element_type: None,
             image: None,
             from: None,
+            scrollable: None,
+            timeout: None,
         }
     }
 }

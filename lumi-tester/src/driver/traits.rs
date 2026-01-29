@@ -40,6 +40,13 @@ pub enum Selector {
     Description(String, usize),
     /// Select by Regex pattern on description with index
     DescriptionRegex(String, usize),
+    /// Select by scrollable container index and item index
+    ScrollableItem {
+        scrollable_index: usize,
+        item_index: Option<usize>,
+    },
+    /// Select scrollable container by index
+    Scrollable(usize),
     /// Select any clickable element (used as default target for relative-only selectors)
     AnyClickable(usize),
     /// Select relative to another element

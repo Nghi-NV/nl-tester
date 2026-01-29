@@ -175,7 +175,6 @@ impl IosDriver {
         }
 
         // Parse region
-        use std::str::FromStr;
         let image_region = region.map(|r| ImageRegion::from_str(r)).unwrap_or_default();
         if image_region != ImageRegion::Full {
             println!("      📍 Region: {:?}", image_region);
@@ -278,6 +277,7 @@ impl IosDriver {
             } => self.find_relative_element(&elements, target, anchor, direction, max_dist),
             Selector::Point { .. } => unreachable!(),
             Selector::Image { .. } => None,
+            Selector::ScrollableItem { .. } | Selector::Scrollable(_) => None,
             Selector::HasChild { parent, child } => {
                 let flat = accessibility::flatten_elements(&elements);
                 let parent_candidates: Vec<_> = flat

@@ -58,6 +58,8 @@ pub struct UiElement {
     pub enabled: bool,
     pub focusable: bool,
     pub hint: String,
+    pub scrollable: bool,
+    pub index: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -127,6 +129,8 @@ pub fn parse_hierarchy(xml: &str) -> Result<Vec<UiElement>> {
                         enabled: true,
                         focusable: false,
                         hint: String::new(),
+                        scrollable: false,
+                        index: String::new(),
                     };
 
                     for attr in e.attributes().filter_map(|a| a.ok()) {
@@ -147,6 +151,8 @@ pub fn parse_hierarchy(xml: &str) -> Result<Vec<UiElement>> {
                             "enabled" => element.enabled = value == "true",
                             "focusable" => element.focusable = value == "true",
                             "hint" => element.hint = decode_html_entities(&value),
+                            "scrollable" => element.scrollable = value == "true",
+                            "index" => element.index = value.to_string(),
                             _ => {}
                         }
                     }

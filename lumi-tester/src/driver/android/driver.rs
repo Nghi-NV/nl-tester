@@ -409,6 +409,50 @@ impl AndroidDriver {
         match selector {
             Selector::Point { .. } => None,
             Selector::Image { .. } => None, // Handled by find_image_on_screen
+            Selector::ScrollableItem {
+                scrollable_index,
+                item_index,
+            } => {
+                // Find all scrollable elements
+                let scrollables: Vec<_> = elements.iter().filter(|e| e.scrollable).collect();
+
+                if let Some(scrollable_container) = scrollables.get(*scrollable_index) {
+                    let container_bounds = &scrollable_container.bounds;
+
+                    if let Some(target_idx) = item_index {
+                        let target_index_str = target_idx.to_string();
+                        // Find descendant with matching index
+                        elements
+                            .iter()
+                            .filter(|e| {
+                                // Relaxed check: element center is inside container
+                                let center = e.bounds.center();
+                                container_bounds.left <= center.0
+                                    && container_bounds.right >= center.0
+                                    && container_bounds.top <= center.1
+                                    && container_bounds.bottom >= center.1
+                                    && e.index == target_index_str
+                                    && !std::ptr::eq(
+                                        *e as *const _,
+                                        *scrollable_container as *const _,
+                                    )
+                            })
+                            .next()
+                            .map(|e| (e, false))
+                    } else {
+                        // If no item_index is provided, we return None
+                        // This allows scrollUntilVisible to continue scrolling even if the container is visible
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+
+            Selector::Scrollable(index) => {
+                let scrollables: Vec<_> = elements.iter().filter(|e| e.scrollable).collect();
+                scrollables.get(*index).map(|e| (*e, false))
+            }
 
             Selector::Text(text, index, exact) => if *exact {
                 uiautomator::find_nth_by_text_exact(elements, text, *index as u32).or_else(|| {
@@ -1704,7 +1748,7 @@ impl PlatformDriver for AndroidDriver {
                     }
 
                     // Update state
-                    let (current_speed, current_mode, current_noise) = {
+                    let (current_speed, current_mode, _current_noise) = {
                         let mut states = mock_states.lock().await;
                         if let Some(state) = states.get_mut(&instance_key) {
                             state.current_lat = Some(lat);

@@ -121,9 +121,7 @@ impl YamlGenerator {
     /// Generate YAML for a single action
     fn generate_step(&self, action: &RecordedAction) -> String {
         match action {
-            RecordedAction::Tap {
-                element, selectors, ..
-            } => self.generate_tap_step(selectors),
+            RecordedAction::Tap { selectors, .. } => self.generate_tap_step(selectors),
 
             RecordedAction::LongPress {
                 selectors,
@@ -347,6 +345,8 @@ mod tests {
             enabled: true,
             focusable: true,
             hint: String::new(),
+            scrollable: false,
+            index: "0".to_string(),
         };
 
         let selectors = vec![

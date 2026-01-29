@@ -503,6 +503,9 @@ impl WebDriver {
                 let c = self.selector_to_playwright(child);
                 format!("{} >> :has({})", p, c)
             }
+            Selector::ScrollableItem { .. } | Selector::Scrollable(_) => {
+                unimplemented!("ScrollableItem/Scrollable not supported for Web")
+            }
         }
     }
 

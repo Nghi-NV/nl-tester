@@ -5,7 +5,7 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::{Html, IntoResponse, Json},
+    response::{IntoResponse, Json},
     routing::{get, post},
     Router,
 };
@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use super::screen_capture::{self, ScreenCapture};
 use crate::driver::android::uiautomator;
-use crate::recorder::selector_scorer::{SelectorCandidate, SelectorScorer};
+use crate::recorder::selector_scorer::SelectorScorer;
 
 /// Shared state for API handlers
 pub struct AppState {
@@ -619,7 +619,7 @@ async fn play_command(
     // Simple execution based on command type
     let result = if cmd.contains("tap:") {
         // For tap, we should find element but for now just acknowledge
-        if let Some(value) = extract_selector_value(&cmd) {
+        if let Some(_value) = extract_selector_value(&cmd) {
             // Would need to find element coordinates - simplified for now
             adb::shell(serial, "input tap 500 500").await
         } else {
@@ -647,7 +647,7 @@ async fn play_command(
     };
 
     match result {
-        Ok(output) => (StatusCode::OK, format!("✓ {}", cmd)),
+        Ok(_output) => (StatusCode::OK, format!("✓ {}", cmd)),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
     }
 }

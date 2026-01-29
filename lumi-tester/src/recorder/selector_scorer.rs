@@ -335,6 +335,8 @@ mod tests {
             enabled: true,
             focusable: true,
             hint: String::new(),
+            scrollable: false,
+            index: "0".to_string(),
         }
     }
 
