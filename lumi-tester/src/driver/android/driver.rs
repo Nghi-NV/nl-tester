@@ -136,6 +136,7 @@ pub struct AndroidDriver {
     /// Cached: original IME to restore after using ADBKeyBoard
     original_ime: String,
     /// Whether to use Unicode input support (ADBKeyBoard) - default: false for speed
+    #[allow(dead_code)]
     support_unicode: bool,
 }
 
@@ -2679,6 +2680,7 @@ fn calculate_bearing(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
 
 /// Map ASCII character to Android keycode
 /// Returns (keycode, needs_shift)
+#[allow(dead_code)]
 fn char_to_keycode(c: char) -> Option<(u32, bool)> {
     match c {
         'a'..='z' => Some((29 + (c as u32 - 'a' as u32), false)), // KEYCODE_A = 29

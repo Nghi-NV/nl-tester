@@ -68,6 +68,7 @@ impl RecordedAction {
 }
 
 /// Touch event type from getevent
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct TouchEvent {
     event_type: TouchEventType,
@@ -76,6 +77,7 @@ struct TouchEvent {
     timestamp: Instant,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 enum TouchEventType {
     Down,

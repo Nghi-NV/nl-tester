@@ -32,6 +32,7 @@ pub struct TestExecutor {
     target_tags: Option<Vec<String>>,
     soft_errors: Vec<String>,
     video_enabled: bool,
+    #[allow(dead_code)]
     snapshot_enabled: bool,
     report_enabled: bool,
 }
