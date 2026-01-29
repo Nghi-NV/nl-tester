@@ -5,6 +5,7 @@ import { LumiCodeLensProvider } from './codeLensProvider';
 import { LumiDecorationProvider } from './decorationProvider';
 import { LumiTestRunner } from './testRunner';
 import { DeviceManager } from './deviceManager';
+import { InspectorPanel } from './inspectorPanel';
 
 let terminal: vscode.Terminal | undefined;
 let testRunner: LumiTestRunner | undefined;
@@ -91,6 +92,33 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('lumi-tester.refreshDevices', async () => {
       const devices = await deviceManager?.refreshDevices(true);
       vscode.window.showInformationMessage(`Found ${devices?.length || 0} devices`);
+    })
+  );
+
+  // Inspector command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lumi-tester.openInspector', async () => {
+      console.log('Lumi: openInspector command triggered');
+
+      const editor = vscode.window.activeTextEditor;
+      const filePath = editor?.document.uri.fsPath || '';
+      console.log('Lumi: Active file path:', filePath);
+
+      const lumiPath = findLumiTesterPath(filePath);
+      console.log('Lumi: Found lumi-tester path:', lumiPath);
+
+      if (!lumiPath) {
+        vscode.window.showErrorMessage('Could not find lumi-tester. Please set lumi-tester.lumiTesterPath in settings.');
+        return;
+      }
+
+      try {
+        await InspectorPanel.show(context, lumiPath);
+        console.log('Lumi: InspectorPanel.show() completed');
+      } catch (error) {
+        console.error('Lumi: Error showing inspector panel:', error);
+        vscode.window.showErrorMessage(`Failed to open inspector: ${error}`);
+      }
     })
   );
 

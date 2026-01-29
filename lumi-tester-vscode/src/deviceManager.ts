@@ -14,17 +14,28 @@ export class DeviceManager {
   private cachedDevices: Device[] = [];
   private selectedDevice: Device | null = null;
   private statusBarItem: vscode.StatusBarItem;
+  private inspectorStatusBar: vscode.StatusBarItem;
   private lastRefresh: number = 0;
   private cacheTimeout = 10000;
   private initialized = false;
 
   private constructor() {
+    // Device selector status bar
     this.statusBarItem = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Right,
       50
     );
     this.statusBarItem.command = 'lumi-tester.selectDevice';
     this.updateStatusBar();
+
+    // Inspector status bar button
+    this.inspectorStatusBar = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Right,
+      49  // Slightly lower priority so it appears to the right of device selector
+    );
+    this.inspectorStatusBar.text = '$(search) Inspector';
+    this.inspectorStatusBar.tooltip = 'Open Element Inspector - Click to dump screen and get selectors';
+    this.inspectorStatusBar.command = 'lumi-tester.openInspector';
 
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       this.updateStatusBarVisibility(editor);
@@ -65,8 +76,10 @@ export class DeviceManager {
   private updateStatusBarVisibility(editor: vscode.TextEditor | undefined): void {
     if (editor && editor.document.languageId === 'yaml') {
       this.statusBarItem.show();
+      this.inspectorStatusBar.show();
     } else {
       this.statusBarItem.hide();
+      this.inspectorStatusBar.hide();
     }
   }
 
@@ -384,5 +397,6 @@ export class DeviceManager {
 
   public dispose(): void {
     this.statusBarItem.dispose();
+    this.inspectorStatusBar.dispose();
   }
 }
