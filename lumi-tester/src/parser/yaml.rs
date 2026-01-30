@@ -598,6 +598,10 @@ fn parse_command_with_params(
             }
         }
 
+        "sendLarkMessage" | "sendlarkmessage" | "lark" => {
+            TestCommand::SendLarkMessage(serde_yaml::from_value(params.clone())?)
+        }
+
         "tapAt" => {
             let p: TapAtParams = serde_yaml::from_value(params.clone())?;
             TestCommand::TapAt(p)

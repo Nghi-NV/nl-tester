@@ -241,6 +241,9 @@ pub enum TestCommand {
     #[serde(alias = "waitNotSee")]
     WaitUntilNotVisible(AssertParamsInput),
 
+    #[serde(rename = "sendLarkMessage", alias = "lark")]
+    SendLarkMessage(SendLarkMessageParams),
+
     // Control flow
     WaitForAnimationToEnd,
     #[serde(alias = "await")]
@@ -1129,6 +1132,63 @@ pub struct TypeParams {
     pub selector: Option<String>,
 }
 
+// Assuming TestCommand enum definition is elsewhere and AssertVisible is a variant of it.
+// Adding the new variant here as per the instruction's implied structure.
+// This requires defining SendLarkMessageParams and AssertVisibleParams if they don't exist.
+// If TestCommand enum was provided, the variant would be added directly to it.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssertVisibleParams {
+    // ... fields ...
+    #[serde(default)]
+    pub text: Option<String>,
+    #[serde(default)]
+    pub regex: Option<String>,
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(flatten)]
+    pub relative: Option<RelativeParams>,
+    #[serde(default)]
+    pub right_of: Option<String>,
+    #[serde(default)]
+    pub left_of: Option<String>,
+    #[serde(default)]
+    pub above: Option<String>,
+    #[serde(default)]
+    pub below: Option<String>,
+    #[serde(default)]
+    pub css: Option<String>,
+    #[serde(default)]
+    pub xpath: Option<String>,
+    #[serde(default)]
+    pub placeholder: Option<String>,
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default, alias = "type")]
+    pub element_type: Option<String>,
+    #[serde(default)]
+    pub image: Option<String>,
+    #[serde(default)]
+    pub index: Option<usize>,
+    #[serde(default)]
+    pub scrollable: Option<bool>,
+
+    // Assert specific
+    #[serde(default)]
+    pub timeout: Option<u64>,
+    #[serde(default)]
+    pub soft: bool,
+
+    #[serde(default, alias = "containsChild")]
+    pub contains_child: Option<Box<AssertVisibleParams>>,
+
+    #[serde(default)]
+    pub selector: Option<String>,
+}
+
 impl TestCommand {
     /// Get a display name for the command
     pub fn display_name(&self) -> String {
@@ -1464,6 +1524,7 @@ impl TestCommand {
                     format!("press(\"{}\")", k.key())
                 }
             }
+            TestCommand::SendLarkMessage(_) => "sendLarkMessage".to_string(),
             TestCommand::PushFile(p) => format!("pushFile({} -> {})", p.source, p.destination),
             TestCommand::PullFile(p) => format!("pullFile({} -> {})", p.source, p.destination),
             TestCommand::ClearAppData(pkg) => format!("clearAppData({})", pkg),
@@ -1599,6 +1660,25 @@ pub struct HttpRequestParams {
 
     #[serde(default)]
     pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SendLarkMessageParams {
+    pub webhook: String,
+
+    #[serde(default)]
+    pub secret: Option<String>,
+
+    #[serde(default)]
+    pub title: Option<String>,
+
+    pub content: String,
+
+    #[serde(default)]
+    pub status: Option<String>,
+
+    #[serde(default)]
+    pub files: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

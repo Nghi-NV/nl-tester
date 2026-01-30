@@ -128,6 +128,14 @@ impl TestContext {
                     return val;
                 }
 
+                // 1b. Handle dynamic time variables
+                match full_key {
+                    "time" => return chrono::Local::now().format("%H:%M:%S").to_string(),
+                    "date" => return chrono::Local::now().format("%Y-%m-%d").to_string(),
+                    "timestamp" => return chrono::Utc::now().timestamp().to_string(),
+                    _ => {}
+                }
+
                 // 2. Try splitting by first dot to access JSON object
                 if full_key.contains('.') {
                     let parts: Vec<&str> = full_key.splitn(2, '.').collect();

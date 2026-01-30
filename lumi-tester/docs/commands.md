@@ -254,14 +254,31 @@ tap:
 
 ---
 
-### `setLocale` / `locale`
-**Mô tả**: Thay đổi ngôn ngữ và vùng (Locale) của thiết bị.
+### `setLocale`
+Change the device locale (Android only).
 
-**Ví dụ**:
 ```yaml
 - setLocale: "en_US"
-- locale: "vi_VN"
 ```
+
+### `sendLarkMessage`
+
+Send a notification message to Lark/Feishu via Custom Bot.
+Supports variable substitution (`${time}`, `${date}`) and embedding file content.
+If `secret` is provided, the message will be signed (HMAC-SHA256).
+
+```yaml
+- sendLarkMessage:
+    webhook: "https://open.larksuite.com/open-apis/bot/v2/hook/..."
+    secret: "optional_secret_key"
+    title: "Test Report ${date}"
+    content: "All tests passed at ${time}"
+    status: "success" # success, failure, info, warning
+    files:
+      - "./output/report.json"
+```
+
+## Clipboard
 
 ---
 

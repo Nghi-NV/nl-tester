@@ -2652,6 +2652,143 @@ impl TestExecutor {
                 self.driver.set_locale(&locale_val).await
             }
 
+            TestCommand::SendLarkMessage(params) => {
+                let webhook_url = self.context.substitute_vars(&params.webhook);
+
+                let title = params
+                    .title
+                    .as_ref()
+                    .map(|t| self.context.substitute_vars(t))
+                    .unwrap_or_else(|| "Test Report".to_string());
+
+                let mut content = self.context.substitute_vars(&params.content);
+
+                // Append file contents if any
+                if let Some(files) = &params.files {
+                    for file_path_str in files {
+                        // Resolve variable in file path
+                        let resolved_path_str = self.context.substitute_vars(file_path_str);
+                        let path = self.context.resolve_path(&resolved_path_str);
+
+                        if path.exists() {
+                            match std::fs::read_to_string(&path) {
+                                Ok(file_content) => {
+                                    let filename =
+                                        path.file_name().unwrap_or_default().to_string_lossy();
+                                    // Truncate if too long (Lark has limits)
+                                    let display_content = if file_content.len() > 4000 {
+                                        format!("{}... (truncated)", &file_content[..4000])
+                                    } else {
+                                        file_content
+                                    };
+                                    content.push_str(&format!(
+                                        "\n\n📄 **File: {}**\n```\n{}\n```",
+                                        filename, display_content
+                                    ));
+                                }
+                                Err(e) => {
+                                    content.push_str(&format!(
+                                        "\n\n⚠️ Failed to read file {}: {}",
+                                        resolved_path_str, e
+                                    ));
+                                }
+                            }
+                        } else {
+                            content
+                                .push_str(&format!("\n\n⚠️ File not found: {}", resolved_path_str));
+                        }
+                    }
+                }
+
+                // Determine status color/style
+                let status = params.status.as_deref().unwrap_or("info");
+                let theme_color = match status.to_lowercase().as_str() {
+                    "success" => "green",
+                    "failure" | "failed" | "error" => "red",
+                    "warning" => "yellow",
+                    _ => "blue",
+                };
+
+                // Prepare payload
+                let mut payload_map = serde_json::Map::new();
+                payload_map.insert(
+                    "msg_type".to_string(),
+                    serde_json::Value::String("interactive".to_string()),
+                );
+
+                // Add signature if secret is provided
+                if let Some(secret_tmpl) = &params.secret {
+                    let secret = self.context.substitute_vars(secret_tmpl);
+                    if !secret.is_empty() {
+                        let timestamp = chrono::Utc::now().timestamp();
+                        let string_to_sign = format!("{}\n{}", timestamp, secret);
+
+                        use base64::Engine;
+                        use hmac::{Hmac, Mac};
+                        use sha2::Sha256;
+
+                        type HmacSha256 = Hmac<Sha256>;
+                        // Note: Lark uses the timestamp+secret string as the HMAC key, and signs an empty message.
+                        let mut mac = HmacSha256::new_from_slice(string_to_sign.as_bytes())
+                            .expect("HMAC can take any size");
+                        mac.update(&[]);
+                        let signature_bytes = mac.finalize().into_bytes();
+                        let sign =
+                            base64::engine::general_purpose::STANDARD.encode(signature_bytes);
+
+                        payload_map.insert(
+                            "timestamp".to_string(),
+                            serde_json::Value::Number(timestamp.into()),
+                        );
+                        payload_map.insert("sign".to_string(), serde_json::Value::String(sign));
+                    }
+                }
+
+                // Construct Lark Card JSON
+                let card_value = serde_json::json!({
+                    "header": {
+                        "title": {
+                            "tag": "plain_text",
+                            "content": title
+                        },
+                        "template": theme_color
+                    },
+                    "elements": [
+                        {
+                            "tag": "div",
+                            "text": {
+                                "tag": "lark_md",
+                                "content": content
+                            }
+                        }
+                    ]
+                });
+                payload_map.insert("card".to_string(), card_value);
+
+                let payload = serde_json::Value::Object(payload_map);
+
+                self.emitter.emit(TestEvent::Log {
+                    message: format!("{} Sending Lark message to {}", "📨".cyan(), webhook_url),
+                    depth: self.depth,
+                });
+
+                let client = reqwest::Client::new();
+                let res = client
+                    .post(&webhook_url)
+                    .json(&payload)
+                    .send()
+                    .await
+                    .context("Failed to send request to Lark")?;
+
+                if !res.status().is_success() {
+                    let status = res.status();
+                    let text = res.text().await.unwrap_or_default();
+                    anyhow::bail!("Lark API failed: {} - {}", status, text);
+                }
+
+                Ok(())
+            }
+
             // Unimplemented commands
             TestCommand::ExportReport(_)
             | TestCommand::Navigate(_)

@@ -16,6 +16,7 @@ export interface LumiCommand {
   hasParams: boolean;
   snippet?: string;
   params?: CommandParam[];
+  platforms?: string[];
 }
 
 export const LUMI_COMMANDS: LumiCommand[] = [
@@ -631,9 +632,23 @@ export const LUMI_COMMANDS: LumiCommand[] = [
   {
     name: 'setLocale',
     category: 'System',
-    description: 'Change device locale',
+    description: 'Set device locale (Android only)',
     hasParams: true,
-    snippet: 'setLocale: "${1:en_US}"'
+    snippet: 'setLocale: "${1:en_US}"',
+    platforms: ['android']
+  },
+  {
+    name: 'sendLarkMessage',
+    category: 'System',
+    description: 'Send a notification to Lark/Feishu',
+    hasParams: true,
+    snippet: `sendLarkMessage:
+    webhook: "\${1:https://...}"
+    secret: "\${2:optional_secret}"
+    title: "\${3:Test Report}"
+    content: "\${4:Tests completed}"
+    status: "\${5|success,failure,info,warning|}"`,
+    platforms: ['android', 'ios', 'web']
   },
 
   // Clipboard
