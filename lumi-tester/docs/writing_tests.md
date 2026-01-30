@@ -41,7 +41,7 @@ Phần Header nằm phía trên dấu `---`. Nếu không có dấu `---`, các 
 | `appId` | - | String | Package name (Android) hoặc Bundle ID (iOS). |
 | `url` | - | String | URL khởi tạo (Web). |
 | `platform` | - | String | `android`, `ios`, `web`. |
-| `env` | `vars`, `var`| Map | Định nghĩa các biến môi trường (Key-Value). |
+| `env` | `vars`, `var`| Map | Định nghĩa biến môi trường (Key-Value) hoặc load từ file (`file: path`). |
 | `data` | - | String | Path tới file dữ liệu (CSV/JSON). |
 | `defaultTimeout` | - | Number | Thời gian chờ mặc định (ms) cho các lệnh. |
 | `tags` | - | Array | Danh sách nhãn phân loại test. |

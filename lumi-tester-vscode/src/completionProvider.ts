@@ -14,6 +14,7 @@ const HEADER_FIELDS: HeaderField[] = [
   { name: 'name', description: 'Test file name (optional)', type: 'string', snippet: 'name: "$1"' },
   { name: 'tags', description: 'Test tags for filtering', type: 'array', snippet: 'tags:\n  - $1' },
   { name: 'env', description: 'Environment variables', type: 'object', snippet: 'env:\n  $1: "$2"' },
+  { name: 'env (file)', description: 'Load environment variables from file', type: 'object', snippet: 'env:\n  file: ${1:.env}' },
   { name: 'vars', description: 'Environment variables (alias for env)', type: 'object', snippet: 'vars:\n  $1: "$2"' },
   { name: 'speed', description: 'Execution speed (turbo, fast, normal, safe)', type: 'string', snippet: 'speed: "${1|turbo,fast,normal,safe|}"' },
   { name: 'browser', description: 'Web browser (Chrome, Firefox, Webkit)', type: 'string', snippet: 'browser: "${1|Chrome,Firefox,Webkit|}"' },

@@ -29,7 +29,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
 
         // Parse header
         let mut flow = if !header.is_empty() {
-            parse_header(header)?
+            parse_header(header, _source_path)?
         } else {
             TestFlow {
                 app_id: None,
@@ -148,7 +148,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
 }
 
 /// Parse the header section of a YAML test file
-fn parse_header(header: &str) -> Result<TestFlow> {
+fn parse_header(header: &str, base_path: &Path) -> Result<TestFlow> {
     #[derive(serde::Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Header {
@@ -159,7 +159,7 @@ fn parse_header(header: &str) -> Result<TestFlow> {
         #[serde(default)]
         platform: Option<Platform>,
         #[serde(default, alias = "vars", alias = "var")]
-        env: Option<std::collections::HashMap<String, String>>,
+        env: Option<serde_yaml::Value>,
         #[serde(default)]
         data: Option<String>,
         #[serde(default, alias = "defaultTimeout")]
@@ -176,11 +176,66 @@ fn parse_header(header: &str) -> Result<TestFlow> {
 
     let parsed: Header = serde_yaml::from_str(header).context("Failed to parse YAML header")?;
 
+    // Process env
+    let mut env_map = std::collections::HashMap::new();
+
+    if let Some(env_val) = parsed.env {
+        match env_val {
+            serde_yaml::Value::Mapping(map) => {
+                // Check if it's the special syntax: env: { file: "..." }
+                if let Some(file_val) = map.get(&serde_yaml::Value::String("file".to_string())) {
+                    if let Some(file_path_str) = file_val.as_str() {
+                        // Resolve path relative to base_path
+                        let env_path = if let Some(parent) = base_path.parent() {
+                            parent.join(file_path_str)
+                        } else {
+                            Path::new(file_path_str).to_path_buf()
+                        };
+
+                        // Read .env file
+                        let content = std::fs::read_to_string(&env_path).with_context(|| {
+                            format!("Failed to read env file: {}", env_path.display())
+                        })?;
+
+                        // Parse .env content (simple KEY=VAL)
+                        for line in content.lines() {
+                            let line = line.trim();
+                            if line.is_empty() || line.starts_with('#') {
+                                continue;
+                            }
+                            if let Some((key, val)) = line.split_once('=') {
+                                env_map.insert(key.trim().to_string(), val.trim().to_string());
+                            }
+                        }
+                    }
+                } else {
+                    // Normal map syntax
+                    for (k, v) in map {
+                        if let (Some(k_str), Some(v_str)) = (k.as_str(), v.as_str()) {
+                            env_map.insert(k_str.to_string(), v_str.to_string());
+                        } else if let (Some(k_str), Some(v_num)) = (k.as_str(), v.as_u64()) {
+                            env_map.insert(k_str.to_string(), v_num.to_string());
+                        } else if let (Some(k_str), Some(v_bool)) = (k.as_str(), v.as_bool()) {
+                            env_map.insert(k_str.to_string(), v_bool.to_string());
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let env = if env_map.is_empty() {
+        None
+    } else {
+        Some(env_map)
+    };
+
     Ok(TestFlow {
         app_id: parsed.app_id,
         url: parsed.url,
         platform: parsed.platform,
-        env: parsed.env,
+        env,
         data: parsed.data,
         default_timeout_ms: parsed.default_timeout,
         commands: Vec::new(),
