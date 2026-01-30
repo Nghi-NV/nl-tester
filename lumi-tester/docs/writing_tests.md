@@ -1,95 +1,124 @@
 # ✍️ Hướng dẫn Viết Test
 
-Tài liệu này giúp bạn viết các kịch bản test hiệu quả và dễ bảo trì.
+Tài liệu này giúp bạn hiểu rõ cấu trúc file kịch bản test và cách tổ chức một test flow hiệu quả.
 
-## 📄 File YAML cơ bản
+## 📄 Cấu trúc File YAML
 
-Mỗi file test bắt đầu bằng phần khai báo (Header) và sau đó là danh sách các lệnh (Steps), phân cách bởi `---`.
+`lumi-tester` chấp nhận hai định dạng file để phù hợp với nhu cầu đơn giản hoặc phức tạp.
+
+### 1. Định dạng Phân tách (Header --- Steps)
+Đây là định dạng khuyến nghị cho các test thực tế. Sử dụng dấu `---` để tách biệt phần khai báo cấu hình và danh sách các lệnh thực thi.
 
 ```yaml
 appId: com.example.app
-name: "Test Đăng nhập"
+platform: android
+tags:
+  - smoke
+  - regression
 ---
-- open: "com.example.app"
-- tap: "Bắt đầu"
+- launchApp
+- tap: "Login"
 ```
+
+### 2. Định dạng Map (Single Block)
+Phù hợp khi bạn muốn định nghĩa toàn bộ test trong một cấu trúc map duy nhất, hoặc khi Test Flow được lồng vào một hệ thống khác.
+
+```yaml
+appId: com.example.app
+steps: # Hoặc 'commands'
+  - open: "com.example.app"
+  - tap: "Login"
+```
+
+---
+
+## 📋 Các trường Header (Khai báo)
+
+Phần Header nằm phía trên dấu `---`. Nếu không có dấu `---`, các trường này có thể khai báo cùng cấp với `steps`.
+
+| Trường | Alias | Kiểu dữ liệu | Mô tả |
+| :--- | :--- | :--- | :--- |
+| `appId` | - | String | Package name (Android) hoặc Bundle ID (iOS). |
+| `url` | - | String | URL khởi tạo (Web). |
+| `platform` | - | String | `android`, `ios`, `web`. |
+| `env` | `vars`, `var`| Map | Định nghĩa các biến môi trường (Key-Value). |
+| `data` | - | String | Path tới file dữ liệu (CSV/JSON). |
+| `defaultTimeout` | - | Number | Thời gian chờ mặc định (ms) cho các lệnh. |
+| `tags` | - | Array | Danh sách nhãn phân loại test. |
+| `speed` | - | String | Tốc độ: `turbo`, `fast`, `normal`, `safe`. |
+| `browser` | - | String | (Web) `Chrome`, `Firefox`, `Webkit`. |
+| `closeWhenFinish`| - | Boolean | Tự động đóng app khi kết thúc. |
+| `steps` | `commands` | Array | Danh sách các lệnh (Dùng trong định dạng Map). |
+
+---
 
 ## 🔍 Cách tìm Elements (Selectors)
 
 `lumi-tester` hỗ trợ nhiều cách để xác định element trên màn hình:
 
-1.  **Theo Text**: Tìm văn bản hiển thị.
+1.  **Theo Text**: Tìm văn bản hiển thị (case-insensitive).
     ```yaml
     - tap: "Login"
     ```
-2.  **Theo Resource ID**: ID định danh trong code (R.id.xxx).
+2.  **Theo Resource ID**: ID định danh trong code. (Alias: `id`)
     ```yaml
     - tap:
-        id: "com.example:id/btn_login"
+        id: "btn_login"
     ```
-3.  **Theo Tọa độ**: Khi element không có ID hoặc Text. Hỗ trợ cả tọa độ tuyệt đối và phần trăm.
+3.  **Theo Tọa độ**: Phù hợp khi element không có định danh. (Alias: `point`)
     ```yaml
-    # Tọa độ tuyệt đối (pixels)
-    - tap: 
-        point: "500,1000"
-    
-    # Tọa độ phần trăm (responsive)
     - tap:
         point: "50%,80%"
     ```
-4.  **Theo Regex**: Khớp văn bản theo khuôn mẫu. Hỗ trợ các cú pháp nâng cao:
-    - `.` (bất kỳ ký tự nào), `*` (0 hoặc nhiều), `+` (1 hoặc nhiều).
-    - `\d+` (số), `\d{4}` (4 chữ số).
-    - `[0-9]` (khoảng ký tự), `(A|B)` (lựa chọn).
-    
+4.  **Theo Regex**: Tìm theo biểu mẫu của chữ. (Alias: `regex`)
     ```yaml
-    - see:
-        regex: "Chào mừng .+"
     - see:
         regex: "OTP: \\d{6}"
     ```
+5.  **Theo Vị trí tương đối**: (Aliases: `rightOf`, `leftOf`, `above`, `below`)
+    ```yaml
+    - tap:
+        rightOf: "Username"
+        type: "EditText"
+    ```
+6.  **Theo Mô tả (Accessibility)**: (Aliases: `desc`, `contentDesc`, `accessibilityId`)
+    ```yaml
+    - tap:
+        desc: "Nút Lưu"
+    ```
+
+### 🧱 Tìm hiểu về `type` (Element Type)
+Trường `type` giúp chỉ định loại thành phần:
+- **Android**: `Button`, `EditText`, `TextView`, `ImageView`, `CheckBox`, `Switch`.
+- **iOS**: `Button`, `TextField`, `SecureTextField`, `StaticText`, `Image`, `Cell`.
+- **Web**: `input`, `button`, `a`, `span`, `div`, `p`.
+
+---
 
 ## 📦 Biến số và Substitutions
 
-Bạn có thể lưu dữ liệu và sử dụng lại bằng cách dùng biến.
-
+Sử dụng `${variable_name}` để truy xuất biến.
 ```yaml
-- setVar:
-    name: "user_email"
-    value: "tester@qora.vn"
-
-- inputText:
-    id: "email_field"
-    text: "${user_email}"
-
-# Nhập tiếng Việt có dấu hoặc ký tự đặc biệt
-- inputText:
-    text: "Mật khẩu @123"
-    unicode: true
+vars:
+  username: "test_user"
+---
+- write: "${username}"
 ```
 
-## 🔄 Xử lý Animations và Chờ đợi
-
-Smartphone thường có độ trễ hoặc hiệu ứng chuyển cảnh. 
-- Dùng `wait: 1000` (chờ cứng - không khuyến khích).
-- Dùng `see: "Text"`: `lumi-tester` sẽ tự động chờ (default timeout) cho tới khi text xuất hiện.
+---
 
 ## 🤝 Best Practices
 
-1.  **Sử dụng `setup.yaml`**: Để reset trạng thái app trước mỗi test case.
-2.  **Đặt tên file rõ ràng**: Ví dụ `01_login_success.yaml`, `02_login_fail.yaml`.
-3.  **Hỗ trợ Accessibility**: Khuyên khích dev đặt `contentDescription` cho các icon/button không có text. `lumi-tester` có thể tìm theo mô tả này.
-4.  **Hạn chế dùng tọa độ cứng**: App có thể chạy trên nhiều kích cỡ màn hình khác nhau. Hãy ưu tiên dùng Text hoặc ID. Nếu dùng tọa độ, hãy dùng percentage (`"50%,50%"`).
+1.  **Sử dụng `setup.yaml` & `teardown.yaml`**: Để tái sử dụng code login/logout.
+2.  **Tránh Tọa độ Cứng**: Luôn ưu tiên Text, ID. Nếu dùng tọa độ, hãy dùng percentage.
+3.  **Sâu chuỗi sub-flows**: Dùng `runFlow` để module hóa kịch bản.
 
 ## 📁 Tổ chức thư mục
 
 ```text
 tests/
-├── setup.yaml          # Chạy trước mỗi test
-├── teardown.yaml       # Chạy sau mỗi test
-├── auth/               # Nhóm các test authentication
-│   ├── login.yaml
-│   └── signup.yaml
-└── feature_x/          # Nhóm các test tính năng X
-    └── feature_steps.yaml
+├── setup.yaml
+├── data/
+├── common/             # Sub-flows (Login.yaml)
+└── scenarios/          # Test chính
 ```

@@ -15,7 +15,7 @@
 ### Web Performance (Playwright)
 - [ ] **Web Vitals**: Measure LCP, CLS, FID via PerformanceObserver.
 - [ ] **Navigation Timing**: Page Load, First Paint.
-- [ ] **Throttling**: CPU and Network throttling support.
+- [x] **Throttling**: CPU and Network throttling support (`setCpuThrottling`, `setNetworkConditions`).
 
 ### API & Load Testing (JMeter Style)
 - [x] **Direct HTTP**: `httpRequest` command (Method, URL, Body, Save Response).

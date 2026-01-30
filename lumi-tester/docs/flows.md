@@ -85,3 +85,33 @@ Khi một lệnh thất bại, `lumi-tester` thực hiện các bước sau đ�
 
 - **Tính độc lập**: Mỗi file test nên độc lập, không phụ thuộc vào kết quả của file trước.
 - **Dùng Sub-flows**: Có thể dùng lệnh `runFlow` để gọi các file YAML khác như một hàm, giúp tái sử dụng code.
+---
+
+## 📄 Cấu trúc File YAML
+
+Một file test flow tiêu chuẩn của `lumi-tester` được chia làm 2 phần chính:
+
+### 1. Header (Khai báo)
+Chứa các thông tin cấu hình cho toàn bộ kịch bản test.
+- `appId`: Package/Bundle ID.
+- `platform`: `android`, `ios`, `web`.
+- `vars` (alias `env`): Các biến dùng chung.
+- `speed`: Tốc độ chạy (`turbo`, `fast`, `normal`, `safe`).
+- `defaultTimeout`: Timeout mặc định cho mỗi bước.
+
+### 2. Steps (Danh sách Lệnh)
+Danh sách các hành động sẽ được thực hiện tuần tự. Phần này bắt đầu sau dấu phân cách `---`.
+Mỗi bước có thể là một chuỗi (lệnh đơn giản) hoặc một map (lệnh kèm tham số).
+
+```yaml
+appId: com.example.app
+platform: android
+---
+- open
+- tap: "Login"
+- inputText:
+    id: "user_field"
+    text: "admin"
+```
+
+> **Mẹo**: Bạn cũng có thể dùng định dạng map duy nhất với khóa `steps` hoặc `commands` nếu không muốn dùng dấu `---`.
