@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { exec } from 'child_process';
 import { LumiCompletionProvider } from './completionProvider';
 import { LumiCodeLensProvider } from './codeLensProvider';
 import { LumiDecorationProvider } from './decorationProvider';
@@ -168,7 +169,7 @@ function findLumiTesterPath(testFilePath: string): string | null {
   // 3. Check global PATH
   const checkGlobal = new Promise<string>((resolve, reject) => {
     const command = process.platform === 'win32' ? 'where lumi-tester' : 'which lumi-tester';
-    exec(command, (err, stdout) => {
+    exec(command, (err: Error | null, stdout: string) => {
       if (err || !stdout) {
         reject(err);
       } else {
