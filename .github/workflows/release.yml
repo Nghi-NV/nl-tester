@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build ${{ matrix.target }}
@@ -67,7 +70,7 @@ jobs:
         uses: actions/download-artifact@v4
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             lumi-tester-linux-amd64/lumi-tester-linux-amd64
