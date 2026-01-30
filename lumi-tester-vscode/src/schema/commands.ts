@@ -98,7 +98,16 @@ export const LUMI_COMMANDS: LumiCommand[] = [
       { name: 'placeholder', type: 'string', description: 'Find by placeholder text' },
       { name: 'role', type: 'string', description: 'Find by role attribute' },
       { name: 'image', type: 'string', description: 'Find by image template matching' },
-      { name: 'optional', type: 'boolean', description: 'Skip if not found' }
+      { name: 'optional', type: 'boolean', description: 'Skip if not found' },
+      { name: 'desc', type: 'string', description: 'Find by content description/accessibility ID' },
+      { name: 'exact', type: 'boolean', description: 'Match text exactly (case-sensitive)' },
+      { name: 'retryTapIfNoChange', type: 'boolean', description: 'Retry tap if UI does not change' },
+      { name: 'scrollable', type: 'object', description: 'Auto-scroll configuration' },
+      // Relative positioning
+      { name: 'rightOf', type: 'string', description: 'Find element right of anchor' },
+      { name: 'leftOf', type: 'string', description: 'Find element left of anchor' },
+      { name: 'above', type: 'string', description: 'Find element above anchor' },
+      { name: 'below', type: 'string', description: 'Find element below anchor' }
     ]
   },
   {
@@ -138,7 +147,13 @@ export const LUMI_COMMANDS: LumiCommand[] = [
       { name: 'type', type: 'string', description: 'Element type (Button, EditText...)' },
       { name: 'placeholder', type: 'string', description: 'Find by placeholder text' },
       { name: 'role', type: 'string', description: 'Find by role attribute' },
-      { name: 'image', type: 'string', description: 'Find by image template matching' }
+      { name: 'image', type: 'string', description: 'Find by image template matching' },
+      { name: 'desc', type: 'string', description: 'Find by content description/accessibility ID' },
+      { name: 'exact', type: 'boolean', description: 'Match text exactly' },
+      { name: 'rightOf', type: 'string', description: 'Find element right of anchor' },
+      { name: 'leftOf', type: 'string', description: 'Find element left of anchor' },
+      { name: 'above', type: 'string', description: 'Find element above anchor' },
+      { name: 'below', type: 'string', description: 'Find element below anchor' }
     ]
   },
   {
@@ -178,6 +193,20 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     ]
   },
   {
+    name: 'type',
+    category: 'Interaction',
+    description: 'Find element and type text',
+    hasParams: true,
+    snippet: 'type:\n    text: "$1"\n    selector: "$2"',
+    params: [
+      { name: 'text', type: 'string', description: 'Text to input' },
+      { name: 'selector', type: 'string', description: 'CSS/XPath selector' },
+      { name: 'id', type: 'string', description: 'Resource ID' },
+      { name: 'xpath', type: 'string', description: 'XPath' },
+      { name: 'css', type: 'string', description: 'CSS selector' }
+    ]
+  },
+  {
     name: 'inputAt',
     category: 'Interaction',
     description: 'Input text at element by type and index',
@@ -204,7 +233,11 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Interaction',
     description: 'Press a physical key (Home, Back, Enter...)',
     hasParams: true,
-    snippet: 'press: "${1|Enter,Back,Home|}"'
+    snippet: 'press: "${1|Enter,Back,Home|}"',
+    params: [
+      { name: 'key', type: 'string', description: 'Key name or code' },
+      { name: 'times', type: 'number', description: 'Number of times to press' }
+    ]
   },
   {
     name: 'back',
@@ -272,7 +305,9 @@ export const LUMI_COMMANDS: LumiCommand[] = [
       { name: 'regex', type: 'string', description: 'Find by regex pattern' },
       { name: 'direction', type: 'string', description: 'Scroll direction: up, down, left, right' },
       { name: 'maxScrolls', type: 'number', description: 'Maximum scroll attempts' },
-      { name: 'image', type: 'string', description: 'Find by image template' }
+      { name: 'maxScrolls', type: 'number', description: 'Maximum scroll attempts' },
+      { name: 'image', type: 'string', description: 'Find by image template' },
+      { name: 'from', type: 'object', description: 'Container element to scroll within' }
     ]
   },
 
@@ -291,7 +326,9 @@ export const LUMI_COMMANDS: LumiCommand[] = [
       { name: 'xpath', type: 'string', description: 'Find by XPath' },
       { name: 'regex', type: 'string', description: 'Find by regex pattern' },
       { name: 'image', type: 'string', description: 'Find by image template' },
-      { name: 'timeout', type: 'number', description: 'Wait timeout in ms' }
+      { name: 'timeout', type: 'number', description: 'Wait timeout in ms' },
+      { name: 'soft', type: 'boolean', description: 'Soft assertion (continue on fail)' },
+      { name: 'containsChild', type: 'object', description: 'Assert element contains specific child' }
     ]
   },
   {
@@ -348,7 +385,11 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Assertions',
     description: 'Assert a condition is true',
     hasParams: true,
-    snippet: 'assert:\n    condition: "${1:\\${count} > 5}"'
+    snippet: 'assert:\n    condition: "${1:\\${count} > 5}"',
+    params: [
+      { name: 'condition', type: 'string', description: 'Expression to evaluate' },
+      { name: 'soft', type: 'boolean', description: 'Soft assertion' }
+    ]
   },
   {
     name: 'assertVar',
@@ -363,7 +404,12 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Assertions',
     description: 'Assert pixel color at point',
     hasParams: true,
-    snippet: 'assertColor:\n    point: "${1:50%,50%}"\n    color: "${2:#FF0000}"'
+    snippet: 'assertColor:\n    point: "${1:50%,50%}"\n    color: "${2:#FF0000}"',
+    params: [
+      { name: 'point', type: 'string', description: 'Coordinates' },
+      { name: 'color', type: 'string', description: 'Hex color code or name' },
+      { name: 'tolerance', type: 'number', description: 'Color matching tolerance (0-100)' }
+    ]
   },
   {
     name: 'assertScreenshot',
@@ -428,7 +474,14 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Control Flow',
     description: 'Run shell script',
     hasParams: true,
-    snippet: 'runScript: "$1"'
+    snippet: 'runScript: "$1"',
+    params: [
+      { name: 'command', type: 'string', description: 'Script command/path' },
+      { name: 'args', type: 'object', description: 'Arguments list' },
+      { name: 'saveOutput', type: 'string', description: 'Variable to save stdout' },
+      { name: 'timeoutMs', type: 'number', description: 'Timeout in ms' },
+      { name: 'failOnError', type: 'boolean', description: 'Fail test if script exits with error' }
+    ]
   },
   {
     name: 'evalScript',
@@ -442,7 +495,14 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Control Flow',
     description: 'Send HTTP request',
     hasParams: true,
-    snippet: 'httpRequest:\n    url: "$1"\n    method: "${2|GET,POST,PUT,DELETE|}"'
+    snippet: 'httpRequest:\n    url: "$1"\n    method: "${2|GET,POST,PUT,DELETE|}"',
+    params: [
+      { name: 'url', type: 'string', description: 'Request URL' },
+      { name: 'method', type: 'string', description: 'HTTP Method' },
+      { name: 'headers', type: 'object', description: 'HTTP Headers' },
+      { name: 'body', type: 'object', description: 'Request Body' },
+      { name: 'saveResponse', type: 'object', description: 'Map response JSON paths to variables' }
+    ]
   },
 
   // Media
@@ -489,7 +549,16 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Mock Location',
     description: 'Simulate GPS location from file',
     hasParams: true,
-    snippet: 'gps:\n    file: "$1.gpx"\n    speed: ${2:40}'
+    snippet: 'gps:\n    file: "$1.gpx"\n    speed: ${2:40}',
+    params: [
+      { name: 'file', type: 'string', description: 'Path to GPX/KML file' },
+      { name: 'speed', type: 'number', description: 'Speed in km/h' },
+      { name: 'loop', type: 'boolean', description: 'Loop playback' },
+      { name: 'speedMode', type: 'string', description: 'linear or noise' },
+      { name: 'speedNoise', type: 'number', description: 'Noise amount for speed' },
+      { name: 'startIndex', type: 'number', description: 'Start index' },
+      { name: 'intervalMs', type: 'number', description: 'Update interval' }
+    ]
   },
   {
     name: 'stopMockLocation',
@@ -704,7 +773,9 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     params: [
       { name: 'cpu', type: 'number', description: 'Max CPU usage %' },
       { name: 'memory', type: 'number', description: 'Max memory in MB' },
-      { name: 'fps', type: 'number', description: 'Min FPS' }
+      { name: 'fps', type: 'number', description: 'Min FPS' },
+      { name: 'metric', type: 'string', description: 'Metric name (cpu, memory, fps, jank)' },
+      { name: 'limit', type: 'string', description: 'Threshold limit (e.g. 250MB)' }
     ]
   },
   {
@@ -732,7 +803,8 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     params: [
       { name: 'query', type: 'string', description: 'SQL query to execute' },
       { name: 'connection', type: 'string', description: 'Connection string' },
-      { name: 'output', type: 'string', description: 'Variable to store result' }
+      { name: 'params', type: 'object', description: 'Binding parameters' },
+      { name: 'save', type: 'object', description: 'Map columns to variables' }
     ]
   },
 
