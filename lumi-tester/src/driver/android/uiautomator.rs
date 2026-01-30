@@ -363,18 +363,18 @@ pub fn find_relative<'a>(
     direction: RelativeDirection,
     max_dist: Option<u32>,
 ) -> Vec<&'a UiElement> {
-    let limit = max_dist.unwrap_or(u32::MAX) as f64;
-    let (ax, ay) = anchor.bounds.center();
+    // Use i32::MAX as default limit to avoid overflow when casting u32::MAX to i32
+    let limit = max_dist.map(|d| d as i32).unwrap_or(i32::MAX);
 
-    let mut scored_candidates: Vec<(&UiElement, f64)> = candidates
+    let mut scored_candidates: Vec<(&UiElement, bool, f64, f64)> = candidates
         .into_iter()
         .filter_map(|candidate| {
-            // Strict direction check
+            // Strict direction check (edge must be completely past anchor edge)
             let is_valid = match direction {
-                RelativeDirection::RightOf => candidate.bounds.left >= anchor.bounds.right,
-                RelativeDirection::LeftOf => candidate.bounds.right <= anchor.bounds.left,
-                RelativeDirection::Below => candidate.bounds.top >= anchor.bounds.bottom,
-                RelativeDirection::Above => candidate.bounds.bottom <= anchor.bounds.top,
+                RelativeDirection::RightOf => candidate.bounds.left > anchor.bounds.right,
+                RelativeDirection::LeftOf => candidate.bounds.right < anchor.bounds.left,
+                RelativeDirection::Below => candidate.bounds.top > anchor.bounds.bottom,
+                RelativeDirection::Above => candidate.bounds.bottom < anchor.bounds.top,
                 RelativeDirection::Near => true,
             };
 
@@ -382,64 +382,102 @@ pub fn find_relative<'a>(
                 return None;
             }
 
-            // Distance check
-            let (cx, cy) = candidate.bounds.center();
-            let dist = (((cx - ax).pow(2u32) + (cy - ay).pow(2u32)) as f64).sqrt();
+            // Calculate bounds-based distance (edge-to-edge gap)
+            let edge_dist = match direction {
+                RelativeDirection::RightOf => candidate.bounds.left - anchor.bounds.right,
+                RelativeDirection::LeftOf => anchor.bounds.left - candidate.bounds.right,
+                RelativeDirection::Below => candidate.bounds.top - anchor.bounds.bottom,
+                RelativeDirection::Above => anchor.bounds.top - candidate.bounds.bottom,
+                RelativeDirection::Near => {
+                    // For Near, use center-to-center distance
+                    let (ax, ay) = anchor.bounds.center();
+                    let (cx, cy) = candidate.bounds.center();
+                    (((cx - ax).pow(2u32) + (cy - ay).pow(2u32)) as f64).sqrt() as i32
+                }
+            };
 
-            if dist > limit {
+            if edge_dist > limit {
                 return None;
             }
 
-            // Overlap bonus: prioritize elements that overlap on the orthogonal axis
-            // For LeftOf/RightOf, check Y-axis overlap. For Above/Below, check X-axis overlap.
-            let overlap_bonus = match direction {
+            // Calculate horizontal/vertical overlap (bounds-based)
+            let overlap = match direction {
                 RelativeDirection::RightOf | RelativeDirection::LeftOf => {
-                    let y_overlap = std::cmp::max(
+                    // Y-axis overlap for left/right
+                    std::cmp::max(
                         0,
                         std::cmp::min(candidate.bounds.bottom, anchor.bounds.bottom)
                             - std::cmp::max(candidate.bounds.top, anchor.bounds.top),
-                    );
-                    if y_overlap > 0 {
-                        -1_000_000.0
-                    } else {
-                        0.0
-                    }
+                    )
                 }
                 RelativeDirection::Below | RelativeDirection::Above => {
-                    let x_overlap = std::cmp::max(
+                    // X-axis overlap for above/below
+                    std::cmp::max(
                         0,
                         std::cmp::min(candidate.bounds.right, anchor.bounds.right)
                             - std::cmp::max(candidate.bounds.left, anchor.bounds.left),
-                    );
-                    if x_overlap > 0 {
-                        -1_000_000.0
-                    } else {
-                        0.0
-                    }
+                    )
                 }
-                RelativeDirection::Near => 0.0,
+                RelativeDirection::Near => 0,
             };
 
-            // Alignment bonus (penalize offset in the orthogonal axis)
-            let alignment_penalty = match direction {
+            // Calculate anchor size on the alignment axis
+            let anchor_size = match direction {
+                RelativeDirection::RightOf | RelativeDirection::LeftOf => {
+                    anchor.bounds.bottom - anchor.bounds.top // height
+                }
                 RelativeDirection::Below | RelativeDirection::Above => {
-                    (cx - ax).abs() as f64 * 10.0
+                    anchor.bounds.right - anchor.bounds.left // width
                 }
-                RelativeDirection::LeftOf | RelativeDirection::RightOf => {
-                    (cy - ay).abs() as f64 * 10.0
-                }
-                RelativeDirection::Near => 0.0,
+                RelativeDirection::Near => 1,
             };
 
-            let score = dist + alignment_penalty + overlap_bonus;
-            Some((candidate, score))
+            // alignment_factor: 0.0 to 1.0 (how well aligned with anchor)
+            let alignment_factor = if anchor_size > 0 {
+                (overlap as f64) / (anchor_size as f64)
+            } else {
+                0.0
+            };
+
+            // Weighted score: distance - (alignment_bonus)
+            // Lower score = better match
+            // alignment_factor ranges 0.0-1.0, bonus constant = 100
+            let score = (edge_dist as f64) - (alignment_factor * 100.0);
+
+            // is_well_aligned: threshold at 50% overlap
+            // Elements with >50% alignment are prioritized (bucket 1)
+            let is_well_aligned = alignment_factor > 0.5;
+
+            // Store (candidate, is_well_aligned, score, alignment_factor) for sorting
+            Some((candidate, is_well_aligned, score, alignment_factor))
         })
         .collect();
 
-    // Sort by score (ascending)
-    scored_candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+    // Sort by:
+    // 1. is_well_aligned DESC (well-aligned elements first)
+    // 2. score ASC (lower score = better)
+    // 3. alignment_factor DESC (more aligned = better for ties)
+    scored_candidates.sort_by(|a, b| {
+        // First: is_well_aligned (true before false)
+        match b.1.cmp(&a.1) {
+            std::cmp::Ordering::Equal => {
+                // Second: score (lower first)
+                match a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal) {
+                    std::cmp::Ordering::Equal => {
+                        // Third: alignment_factor (higher first)
+                        b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal)
+                    }
+                    other => other,
+                }
+            }
+            other => other,
+        }
+    });
 
-    scored_candidates.into_iter().map(|(e, _)| e).collect()
+    scored_candidates
+        .into_iter()
+        .map(|(e, _, _, _)| e)
+        .collect()
 }
 
 /// Find nth element matching regex pattern on resource ID
