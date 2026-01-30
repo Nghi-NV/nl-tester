@@ -165,6 +165,18 @@ function findLumiTesterPath(testFilePath: string): string | null {
     dir = parent;
   }
 
+  // 3. Check global PATH
+  const checkGlobal = new Promise<string>((resolve, reject) => {
+    const command = process.platform === 'win32' ? 'where lumi-tester' : 'which lumi-tester';
+    exec(command, (err, stdout) => {
+      if (err || !stdout) {
+        reject(err);
+      } else {
+        resolve(stdout.split('\n')[0].trim());
+      }
+    });
+  });
+
   // Fallback: assume relative to workspace
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   if (workspaceFolder) {

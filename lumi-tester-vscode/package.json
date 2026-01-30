@@ -70,7 +70,7 @@
         "lumi-tester.lumiTesterPath": {
           "type": "string",
           "default": "",
-          "description": "Path to lumi-tester binary or project directory"
+          "description": "Path to the lumi-tester executable. If empty, it looks in PATH or workspace/lumi-tester."
         },
         "lumi-tester.outputDirectory": {
           "type": "string",
