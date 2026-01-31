@@ -1,7 +1,5 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
 import * as child_process from 'child_process';
-import { DeviceManager } from './deviceManager';
+import * as vscode from 'vscode';
 
 export class InspectorPanel {
   public static currentPanel: InspectorPanel | undefined;
@@ -323,7 +321,7 @@ export class InspectorPanel {
             if (event.data && event.data.type === 'insertSelector') {
                 vscode.postMessage({
                     command: 'insertSelector',
-                    selector: event.data.selector
+                    selector: event.data.value
                 });
             }
         });

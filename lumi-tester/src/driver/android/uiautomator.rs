@@ -60,6 +60,7 @@ pub struct UiElement {
     pub hint: String,
     pub scrollable: bool,
     pub index: String,
+    pub package: String, // Added field
 }
 
 #[derive(Debug, Clone, Default)]
@@ -131,6 +132,7 @@ pub fn parse_hierarchy(xml: &str) -> Result<Vec<UiElement>> {
                         hint: String::new(),
                         scrollable: false,
                         index: String::new(),
+                        package: String::new(),
                     };
 
                     for attr in e.attributes().filter_map(|a| a.ok()) {
@@ -153,6 +155,7 @@ pub fn parse_hierarchy(xml: &str) -> Result<Vec<UiElement>> {
                             "hint" => element.hint = decode_html_entities(&value),
                             "scrollable" => element.scrollable = value == "true",
                             "index" => element.index = value.to_string(),
+                            "package" => element.package = value.to_string(),
                             _ => {}
                         }
                     }

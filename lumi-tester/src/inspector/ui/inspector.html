@@ -5,107 +5,77 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lumi Inspector</title>
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 
 <body>
-  <div class="sidebar">
-    <div class="header">
-      <h1>🔍 Lumi Inspector</h1>
-      <span style="font-size:10px;color:var(--muted)">v5</span>
-    </div>
 
-    <div class="section">
-      <div class="section-title">Test File</div>
-      <input id="file" placeholder="path/to/test.yaml" value="tests/test.yaml">
-      <div class="btn-row">
-        <button class="btn" onclick="openFile()">Open</button>
-        <button class="btn btn-ghost" onclick="newFile()">Create New</button>
+  <div class="app-container">
+
+    <!-- Screenshot Area -->
+    <div class="screen-panel">
+      <div class="toolbar">
+        <div class="toggle-row">
+          <span class="toolbar-label">Bounds</span>
+          <div class="toggle on" id="boxToggle" onclick="toggleBoxes()"></div>
+        </div>
+        <button class="btn btn-sm btn-icon" onclick="capture()" title="Refresh Screenshot">
+          ↻ Refresh
+        </button>
       </div>
-    </div>
 
-
-    <div class="commands-container">
-      <div class="commands-header">
-        <span class="section-title" style="margin:0">Commands</span>
-        <div class="btn-row">
-          <button class="btn btn-ghost" style="font-size:10px" onclick="loadCommands()">↻</button>
-          <button class="btn btn-ghost" style="font-size:10px" onclick="setInsertMode()">+ Insert</button>
+      <div class="canvas-container" id="canvasContainer">
+        <div class="placeholder" id="placeholder">
+          <div class="icon">📱</div>
+          <div>Waiting for connection...</div>
+        </div>
+        <div id="screenWrapper">
+          <img id="screen" src="" style="display:none">
+          <canvas id="overlay"></canvas>
         </div>
       </div>
-      <div class="commands-list" id="cmds">
-        <div class="placeholder" style="padding:40px 20px">
-          <div style="font-size:10px">Open a file to see commands</div>
+      <div class="status-bar" id="status">Ready</div>
+    </div>
+
+    <!-- Details Panel (Right) -->
+    <div class="details-panel" id="detailsPanel">
+      <div class="details-header">
+        <div>
+          <h2>Inspector</h2>
+          <div id="appInfo" class="app-info"></div>
         </div>
+        <span class="badge" id="selectionBadge">No Selection</span>
       </div>
-    </div>
-
-    <div class="selectors-panel">
-      <div class="section-title">Selectors</div>
-      <div id="sels">
-        <div style="color:var(--muted);font-size:10px">Right-click on screen to inspect</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="screen-area">
-    <div class="toolbar">
-      <div class="toggle-row">
-        <span class="toggle-label">Boxes</span>
-        <div class="toggle on" id="boxToggle" onclick="toggleBoxes()"></div>
-      </div>
-      <button class="btn btn-green" id="captureBtn" onclick="capture()">📷 Capture</button>
-    </div>
-
-    <div class="screen-container" id="screenContainer">
-      <div class="placeholder" id="placeholder">
-        <div class="icon">📱</div>
-        <div>Click Capture to start</div>
-      </div>
-      <img id="screen" src="" style="display:none">
-      <canvas id="overlay" class="overlay-canvas"></canvas>
-    </div>
-
-    <div class="status" id="status"></div>
-  </div>
-
-  <div class="menu" id="menu">
-    <!-- Items will be injected dynamically -->
-  </div>
-
-  <div class="toast" id="toast"></div>
-
-  <!-- Confirm Dialog -->
-  <div id="confirmDialog" class="dialog-overlay" style="display:none">
-    <div class="dialog" style="width: 320px; height: auto; min-height: unset; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
-      <div class="dialog-header">
-        <span id="confirmTitle">Confirm</span>
-      </div>
-      <div class="dialog-body" style="padding: 20px;">
-        <div id="confirmMsg" style="margin-bottom: 24px; color: var(--text); font-size: 13px; line-height: 1.5;">Are you
-          sure?</div>
-        <div class="btn-row" style="justify-content: flex-end; gap: 8px;">
-          <button class="btn btn-ghost btn-sm" onclick="resolveConfirm(false)">Cancel</button>
-          <button class="btn btn-red btn-sm" onclick="resolveConfirm(true)">Delete</button>
+      <div class="details-content">
+        <div id="detailsContent">
+          <!-- Supported Commands (Collapsible) -->
+          <div class="section-collapsible" id="commandsSection" style="display:none">
+            <div class="section-header" onclick="toggleSection('commandsList', 'cmdArrow')">
+              <span class="arrow" id="cmdArrow">▶</span>
+              <span>Supported Commands</span>
+            </div>
+            <div class="section-body" id="commandsList" style="display:none">
+              <!-- Commands injected here -->
+            </div>
+          </div>
+          <!-- Selectors injected here -->
+          <div class="empty-state">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"
+              style="margin-bottom: 12px; opacity: 0.5;">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+            <div>Click on an element to inspect</div>
+          </div>
         </div>
       </div>
     </div>
+    <!-- Toast Notification -->
+    <div id="toast" class="toast">Copied!</div>
   </div>
 
-  <!-- Package Dialog -->
-  <div id="pkgDialog" class="dialog-overlay" style="display:none">
-    <div class="dialog">
-      <div class="dialog-header">
-        <span>Select App</span>
-        <button class="btn-close" onclick="closePkgDialog()">×</button>
-      </div>
-      <div class="dialog-body">
-        <input id="pkgSearch" placeholder="Search packages... (e.g. com.google...)" onkeyup="filterPackages()"
-          style="margin-bottom:8px">
-        <div id="pkgList" class="pkg-list">Loading...</div>
-      </div>
-    </div>
-  </div>
-
+  <script src="script.js?v=6"></script>
 </body>
 
 </html>

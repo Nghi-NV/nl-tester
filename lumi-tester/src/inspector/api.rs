@@ -46,6 +46,8 @@ pub struct ElementResponse {
     pub element_class: Option<String>,
     pub element_text: Option<String>,
     pub bounds: Option<BoundsInfo>,
+    pub app_id: Option<String>,
+    pub supported_commands: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -55,6 +57,7 @@ pub struct SelectorInfo {
     pub score: u32,
     pub is_stable: bool,
     pub yaml: String,
+    pub description: String,
 }
 
 #[derive(Serialize)]
@@ -201,6 +204,8 @@ async fn get_element_at(
                             element_class: None,
                             element_text: None,
                             bounds: None,
+                            app_id: None,
+                            supported_commands: vec![],
                         });
                     }
                 };
@@ -213,6 +218,8 @@ async fn get_element_at(
                         element_class: None,
                         element_text: None,
                         bounds: None,
+                        app_id: None,
+                        supported_commands: vec![],
                     });
                 }
             }
@@ -236,6 +243,7 @@ async fn get_element_at(
                     score: c.score,
                     is_stable: c.is_stable,
                     yaml: c.to_yaml("tap"),
+                    description: c.reason.clone(),
                 })
                 .collect();
 
@@ -254,6 +262,27 @@ async fn get_element_at(
                     right: el.bounds.right,
                     bottom: el.bounds.bottom,
                 }),
+                app_id: if el.package.is_empty() {
+                    None
+                } else {
+                    Some(el.package.clone())
+                },
+                supported_commands: {
+                    let mut cmds = vec!["see".to_string(), "wait".to_string()];
+                    if el.clickable {
+                        cmds.push("tap".to_string());
+                        cmds.push("doubleTap".to_string());
+                        cmds.push("longPress".to_string());
+                        cmds.push("rightClick".to_string());
+                    }
+                    if el.scrollable {
+                        cmds.push("scrollTo".to_string());
+                    }
+                    if el.class.contains("EditText") || el.class.contains("Input") {
+                        cmds.push("inputText".to_string());
+                    }
+                    cmds
+                },
             })
         }
         None => Json(ElementResponse {
@@ -262,6 +291,8 @@ async fn get_element_at(
             element_class: None,
             element_text: None,
             bounds: None,
+            app_id: None,
+            supported_commands: vec![],
         }),
     }
 }

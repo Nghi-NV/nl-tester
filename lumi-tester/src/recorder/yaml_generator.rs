@@ -356,6 +356,9 @@ mod tests {
                 score: 100,
                 reason: "Stable ID".to_string(),
                 is_stable: true,
+                index: None,
+                relative_anchor: None,
+                relative_direction: None,
             },
             SelectorCandidate {
                 selector_type: "text".to_string(),
@@ -363,6 +366,9 @@ mod tests {
                 score: 80,
                 reason: "Text".to_string(),
                 is_stable: true,
+                index: None,
+                relative_anchor: None,
+                relative_direction: None,
             },
         ];
 
