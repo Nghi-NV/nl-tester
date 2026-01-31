@@ -375,8 +375,10 @@ impl AndroidDriver {
         }
 
         // Handle OCR selector
-        if let Selector::OCR(text, index, is_regex) = selector {
-            return self.find_ocr_text(text, *index as usize, *is_regex).await;
+        if let Selector::OCR(text, index, is_regex, region) = selector {
+            return self
+                .find_ocr_text(text, *index, *is_regex, region.as_deref())
+                .await;
         }
 
         let elements = self.get_ui_hierarchy().await?;
@@ -737,7 +739,10 @@ impl AndroidDriver {
         text: &str,
         index: usize,
         is_regex: bool,
+        region: Option<&str>,
     ) -> Result<Option<(i32, i32)>> {
+        use crate::driver::image_matcher::ImageRegion;
+
         // Initialize engine first (may trigger download)
         let engine = self.get_ocr_engine().await?;
 
@@ -756,13 +761,33 @@ impl AndroidDriver {
             }
         };
 
+        // Parse region for cropping
+        let image_region = region.map(ImageRegion::from_str).unwrap_or_default();
+        let region_clone = image_region;
         let text = text.to_string();
         let engine_clone = engine.clone();
 
         // Run match in blocking task
         let result = tokio::task::spawn_blocking(move || {
-            let match_opt = engine_clone.find_text_at_index(&png_data, &text, is_regex, index)?;
-            Ok::<_, anyhow::Error>(match_opt.map(|m| (m.x, m.y)))
+            // Crop image if region specified
+            let (cropped_data, offset_x, offset_y) = if region_clone != ImageRegion::Full {
+                let img = image::load_from_memory(&png_data)?;
+                let (w, h) = (img.width(), img.height());
+                let (x, y, rw, rh) = region_clone.get_crop_region(w, h);
+
+                let cropped = img.crop_imm(x, y, rw, rh);
+                let mut buf = std::io::Cursor::new(Vec::new());
+                cropped.write_to(&mut buf, image::ImageFormat::Png)?;
+                (buf.into_inner(), x as i32, y as i32)
+            } else {
+                (png_data, 0, 0)
+            };
+
+            let match_opt =
+                engine_clone.find_text_at_index(&cropped_data, &text, is_regex, index)?;
+
+            // Adjust coordinates back to full screen
+            Ok::<_, anyhow::Error>(match_opt.map(|m| (m.x + offset_x, m.y + offset_y)))
         })
         .await??;
 

@@ -62,8 +62,8 @@ pub enum Selector {
         child: Box<Selector>,
     },
     /// Select by OCR text recognition from screenshot
-    /// (text_or_regex, index, is_regex) - auto-detect regex from pattern
-    OCR(String, usize, bool),
+    /// (text_or_regex, index, is_regex, region)
+    OCR(String, usize, bool, Option<String>),
 }
 
 /// Direction for relative selection

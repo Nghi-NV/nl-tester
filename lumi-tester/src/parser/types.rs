@@ -150,6 +150,10 @@ pub struct OcrSelectorParams {
     /// Index when multiple matches found (0-based)
     #[serde(default)]
     pub index: Option<u32>,
+    /// Region to search: "top-left", "top-right", "bottom-left", "bottom-right",
+    /// "top-half", "bottom-half", "left-half", "right-half", "center"
+    #[serde(default)]
+    pub region: Option<String>,
 }
 
 /// OCR selector input - supports both string and struct form
@@ -192,6 +196,14 @@ impl OcrSelectorInput {
             || text.contains("\\w")
             || text.contains("\\s")
             || text.contains("\\b")
+    }
+
+    /// Get region for cropping screenshot before OCR
+    pub fn region(&self) -> Option<&str> {
+        match self {
+            Self::String(_) => None,
+            Self::Struct(p) => p.region.as_deref(),
+        }
     }
 }
 

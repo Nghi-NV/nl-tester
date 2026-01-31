@@ -2880,6 +2880,7 @@ impl TestExecutor {
                 self.context.substitute_vars(ocr_input.text()),
                 ocr_input.index(),
                 ocr_input.is_regex(),
+                ocr_input.region().map(|s| s.to_string()),
             )
         } else if let Some(x) = xpath {
             Selector::XPath(self.context.substitute_vars(x))
