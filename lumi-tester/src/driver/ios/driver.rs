@@ -472,15 +472,44 @@ impl IosDriver {
 
         use crate::driver::traits::RelativeDirection::*;
         for element in target_base_matches {
+            // Filter out large container elements (>95% width or >80% height)
+            // Screen size assumption: typical iOS device ~390x844 or larger
+            let screen_width = 430.0; // Max common iPhone width
+            let screen_height = 932.0; // Max common iPhone height
+            let width_ratio = element.frame.width / screen_width;
+            let height_ratio = element.frame.height / screen_height;
+
+            // Skip if element covers >95% width OR >80% height (container)
+            if width_ratio > 0.95 || height_ratio > 0.8 || (width_ratio > 0.8 && height_ratio > 0.5)
+            {
+                continue;
+            }
+
             let (ex, ey) = element.center();
             let dx = ex - ax;
             let dy = ey - ay;
 
             let matches = match direction {
-                LeftOf => dx < 0 && dx.abs() < max_distance,
-                RightOf => dx > 0 && dx < max_distance,
-                Above => dy < 0 && dy.abs() < max_distance,
-                Below => dy > 0 && dy < max_distance,
+                LeftOf => {
+                    (dx <= 0 && dx.abs() < max_distance)
+                        || (anchor_element.frame.contains(&element.frame)
+                            && element.frame.center().0 <= ax)
+                }
+                RightOf => {
+                    (dx >= 0 && dx < max_distance)
+                        || (anchor_element.frame.contains(&element.frame)
+                            && element.frame.center().0 >= ax)
+                }
+                Above => {
+                    (dy <= 0 && dy.abs() < max_distance)
+                        || (anchor_element.frame.contains(&element.frame)
+                            && element.frame.center().1 <= ay)
+                }
+                Below => {
+                    (dy >= 0 && dy < max_distance)
+                        || (anchor_element.frame.contains(&element.frame)
+                            && element.frame.center().1 >= ay)
+                }
                 Near => (dx.abs() + dy.abs()) < max_distance,
             };
 
@@ -500,8 +529,12 @@ impl IosDriver {
                         let overlap_start = candidate_top.max(anchor_top);
                         let overlap_end = candidate_bottom.min(anchor_bottom);
 
-                        if overlap_end > overlap_start {
-                            -1_000_000.0
+                        // If significant overlap (more than 50% of smaller height)
+                        let min_height = element.frame.height.min(anchor_element.frame.height);
+                        if overlap_end > overlap_start
+                            && (overlap_end - overlap_start) > min_height * 0.5
+                        {
+                            -100.0
                         } else {
                             0.0
                         }
@@ -518,8 +551,12 @@ impl IosDriver {
                         let overlap_start = candidate_left.max(anchor_left);
                         let overlap_end = candidate_right.min(anchor_right);
 
-                        if overlap_end > overlap_start {
-                            -1_000_000.0
+                        // If significant overlap
+                        let min_width = element.frame.width.min(anchor_element.frame.width);
+                        if overlap_end > overlap_start
+                            && (overlap_end - overlap_start) > min_width * 0.5
+                        {
+                            -100.0
                         } else {
                             0.0
                         }
@@ -527,16 +564,25 @@ impl IosDriver {
                     Near => 0.0,
                 };
 
-                // Calculate score (distance + alignment penalty)
-                let dist = (((ex - ax).pow(2) + (ey - ay).pow(2)) as f64).sqrt();
-
-                let alignment_penalty = match direction {
-                    Below | Above => (ex - ax).abs() as f64 * 10.0,
-                    LeftOf | RightOf => (ey - ay).abs() as f64 * 10.0,
-                    Near => 0.0,
+                // Calculate edge distance for scoring (logic adapted from Android)
+                // We want to prioritize elements closest to the reference edge
+                let edge_dist = match direction {
+                    RightOf => {
+                        element.frame.x - (anchor_element.frame.x + anchor_element.frame.width)
+                    }
+                    LeftOf => (element.frame.x + element.frame.width) - anchor_element.frame.x,
+                    Below => {
+                        element.frame.y - (anchor_element.frame.y + anchor_element.frame.height)
+                    }
+                    Above => (element.frame.y + element.frame.height) - anchor_element.frame.y,
+                    Near => (((ex - ax).pow(2) + (ey - ay).pow(2)) as f64).sqrt(),
                 };
 
-                scored_matches.push((element, dist + alignment_penalty + overlap_bonus));
+                // Use abs() to prioritize elements closer to the edge (whether inside or outside)
+                // This matches the Android logic fix
+                let score = edge_dist.abs() + overlap_bonus;
+
+                scored_matches.push((element, score));
             }
         }
 

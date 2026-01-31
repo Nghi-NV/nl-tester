@@ -369,12 +369,48 @@ pub fn find_relative<'a>(
     let mut scored_candidates: Vec<(&UiElement, bool, f64, f64)> = candidates
         .into_iter()
         .filter_map(|candidate| {
-            // Strict direction check (edge must be completely past anchor edge)
+            // Filter out large container elements (>80% of screen area)
+            // Screen size assumption: 1080x2340 (common Android), area = 2,527,200
+            // Using simpler heuristic: width covers >80% AND height covers >50%
+            let screen_width = 1080;
+            let screen_height = 2340;
+            let candidate_width = candidate.bounds.right - candidate.bounds.left;
+            let candidate_height = candidate.bounds.bottom - candidate.bounds.top;
+
+            let width_ratio = candidate_width as f64 / screen_width as f64;
+            let height_ratio = candidate_height as f64 / screen_height as f64;
+
+            // Skip if element:
+            // 1. Covers >80% width AND >50% height (large container)
+            // 2. OR covers >95% width (full-width container like HorizontalScrollView)
+            // 3. OR covers >80% height (full-height container)
+            if (width_ratio > 0.8 && height_ratio > 0.5) || width_ratio > 0.95 || height_ratio > 0.8
+            {
+                return None;
+            }
+
+            // Direction check (inclusive for adjacent elements)
             let is_valid = match direction {
-                RelativeDirection::RightOf => candidate.bounds.left > anchor.bounds.right,
-                RelativeDirection::LeftOf => candidate.bounds.right < anchor.bounds.left,
-                RelativeDirection::Below => candidate.bounds.top > anchor.bounds.bottom,
-                RelativeDirection::Above => candidate.bounds.bottom < anchor.bounds.top,
+                RelativeDirection::RightOf => {
+                    candidate.bounds.left >= anchor.bounds.right
+                        || (anchor.bounds.contains(&candidate.bounds)
+                            && candidate.bounds.left >= anchor.bounds.center().0)
+                }
+                RelativeDirection::LeftOf => {
+                    candidate.bounds.right <= anchor.bounds.left
+                        || (anchor.bounds.contains(&candidate.bounds)
+                            && candidate.bounds.right <= anchor.bounds.center().0)
+                }
+                RelativeDirection::Below => {
+                    candidate.bounds.top >= anchor.bounds.bottom
+                        || (anchor.bounds.contains(&candidate.bounds)
+                            && candidate.bounds.top >= anchor.bounds.center().1)
+                }
+                RelativeDirection::Above => {
+                    candidate.bounds.bottom <= anchor.bounds.top
+                        || (anchor.bounds.contains(&candidate.bounds)
+                            && candidate.bounds.bottom <= anchor.bounds.center().1)
+                }
                 RelativeDirection::Near => true,
             };
 
@@ -442,13 +478,12 @@ pub fn find_relative<'a>(
             // Weighted score: distance - (alignment_bonus)
             // Lower score = better match
             // alignment_factor ranges 0.0-1.0, bonus constant = 100
-            let score = (edge_dist as f64) - (alignment_factor * 100.0);
-
-            // is_well_aligned: threshold at 50% overlap
-            // Elements with >50% alignment are prioritized (bucket 1)
+            // Use abs() to prioritize elements closer to the edge (whether inside or outside)
+            // This also ensures outside elements (small +ve) are preferred over deep inside elements (large -ve)
+            // Score calculation
+            let score = (edge_dist.abs() as f64) - (alignment_factor * 100.0);
             let is_well_aligned = alignment_factor > 0.5;
 
-            // Store (candidate, is_well_aligned, score, alignment_factor) for sorting
             Some((candidate, is_well_aligned, score, alignment_factor))
         })
         .collect();

@@ -591,6 +591,43 @@ If `secret` is provided, the message will be signed (HMAC-SHA256).
 
 ---
 
+---
+
+## 📦 Variables & Reusables
+
+### `find` / `define`
+**Mô tả**: Định nghĩa một selector và lưu vào biến để tái sử dụng. Biến này có thể là text đơn giản hoặc một selector phức tạp (Object).
+
+**Ví dụ**:
+```yaml
+# Định nghĩa biến text đơn giản
+- find:
+    name: "btn_login"
+    text: "Login"
+
+# Định nghĩa selector phức tạp
+- find:
+    name: "home_icon"
+    id: "icon_home"
+    index: 0
+
+# Sử dụng biến trong các lệnh khác
+- tap: "${btn_login}"
+
+- see: "${home_icon}"
+
+- tap:
+    rightOf: "${home_icon}" # Dùng làm anchor cho relative selector
+```
+
+**Tham số**:
+| Trường | Kiểu dữ liệu | Mô tả |
+| :--- | :--- | :--- |
+| `name` | String | Tên biến (không bao gồm `${}`). |
+| (Selector) | Mixed | Các trường selector như `text`, `id`, `xpath`, ... |
+
+---
+
 ## ⚙️ System & Settings (Hệ thống)
 
 ### `openNotifications`

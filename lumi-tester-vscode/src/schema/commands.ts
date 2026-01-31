@@ -815,6 +815,65 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     description: 'Wait for UI to stabilize',
     hasParams: false
   },
+  // Variables
+  {
+    name: 'find',
+    category: 'Variables',
+    description: 'Define a reusable selector variable',
+    hasParams: true,
+    snippet: 'find:\n    name: "${1:var_name}"\n    text: "${2:value}"',
+    params: [
+      { name: 'name', type: 'string', description: 'Variable name', required: true },
+      { name: 'text', type: 'string', description: 'Find by exact text' },
+      { name: 'id', type: 'string', description: 'Find by resource ID' },
+      { name: 'css', type: 'string', description: 'Find by CSS selector' },
+      { name: 'xpath', type: 'string', description: 'Find by XPath' },
+      { name: 'regex', type: 'string', description: 'Find by regex pattern' },
+      { name: 'index', type: 'number', description: 'Element index (0-based)' },
+      { name: 'type', type: 'string', description: 'Element type' },
+      { name: 'placeholder', type: 'string', description: 'Find by placeholder text' },
+      { name: 'desc', type: 'string', description: 'Find by content description/accessibility ID' },
+      { name: 'role', type: 'string', description: 'Find by role attribute' },
+      { name: 'image', type: 'string', description: 'Find by image template' },
+      {
+        name: 'scrollable',
+        type: 'object',
+        description: 'Auto-scroll configuration',
+        snippet: 'scrollable:\n    index: ${1:0}\n    itemIndex: ${2:0}'
+      },
+      // Relative positioning
+      {
+        name: 'rightOf',
+        type: 'string',
+        description: 'Find element right of anchor',
+        snippet: 'rightOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'leftOf',
+        type: 'string',
+        description: 'Find element left of anchor',
+        snippet: 'leftOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'above',
+        type: 'string',
+        description: 'Find element above anchor',
+        snippet: 'above:\n    text: "${1:text}"'
+      },
+      {
+        name: 'below',
+        type: 'string',
+        description: 'Find element below anchor',
+        snippet: 'below:\n    text: "${1:text}"'
+      },
+      {
+        name: 'ocr',
+        type: 'object',
+        description: 'Find by OCR',
+        snippet: 'ocr:\n    text: "${1:text_to_find}"\n    region: "${2|all,top-half,bottom-half,left-half,right-half,center|}"'
+      }
+    ]
+  },
   {
     name: 'setVar',
     category: 'Control Flow',

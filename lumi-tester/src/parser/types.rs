@@ -57,6 +57,13 @@ pub enum Platform {
     Web,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FindParams {
+    pub name: String,
+    #[serde(flatten)]
+    pub selector: TapParams,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ScrollableParams {
@@ -271,6 +278,9 @@ pub enum TestCommand {
     #[serde(alias = "open")]
     LaunchApp(Option<LaunchAppParamsInput>),
     StopApp,
+
+    // Variables & Reusables
+    Find(FindParams),
 
     // Interactions
     #[serde(alias = "tap")]
@@ -566,6 +576,10 @@ pub struct TapParams {
     #[serde(default)]
     pub label: Option<String>,
 
+    /// Reference to a pre-defined selector variable (from 'find' command)
+    #[serde(default)]
+    pub element: Option<String>,
+
     #[serde(default)]
     pub text: Option<String>,
 
@@ -814,6 +828,10 @@ fn default_max_scrolls() -> u32 {
 pub struct AssertParams {
     #[serde(default)]
     pub label: Option<String>,
+
+    /// Reference to a pre-defined selector variable (from 'find' command)
+    #[serde(default)]
+    pub element: Option<String>,
 
     #[serde(default)]
     pub text: Option<String>,
@@ -1320,6 +1338,7 @@ impl TestCommand {
                 }
             }
             TestCommand::StopApp => "stopApp".to_string(),
+            TestCommand::Find(p) => format!("find(name: \"{}\")", p.name),
             TestCommand::TapOn(p_input) => {
                 let p = p_input.clone().into_inner();
                 if let Some(label) = &p.label {
@@ -2120,6 +2139,10 @@ pub enum RelativeDirection {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AnchorParams {
+    /// Reference to a pre-defined selector variable (from 'find' command)
+    #[serde(default)]
+    pub element: Option<String>,
+
     #[serde(default)]
     pub text: Option<String>,
 

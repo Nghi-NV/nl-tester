@@ -384,6 +384,11 @@ fn parse_command_with_params(
             }
         }
 
+        "find" => {
+            let p: crate::parser::types::FindParams = serde_yaml::from_value(params.clone())?;
+            TestCommand::Find(p)
+        }
+
         "tapOn" | "tap" => {
             let p: TapParamsInput = if params.is_string() {
                 serde_yaml::from_value(params.clone())?

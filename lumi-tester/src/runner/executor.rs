@@ -413,6 +413,198 @@ impl TestExecutor {
         }
     }
 
+    fn resolve_tap_params(
+        &self,
+        input: &crate::parser::types::TapParamsInput,
+    ) -> crate::parser::types::TapParams {
+        let mut params = match input {
+            crate::parser::types::TapParamsInput::Struct(p) => p.clone(),
+            crate::parser::types::TapParamsInput::String(s) => {
+                let subst = self.context.substitute_vars(s);
+                if subst.trim().starts_with('{') {
+                    if let Ok(p) = serde_json::from_str(&subst) {
+                        return p;
+                    }
+                }
+                crate::parser::types::TapParams {
+                    text: Some(subst),
+                    ..Default::default()
+                }
+            }
+        };
+
+        // If 'element' field is specified, resolve it from variables and merge
+        if let Some(element_ref) = &params.element {
+            // Direct lookup if element_ref is a variable reference (e.g. "${var}")
+            let resolved = if element_ref.starts_with("${") && element_ref.ends_with("}") {
+                let var_name = &element_ref[2..element_ref.len() - 1];
+                if let Some(val) = self.context.vars.get(var_name) {
+                    val.clone()
+                } else {
+                    self.context.substitute_vars(element_ref)
+                }
+            } else {
+                self.context.substitute_vars(element_ref)
+            };
+            if resolved.trim().starts_with('{') {
+                if let Ok(element_params) =
+                    serde_json::from_str::<crate::parser::types::TapParams>(&resolved)
+                {
+                    // Merge fields (element_params takes precedence)
+                    if element_params.text.is_some() {
+                        params.text = element_params.text;
+                    }
+                    if element_params.id.is_some() {
+                        params.id = element_params.id;
+                    }
+                    if element_params.regex.is_some() {
+                        params.regex = element_params.regex;
+                    }
+                    if element_params.css.is_some() {
+                        params.css = element_params.css;
+                    }
+                    if element_params.xpath.is_some() {
+                        params.xpath = element_params.xpath;
+                    }
+                    if element_params.description.is_some() {
+                        params.description = element_params.description;
+                    }
+                    if element_params.placeholder.is_some() {
+                        params.placeholder = element_params.placeholder;
+                    }
+                    if element_params.role.is_some() {
+                        params.role = element_params.role;
+                    }
+                    if element_params.element_type.is_some() {
+                        params.element_type = element_params.element_type;
+                    }
+                    if element_params.image.is_some() {
+                        params.image = element_params.image;
+                    }
+                    if element_params.index.is_some() {
+                        params.index = element_params.index;
+                    }
+                    if element_params.ocr.is_some() {
+                        params.ocr = element_params.ocr;
+                    }
+                    if element_params.right_of.is_some() {
+                        params.right_of = element_params.right_of;
+                    }
+                    if element_params.left_of.is_some() {
+                        params.left_of = element_params.left_of;
+                    }
+                    if element_params.above.is_some() {
+                        params.above = element_params.above;
+                    }
+                    if element_params.below.is_some() {
+                        params.below = element_params.below;
+                    }
+                    if element_params.scrollable.is_some() {
+                        params.scrollable = element_params.scrollable;
+                    }
+                }
+            }
+        }
+
+        params
+    }
+
+    fn resolve_assert_params(
+        &self,
+        input: &crate::parser::types::AssertParamsInput,
+    ) -> crate::parser::types::AssertParams {
+        let mut params = match input {
+            crate::parser::types::AssertParamsInput::Struct(p) => p.clone(),
+            crate::parser::types::AssertParamsInput::String(s) => {
+                let subst = self.context.substitute_vars(s);
+                if subst.trim().starts_with('{') {
+                    if let Ok(p) = serde_json::from_str(&subst) {
+                        return p;
+                    }
+                }
+                crate::parser::types::AssertParams {
+                    text: Some(subst),
+                    ..Default::default()
+                }
+            }
+        };
+
+        // If 'element' field is specified, resolve it from variables and merge
+        if let Some(element_ref) = &params.element {
+            // Direct lookup if element_ref is a variable reference (e.g. "${var}")
+            let resolved = if element_ref.starts_with("${") && element_ref.ends_with("}") {
+                let var_name = &element_ref[2..element_ref.len() - 1];
+                if let Some(val) = self.context.vars.get(var_name) {
+                    val.clone()
+                } else {
+                    self.context.substitute_vars(element_ref)
+                }
+            } else {
+                self.context.substitute_vars(element_ref)
+            };
+            if resolved.trim().starts_with('{') {
+                if let Ok(element_params) =
+                    serde_json::from_str::<crate::parser::types::AssertParams>(&resolved)
+                {
+                    // Merge element_params into params
+                    if params.text.is_none() {
+                        params.text = element_params.text;
+                    }
+                    if params.id.is_none() {
+                        params.id = element_params.id;
+                    }
+                    if params.regex.is_none() {
+                        params.regex = element_params.regex;
+                    }
+                    if params.css.is_none() {
+                        params.css = element_params.css;
+                    }
+                    if params.xpath.is_none() {
+                        params.xpath = element_params.xpath;
+                    }
+                    if params.description.is_none() {
+                        params.description = element_params.description;
+                    }
+                    if params.placeholder.is_none() {
+                        params.placeholder = element_params.placeholder;
+                    }
+                    if params.role.is_none() {
+                        params.role = element_params.role;
+                    }
+                    if params.element_type.is_none() {
+                        params.element_type = element_params.element_type;
+                    }
+                    if params.image.is_none() {
+                        params.image = element_params.image;
+                    }
+                    if params.index.is_none() {
+                        params.index = element_params.index;
+                    }
+                    if params.ocr.is_none() {
+                        params.ocr = element_params.ocr;
+                    }
+                    if params.right_of.is_none() {
+                        params.right_of = element_params.right_of;
+                    }
+                    if params.left_of.is_none() {
+                        params.left_of = element_params.left_of;
+                    }
+                    if params.above.is_none() {
+                        params.above = element_params.above;
+                    }
+                    if params.below.is_none() {
+                        params.below = element_params.below;
+                    }
+                    if params.scrollable.is_none() {
+                        params.scrollable = element_params.scrollable;
+                    }
+                }
+            }
+        }
+
+        params
+    }
+
     /// Execute a single command
     pub async fn execute_command(&mut self, command: &TestCommand) -> Result<()> {
         match command {
@@ -492,6 +684,13 @@ impl TestExecutor {
                 self.driver.stop_app(app_id).await
             }
 
+            TestCommand::Find(params) => {
+                // Serialize the selector part (TapParams) to JSON
+                let json_val = serde_json::to_string(&params.selector)?;
+                self.context.vars.insert(params.name.clone(), json_val);
+                Ok(())
+            }
+
             TestCommand::OpenLink(url) => {
                 let substituted_url = self.context.substitute_vars(url);
                 self.driver
@@ -500,7 +699,7 @@ impl TestExecutor {
             }
 
             TestCommand::TapOn(params_input) => {
-                let params = params_input.clone().into_inner();
+                let params = self.resolve_tap_params(params_input);
                 // If point is specified, use TapAt
                 if let Some(point_str) = &params.point {
                     let parts: Vec<&str> = point_str.split(',').collect();
@@ -525,9 +724,17 @@ impl TestExecutor {
                             y_str.parse().unwrap_or(0)
                         };
 
-                        self.driver
+                        match self
+                            .driver
                             .tap(&crate::driver::traits::Selector::Point { x, y })
                             .await
+                        {
+                            Ok(_) => Ok(()),
+                            Err(e) => {
+                                println!("DEBUG: TapAt Point Error: {}", e);
+                                Err(e)
+                            }
+                        }
                     } else {
                         anyhow::bail!("Invalid point format: {}", point_str);
                     }
@@ -601,13 +808,17 @@ impl TestExecutor {
                             Ok(())
                         }
                     } else {
+                        let timeout = self.context.default_timeout_ms;
+                        if !matches!(selector, crate::driver::traits::Selector::Point { .. }) {
+                            let _ = self.driver.wait_for_element(&selector, timeout).await;
+                        }
                         self.driver.tap(&selector).await
                     }
                 }
             }
 
             TestCommand::LongPressOn(params_input) => {
-                let params = params_input.clone().into_inner();
+                let params = self.resolve_tap_params(params_input);
                 let selector = self
                     .build_selector(
                         &params.text,
@@ -635,7 +846,7 @@ impl TestExecutor {
             }
 
             TestCommand::DoubleTapOn(params_input) => {
-                let params = params_input.clone().into_inner();
+                let params = self.resolve_tap_params(params_input);
                 let selector = self
                     .build_selector(
                         &params.text,
@@ -724,7 +935,7 @@ impl TestExecutor {
             }
 
             TestCommand::AssertVisible(params_input) => {
-                let params = params_input.clone().into_inner();
+                let params = self.resolve_assert_params(params_input);
                 let verification_result = async {
                     // Merge relative aliases
                     let mut relative = params.relative.clone();
@@ -820,7 +1031,7 @@ impl TestExecutor {
             }
 
             TestCommand::WaitUntilVisible(params_input) => {
-                let params = params_input.clone().into_inner();
+                let params = self.resolve_assert_params(params_input);
                 // Identical logic to AssertVisible but semantically different
                 // It's a wait command, but can be treated as an assertion that the element appears
                 let verification_result = async {
@@ -922,7 +1133,7 @@ impl TestExecutor {
             }
 
             TestCommand::AssertNotVisible(params_input) => {
-                let params = params_input.clone().into_inner();
+                let params = self.resolve_assert_params(params_input);
                 let verification_result = async {
                     // Merge relative aliases
                     let mut relative = params.relative.clone();
@@ -1015,7 +1226,7 @@ impl TestExecutor {
             }
 
             TestCommand::WaitUntilNotVisible(params_input) => {
-                let params = params_input.clone().into_inner();
+                let params = self.resolve_assert_params(params_input);
 
                 // Merge relative aliases
                 let mut relative = params.relative.clone();
@@ -2890,8 +3101,9 @@ impl TestExecutor {
                 item_index: scroll_params.item_index.map(|i| i as usize),
             }
         } else if relative.is_some() {
-            // When only relative is specified, default to AnyClickable as target
-            Selector::AnyClickable(idx)
+            // When only relative is specified, default to Type("") (match all) as target
+            // XPath is not supported by driver.rs relative search, but Type("") matches all classes
+            Selector::Type("".to_string(), idx)
         } else {
             return None;
         };
@@ -2912,51 +3124,156 @@ impl TestExecutor {
             let anchor_selector = match anchor_input {
                 crate::parser::types::RelativeAnchorInput::String(s) => {
                     let subst = self.context.substitute_vars(s);
-                    // Smart detection: use existing logic
-                    if crate::parser::types::is_regex_string(&subst) {
-                        Selector::TextRegex(subst, 0)
+                    // Try to parse as JSON first (to support recursive object selectors)
+                    if subst.trim().starts_with('{') {
+                        if let Ok(p) =
+                            serde_json::from_str::<crate::parser::types::AnchorParams>(&subst)
+                        {
+                            // Recursive build for anchor from strict Struct(p) logic below
+                            let idx = p.index.unwrap_or(0) as usize;
+
+                            if let Some(r) = &p.regex {
+                                Selector::TextRegex(self.context.substitute_vars(r), idx)
+                            } else if let Some(t) = &p.text {
+                                Selector::Text(self.context.substitute_vars(t), idx, p.exact)
+                            } else if let Some(id) = &p.id {
+                                let s = self.context.substitute_vars(id);
+                                if crate::parser::types::is_regex_string(&s) {
+                                    Selector::IdRegex(s, idx)
+                                } else {
+                                    Selector::Id(s, idx)
+                                }
+                            } else if let Some(d) = &p.description {
+                                let s = self.context.substitute_vars(d);
+                                if crate::parser::types::is_regex_string(&s) {
+                                    Selector::DescriptionRegex(s, idx)
+                                } else {
+                                    Selector::Description(s, idx)
+                                }
+                            } else if let Some(img) = &p.image {
+                                let resolved = self.context.resolve_path(img);
+                                Selector::Image {
+                                    path: resolved.to_string_lossy().to_string(),
+                                    region: None,
+                                }
+                            } else if let Some(e) = &p.element_type {
+                                Selector::Type(self.context.substitute_vars(e), idx)
+                            } else if let Some(c) = &p.css {
+                                Selector::Css(self.context.substitute_vars(c))
+                            } else if let Some(x) = &p.xpath {
+                                Selector::XPath(self.context.substitute_vars(x))
+                            } else if let Some(role) = &p.role {
+                                Selector::Role(self.context.substitute_vars(role), idx)
+                            } else if let Some(ph) = &p.placeholder {
+                                Selector::Placeholder(self.context.substitute_vars(ph), idx)
+                            } else {
+                                // If struct is empty or invalid, fallback to text
+                                Selector::Text(subst, 0, false)
+                            }
+                        } else {
+                            // JSON parsing failed, treat as string
+                            if crate::parser::types::is_regex_string(&subst) {
+                                Selector::TextRegex(subst, 0)
+                            } else {
+                                Selector::Text(subst, 0, false)
+                            }
+                        }
                     } else {
-                        Selector::Text(subst, 0, false)
+                        // Not a JSON string
+                        if crate::parser::types::is_regex_string(&subst) {
+                            Selector::TextRegex(subst, 0)
+                        } else {
+                            Selector::Text(subst, 0, false)
+                        }
                     }
                 }
                 crate::parser::types::RelativeAnchorInput::Struct(p) => {
+                    let resolved_params = if let Some(element_ref) = &p.element {
+                        // Direct lookup if element_ref is a variable reference (e.g. "${var}")
+                        let resolved =
+                            if element_ref.starts_with("${") && element_ref.ends_with("}") {
+                                let var_name = &element_ref[2..element_ref.len() - 1];
+                                if let Some(val) = self.context.vars.get(var_name) {
+                                    val.clone()
+                                } else {
+                                    self.context.substitute_vars(element_ref)
+                                }
+                            } else {
+                                self.context.substitute_vars(element_ref)
+                            };
+                        if resolved.trim().starts_with('{') {
+                            // Try to parse as TapParams first (since Find stores TapParams)
+                            if let Ok(tap_params) =
+                                serde_json::from_str::<crate::parser::types::TapParams>(&resolved)
+                            {
+                                // Convert TapParams to AnchorParams
+                                Some(crate::parser::types::AnchorParams {
+                                    element: None,
+                                    text: tap_params.text,
+                                    regex: tap_params.regex,
+                                    id: tap_params.id,
+                                    css: tap_params.css,
+                                    xpath: tap_params.xpath,
+                                    placeholder: tap_params.placeholder,
+                                    role: tap_params.role,
+                                    description: tap_params.description,
+                                    element_type: tap_params.element_type,
+                                    image: tap_params.image,
+                                    exact: tap_params.exact,
+                                    index: tap_params.index,
+                                })
+                            } else {
+                                serde_json::from_str::<crate::parser::types::AnchorParams>(
+                                    &resolved,
+                                )
+                                .ok()
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    let params = resolved_params.as_ref().unwrap_or(p);
+
                     // Recursive build for anchor (simplified manual recursion)
                     // We map AnchorParams fields to build_selector-like logic
-                    let idx = p.index.unwrap_or(0) as usize;
+                    let idx = params.index.unwrap_or(0) as usize;
 
-                    if let Some(r) = &p.regex {
+                    if let Some(r) = &params.regex {
                         Selector::TextRegex(self.context.substitute_vars(r), idx)
-                    } else if let Some(t) = &p.text {
-                        Selector::Text(self.context.substitute_vars(t), idx, p.exact)
-                    } else if let Some(id) = &p.id {
+                    } else if let Some(t) = &params.text {
+                        Selector::Text(self.context.substitute_vars(t), idx, params.exact)
+                    } else if let Some(id) = &params.id {
                         let s = self.context.substitute_vars(id);
                         if crate::parser::types::is_regex_string(&s) {
                             Selector::IdRegex(s, idx)
                         } else {
                             Selector::Id(s, idx)
                         }
-                    } else if let Some(d) = &p.description {
+                    } else if let Some(d) = &params.description {
                         let s = self.context.substitute_vars(d);
                         if crate::parser::types::is_regex_string(&s) {
                             Selector::DescriptionRegex(s, idx)
                         } else {
                             Selector::Description(s, idx)
                         }
-                    } else if let Some(img) = &p.image {
+                    } else if let Some(img) = &params.image {
                         let resolved = self.context.resolve_path(img);
                         Selector::Image {
                             path: resolved.to_string_lossy().to_string(),
                             region: None,
                         }
-                    } else if let Some(e) = &p.element_type {
+                    } else if let Some(e) = &params.element_type {
                         Selector::Type(self.context.substitute_vars(e), idx)
-                    } else if let Some(c) = &p.css {
+                    } else if let Some(c) = &params.css {
                         Selector::Css(self.context.substitute_vars(c))
-                    } else if let Some(x) = &p.xpath {
+                    } else if let Some(x) = &params.xpath {
                         Selector::XPath(self.context.substitute_vars(x))
-                    } else if let Some(role) = &p.role {
+                    } else if let Some(role) = &params.role {
                         Selector::Role(self.context.substitute_vars(role), idx)
-                    } else if let Some(ph) = &p.placeholder {
+                    } else if let Some(ph) = &params.placeholder {
                         Selector::Placeholder(self.context.substitute_vars(ph), idx)
                     } else {
                         // Fallback?
