@@ -133,20 +133,25 @@ export class InspectorPanel {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lumi Inspector</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #007acc;
-            --bg: var(--vscode-editor-background);
-            --fg: var(--vscode-editor-foreground);
-            --border: var(--vscode-panel-border);
-            --input-bg: var(--vscode-input-background);
-            --input-fg: var(--vscode-input-foreground);
-            --input-border: var(--vscode-input-border);
+            --bg: #0d1117;
+            --panel: #161b22;
+            --card: #21262d;
+            --accent: #58a6ff;
+            --green: #3fb950;
+            --text: #c9d1d9;
+            --muted: #8b949e;
+            --border: #30363d;
+            --input-bg: #0d1117;
+            --shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
         }
+        * { box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             background-color: var(--bg);
-            color: var(--fg);
+            color: var(--text);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -155,91 +160,93 @@ export class InspectorPanel {
             margin: 0;
             padding: 20px;
         }
-        .setup-card {
-            background-color: var(--vscode-sideBar-background);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 32px;
-            width: 100%;
-            max-width: 400px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        }
-        h1 {
-            margin: 0 0 24px 0;
-            font-size: 20px;
-            font-weight: 600;
+        .logo {
+            font-size: 32px;
+            margin-bottom: 24px;
             display: flex;
             align-items: center;
-            justify-content: center;
-            gap: 10px;
+            gap: 12px;
+            color: #fff;
+            font-weight: 600;
+        }
+        .setup-card {
+            background-color: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 32px;
+            width: 100%;
+            max-width: 380px;
+            box-shadow: var(--shadow);
         }
         .form-group {
             margin-bottom: 20px;
-            text-align: left;
         }
         label {
             display: block;
             margin-bottom: 8px;
             font-size: 12px;
             font-weight: 600;
-            color: var(--vscode-descriptionForeground);
+            color: var(--muted);
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
         select, input {
             width: 100%;
-            padding: 10px;
-            border: 1px solid var(--input-border);
+            padding: 10px 12px;
+            border: 1px solid var(--border);
             background-color: var(--input-bg);
-            color: var(--input-fg);
+            color: #fff;
             border-radius: 6px;
             font-size: 13px;
+            font-family: inherit;
             outline: none;
-            box-sizing: border-box;
+            transition: border-color 0.2s;
         }
         select:focus, input:focus {
-            border-color: var(--primary);
+            border-color: var(--accent);
         }
         button {
-            background-color: var(--primary);
-            color: white;
+            background-color: var(--accent);
+            color: #050505;
             border: none;
             padding: 12px;
             font-size: 14px;
-            font-weight: 500;
+            font-weight: 600;
             cursor: pointer;
             border-radius: 6px;
             width: 100%;
-            margin-top: 10px;
-            transition: opacity 0.2s;
+            margin-top: 12px;
+            transition: all 0.2s;
         }
         button:hover {
             opacity: 0.9;
+            transform: translateY(-1px);
         }
         .features {
-            margin-top: 30px;
-            border-top: 1px solid var(--border);
+            margin-top: 24px;
             padding-top: 20px;
+            border-top: 1px solid var(--border);
         }
         .feature-item {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             margin-bottom: 12px;
             font-size: 13px;
-            color: var(--vscode-descriptionForeground);
+            color: var(--muted);
         }
         .feature-icon {
-            font-size: 16px;
-            width: 24px;
+            color: var(--accent);
+            width: 20px;
             text-align: center;
         }
     </style>
 </head>
 <body>
+    <div class="logo">
+        🔍 Lumi Inspector
+    </div>
     <div class="setup-card">
-        <h1>🔍 Lumi Inspector</h1>
-        
         <div class="form-group">
             <label for="platform">Platform</label>
             <select id="platform">
@@ -260,10 +267,10 @@ export class InspectorPanel {
                 <span class="feature-icon">🖥️</span> Live screen mirroring
             </div>
             <div class="feature-item">
-                <span class="feature-icon">⚡</span> Smart selectors & commands
+                <span class="feature-icon">⚡</span> Smart selector detection
             </div>
             <div class="feature-item">
-                <span class="feature-icon">⌨️</span> VSCode integration
+                <span class="feature-icon">🪄</span> Auto-generate commands
             </div>
         </div>
     </div>
@@ -293,58 +300,82 @@ export class InspectorPanel {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lumi Inspector</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg: #0d1117;
+            --panel: #161b22;
+            --border: #30363d;
+            --text: #c9d1d9;
+            --accent: #58a6ff;
+            --red: #f85149;
+        }
         body, html {
             margin: 0;
             padding: 0;
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: #0d1117; /* Match Inspector Dark Mode */
+            background-color: var(--bg);
+            font-family: 'Inter', sans-serif;
         }
         .toolbar {
-            background-color: #161b22;
+            background-color: var(--panel);
             padding: 8px 16px;
             display: flex;
             align-items: center;
             gap: 12px;
-            border-bottom: 1px solid #30363d;
-            height: 40px;
+            border-bottom: 1px solid var(--border);
+            height: 48px;
             box-sizing: border-box;
         }
         .toolbar button {
-            background-color: #21262d;
-            color: #c9d1d9;
-            border: 1px solid #30363d;
-            padding: 4px 12px;
+            background-color: transparent;
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 6px 12px;
             cursor: pointer;
             border-radius: 6px;
-            font-size: 12px;
+            font-size: 13px;
             font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
             transition: all 0.2s;
+            font-family: inherit;
+        }
+        .toolbar button:hover {
+            background-color: #21262d;
+            border-color: #8b949e;
+            color: #fff;
+        }
+        .toolbar button.stop-btn {
+            color: var(--red);
+            border-color: rgba(248, 81, 73, 0.4);
+        }
+        .toolbar button.stop-btn:hover {
+            background-color: rgba(248, 81, 73, 0.1);
+            border-color: var(--red);
+        }
+        .status {
+            font-size: 12px;
+            color: var(--muted);
+            margin-left: auto;
             display: flex;
             align-items: center;
             gap: 6px;
         }
-        .toolbar button:hover {
-            background-color: #30363d;
-            border-color: #8b949e;
-            color: #fff;
-        }
-        .status {
-            font-size: 12px;
-            color: #8b949e;
-            margin-left: auto;
-            font-family: -apple-system, BlinkMacSystemFont, monospace;
-        }
-        .status.connected {
-            color: #3fb950;
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: #3fb950;
+            border-radius: 50%;
         }
         iframe {
             width: 100%;
-            height: calc(100% - 40px);
+            height: calc(100% - 48px);
             border: none;
-            background-color: #0d1117;
+            background-color: var(--bg);
         }
     </style>
 </head>
@@ -353,10 +384,13 @@ export class InspectorPanel {
         <button onclick="refresh()">
             <span>↻</span> Refresh
         </button>
-        <button onclick="stopInspector()" style="color: #f85149; border-color: rgba(248, 81, 73, 0.4);">
-            <span>⏹</span> Stop
+        <button onclick="stopInspector()" class="stop-btn">
+            <span>⏹</span> Stop Server
         </button>
-        <span class="status connected">● Connected: ${this._port}</span>
+        <div class="status">
+            <span class="status-dot"></span>
+            Connected to port ${this._port}
+        </div>
     </div>
     <iframe src="http://localhost:${this._port}" id="inspectorFrame"></iframe>
     
