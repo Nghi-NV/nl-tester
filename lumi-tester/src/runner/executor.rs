@@ -675,10 +675,10 @@ impl TestExecutor {
                         &params.placeholder,
                         &params.role,
                         &params.element_type,
-                        &None, // image
-                        None,  // index
-                        &None, // scrollable
-                        false, // exact
+                        &params.image,
+                        params.index,
+                        &params.scrollable,
+                        params.exact,
                         &params.ocr,
                     )
                     .ok_or_else(|| anyhow::anyhow!("No selector specified for rightClick"))?;
