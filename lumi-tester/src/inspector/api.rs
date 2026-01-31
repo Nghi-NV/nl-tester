@@ -15,6 +15,7 @@ use std::sync::Arc;
 use super::screen_capture::{self, ScreenCapture};
 use crate::driver::android::uiautomator;
 use crate::recorder::selector_scorer::SelectorScorer;
+use crate::recorder::yaml_generator::YamlGenerator;
 
 /// Shared state for API handlers
 pub struct AppState {
@@ -235,6 +236,9 @@ async fn get_element_at(
             let scorer = SelectorScorer::new(width, height, elements);
             let candidates = scorer.score_element(&el);
 
+            // Use YamlGenerator to ensure format matches recorder
+            let generator = YamlGenerator::new();
+
             let selectors: Vec<SelectorInfo> = candidates
                 .iter()
                 .map(|c| SelectorInfo {
@@ -242,7 +246,7 @@ async fn get_element_at(
                     value: c.value.clone(),
                     score: c.score,
                     is_stable: c.is_stable,
-                    yaml: c.to_yaml("tap"),
+                    yaml: generator.generate_candidate_yaml(c, "tap"),
                     description: c.reason.clone(),
                 })
                 .collect();

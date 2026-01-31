@@ -1,5 +1,7 @@
 import * as child_process from 'child_process';
+import * as net from 'net';
 import * as vscode from 'vscode';
+import { Device } from './deviceManager';
 
 export class InspectorPanel {
   public static currentPanel: InspectorPanel | undefined;
@@ -9,12 +11,17 @@ export class InspectorPanel {
   private _inspectorProcess: child_process.ChildProcess | undefined;
   private _port: number = 9333;
   private _disposables: vscode.Disposable[] = [];
+  private _selectedDevice: Device | undefined;
+  private _outputChannel: vscode.OutputChannel;
 
-  public static async show(context: vscode.ExtensionContext, lumiTesterPath: string) {
+  public static async show(context: vscode.ExtensionContext, lumiTesterPath: string, device?: Device) {
     const column = vscode.ViewColumn.Beside;
 
     // If we already have a panel, show it
     if (InspectorPanel.currentPanel) {
+      if (device) {
+        InspectorPanel.currentPanel.setDevice(device);
+      }
       InspectorPanel.currentPanel._panel.reveal(column);
       return;
     }
@@ -31,18 +38,18 @@ export class InspectorPanel {
       }
     );
 
-    InspectorPanel.currentPanel = new InspectorPanel(panel, context, lumiTesterPath);
+    InspectorPanel.currentPanel = new InspectorPanel(panel, context, lumiTesterPath, device);
   }
 
   private constructor(
     panel: vscode.WebviewPanel,
     private context: vscode.ExtensionContext,
-    private lumiTesterPath: string
+    private lumiTesterPath: string,
+    device?: Device
   ) {
     this._panel = panel;
-
-    // Set the webview's initial html content
-    this._update();
+    this._selectedDevice = device;
+    this._outputChannel = vscode.window.createOutputChannel('Lumi Inspector');
 
     // Listen for when the panel is disposed
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
@@ -51,54 +58,98 @@ export class InspectorPanel {
     this._panel.webview.onDidReceiveMessage(
       async (message) => {
         switch (message.command) {
-          case 'startInspector':
-            await this._startInspector(message.platform, message.device);
-            break;
-          case 'stopInspector':
-            this._stopInspector();
-            break;
           case 'insertSelector':
             this._insertSelectorToEditor(message.selector);
+            break;
+          case 'copySelector':
+            await vscode.env.clipboard.writeText(message.selector);
             break;
         }
       },
       null,
       this._disposables
     );
+
+    // Start inspector immediately
+    this.startInspectorProcess();
   }
 
-  private async _startInspector(platform: string, device?: string) {
-    // Stop existing process if any
+  public setDevice(device: Device) {
+    this._selectedDevice = device;
+    // Restart with new device
+    this.startInspectorProcess();
+  }
+
+  private async startInspectorProcess() {
     this._stopInspector();
 
     // Find an available port
-    this._port = 9333 + Math.floor(Math.random() * 100);
+    this._port = await this._findAvailablePort(9333);
+
+    const platform = this._selectedDevice?.platform || 'android';
+    const deviceId = this._selectedDevice?.id;
 
     // Build command
     const args = ['run', '--', 'inspect', '--platform', platform, '--port', this._port.toString()];
-    if (device) {
-      args.push('--device', device);
+    if (deviceId) {
+      args.push('--device', deviceId);
     }
 
+    this._outputChannel.appendLine(`Starting inspector on port ${this._port}...`);
+    this._outputChannel.appendLine(`Command: cargo ${args.join(' ')}`);
+    this._outputChannel.appendLine(`CWD: ${this.lumiTesterPath}`);
+
     try {
+      this._panel.webview.html = this._getLoadingHtml("Starting Inspector Server...");
+
       this._inspectorProcess = child_process.spawn('cargo', args, {
         cwd: this.lumiTesterPath,
-        shell: true
+        shell: true,
+        env: { ...process.env, RUST_BACKTRACE: '1' }
       });
 
+      let hasExited = false;
+      let exitCode: number | null = null;
+
       this._inspectorProcess.stdout?.on('data', (data) => {
-        console.log(`Inspector: ${data}`);
+        const msg = data.toString();
+        this._outputChannel.append(msg);
+        console.log(`Inspector: ${msg}`);
       });
 
       this._inspectorProcess.stderr?.on('data', (data) => {
-        console.error(`Inspector error: ${data}`);
+        const msg = data.toString();
+        this._outputChannel.append(msg);
+        console.error(`Inspector error: ${msg}`);
       });
 
-      // Wait a bit for server to start
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      this._inspectorProcess.on('exit', (code) => {
+        hasExited = true;
+        exitCode = code;
+        this._outputChannel.appendLine(`Inspector process exited with code ${code}`);
+      });
 
-      // Update webview with iframe pointing to inspector
-      this._panel.webview.html = this._getInspectorHtml();
+      this._inspectorProcess.on('error', (err) => {
+        hasExited = true;
+        this._outputChannel.appendLine(`Inspector process failed to spawn: ${err.message}`);
+      });
+
+      // Wait for port to be ready (timeout 60s for compilation)
+      const portReady = await this._waitForPort(this._port, 60000, () => hasExited);
+
+      if (hasExited) {
+        vscode.window.showErrorMessage(`Inspector failed to start. Process exited with code ${exitCode}. Check "Lumi Inspector" output.`);
+        this._outputChannel.show();
+        return;
+      }
+
+      if (portReady) {
+        this._outputChannel.appendLine('Inspector server is ready. Loading UI...');
+        this._panel.webview.html = this._getInspectorHtml();
+      } else {
+        vscode.window.showErrorMessage('Inspector failed to start (port check timed out after 60s). Check "Lumi Inspector" output.');
+        this._outputChannel.show();
+      }
 
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to start inspector: ${error}`);
@@ -107,7 +158,10 @@ export class InspectorPanel {
 
   private _stopInspector() {
     if (this._inspectorProcess) {
+      this._outputChannel.appendLine('Stopping inspector process...');
       this._inspectorProcess.kill();
+      // Note: In some environments 'kill' might not kill the entire tree (cargo -> binary).
+      // But we change ports anyway.
       this._inspectorProcess = undefined;
     }
   }
@@ -122,173 +176,20 @@ export class InspectorPanel {
     }
   }
 
-  private _update() {
-    this._panel.webview.html = this._getSetupHtml();
-  }
-
-  private _getSetupHtml(): string {
+  private _getLoadingHtml(message: string): string {
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lumi Inspector</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --bg: #0d1117;
-            --panel: #161b22;
-            --card: #21262d;
-            --accent: #58a6ff;
-            --green: #3fb950;
-            --text: #c9d1d9;
-            --muted: #8b949e;
-            --border: #30363d;
-            --input-bg: #0d1117;
-            --shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-        }
-        * { box-sizing: border-box; }
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: var(--bg);
-            color: var(--text);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-            padding: 20px;
-        }
-        .logo {
-            font-size: 32px;
-            margin-bottom: 24px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            color: #fff;
-            font-weight: 600;
-        }
-        .setup-card {
-            background-color: var(--panel);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 32px;
-            width: 100%;
-            max-width: 380px;
-            box-shadow: var(--shadow);
-        }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        select, input {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid var(--border);
-            background-color: var(--input-bg);
-            color: #fff;
-            border-radius: 6px;
-            font-size: 13px;
-            font-family: inherit;
-            outline: none;
-            transition: border-color 0.2s;
-        }
-        select:focus, input:focus {
-            border-color: var(--accent);
-        }
-        button {
-            background-color: var(--accent);
-            color: #050505;
-            border: none;
-            padding: 12px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            border-radius: 6px;
-            width: 100%;
-            margin-top: 12px;
-            transition: all 0.2s;
-        }
-        button:hover {
-            opacity: 0.9;
-            transform: translateY(-1px);
-        }
-        .features {
-            margin-top: 24px;
-            padding-top: 20px;
-            border-top: 1px solid var(--border);
-        }
-        .feature-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 12px;
-            font-size: 13px;
-            color: var(--muted);
-        }
-        .feature-icon {
-            color: var(--accent);
-            width: 20px;
-            text-align: center;
-        }
+        body { background-color: var(--vscode-editor-background); color: var(--vscode-editor-foreground); font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .loader { border: 2px solid var(--vscode-editor-foreground); border-top: 2px solid transparent; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; margin-right: 10px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-    <div class="logo">
-        🔍 Lumi Inspector
-    </div>
-    <div class="setup-card">
-        <div class="form-group">
-            <label for="platform">Platform</label>
-            <select id="platform">
-                <option value="android">Android</option>
-                <option value="ios">iOS</option>
-            </select>
-        </div>
-        
-        <div class="form-group">
-            <label for="device">Device ID</label>
-            <input type="text" id="device" placeholder="Auto-detect first device">
-        </div>
-        
-        <button onclick="startInspector()">Start Inspector</button>
-        
-        <div class="features">
-            <div class="feature-item">
-                <span class="feature-icon">🖥️</span> Live screen mirroring
-            </div>
-            <div class="feature-item">
-                <span class="feature-icon">⚡</span> Smart selector detection
-            </div>
-            <div class="feature-item">
-                <span class="feature-icon">🪄</span> Auto-generate commands
-            </div>
-        </div>
-    </div>
-    
-    <script>
-        const vscode = acquireVsCodeApi();
-        
-        function startInspector() {
-            const platform = document.getElementById('platform').value;
-            const device = document.getElementById('device').value || undefined;
-            
-            vscode.postMessage({
-                command: 'startInspector',
-                platform: platform,
-                device: device
-            });
-        }
-    </script>
+    <div class="loader"></div>
+    <div>${message}</div>
 </body>
 </html>`;
   }
@@ -300,118 +201,42 @@ export class InspectorPanel {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lumi Inspector</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --bg: #0d1117;
-            --panel: #161b22;
-            --border: #30363d;
-            --text: #c9d1d9;
-            --accent: #58a6ff;
-            --red: #f85149;
-        }
         body, html {
             margin: 0;
             padding: 0;
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: var(--bg);
-            font-family: 'Inter', sans-serif;
-        }
-        .toolbar {
-            background-color: var(--panel);
-            padding: 8px 16px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            border-bottom: 1px solid var(--border);
-            height: 48px;
-            box-sizing: border-box;
-        }
-        .toolbar button {
-            background-color: transparent;
-            color: var(--text);
-            border: 1px solid var(--border);
-            padding: 6px 12px;
-            cursor: pointer;
-            border-radius: 6px;
-            font-size: 13px;
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: all 0.2s;
-            font-family: inherit;
-        }
-        .toolbar button:hover {
-            background-color: #21262d;
-            border-color: #8b949e;
-            color: #fff;
-        }
-        .toolbar button.stop-btn {
-            color: var(--red);
-            border-color: rgba(248, 81, 73, 0.4);
-        }
-        .toolbar button.stop-btn:hover {
-            background-color: rgba(248, 81, 73, 0.1);
-            border-color: var(--red);
-        }
-        .status {
-            font-size: 12px;
-            color: var(--muted);
-            margin-left: auto;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            background-color: #3fb950;
-            border-radius: 50%;
+            background-color: var(--vscode-editor-background);
         }
         iframe {
             width: 100%;
-            height: calc(100% - 48px);
+            height: 100%;
             border: none;
-            background-color: var(--bg);
+            background-color: var(--vscode-editor-background);
         }
     </style>
 </head>
 <body>
-    <div class="toolbar">
-        <button onclick="refresh()">
-            <span>↻</span> Refresh
-        </button>
-        <button onclick="stopInspector()" class="stop-btn">
-            <span>⏹</span> Stop Server
-        </button>
-        <div class="status">
-            <span class="status-dot"></span>
-            Connected to port ${this._port}
-        </div>
-    </div>
     <iframe src="http://localhost:${this._port}" id="inspectorFrame"></iframe>
-    
     <script>
         const vscode = acquireVsCodeApi();
-        
-        function refresh() {
-            document.getElementById('inspectorFrame').src = 'http://localhost:${this._port}';
-        }
-        
-        function stopInspector() {
-            vscode.postMessage({ command: 'stopInspector' });
-        }
-        
-        // Listen for messages from iframe (for selector insertion)
+        // Listen for messages from iframe
         window.addEventListener('message', (event) => {
-            if (event.data && event.data.type === 'insertSelector') {
-                vscode.postMessage({
-                    command: 'insertSelector',
-                    selector: event.data.value
-                });
+            if (event.data) {
+                if (event.data.type === 'insertSelector') {
+                    vscode.postMessage({
+                        command: 'insertSelector',
+                        selector: event.data.value
+                    });
+                }
+                if (event.data.type === 'copySelector') {
+                    vscode.postMessage({
+                        command: 'copySelector',
+                        selector: event.data.value
+                    });
+                }
             }
         });
     </script>
@@ -423,6 +248,7 @@ export class InspectorPanel {
     InspectorPanel.currentPanel = undefined;
     this._stopInspector();
     this._panel.dispose();
+    this._outputChannel.dispose();
 
     while (this._disposables.length) {
       const disposable = this._disposables.pop();
@@ -430,5 +256,57 @@ export class InspectorPanel {
         disposable.dispose();
       }
     }
+  }
+
+  // --- Helpers ---
+
+  private _findAvailablePort(startPort: number): Promise<number> {
+    return new Promise((resolve) => {
+      const server = net.createServer();
+      server.listen(startPort, () => {
+        server.close(() => resolve(startPort));
+      });
+      server.on('error', () => {
+        // Try next port
+        resolve(this._findAvailablePort(startPort + 1));
+      });
+    });
+  }
+
+  private _waitForPort(port: number, timeoutMs = 60000, checkExit?: () => boolean): Promise<boolean> {
+    const start = Date.now();
+    return new Promise((resolve) => {
+      const check = () => {
+        if (checkExit && checkExit()) {
+          resolve(false);
+          return;
+        }
+
+        const socket = new net.Socket();
+        socket.setTimeout(200);
+        socket.on('connect', () => {
+          socket.destroy();
+          resolve(true);
+        });
+        socket.on('timeout', () => {
+          socket.destroy();
+          tryNext();
+        });
+        socket.on('error', () => {
+          tryNext();
+        });
+        socket.connect(port, '127.0.0.1');
+      };
+
+      const tryNext = () => {
+        if (Date.now() - start > timeoutMs) {
+          resolve(false);
+        } else {
+          setTimeout(check, 500);
+        }
+      };
+
+      check();
+    });
   }
 }

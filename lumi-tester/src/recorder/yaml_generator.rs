@@ -147,6 +147,14 @@ impl YamlGenerator {
         }
     }
 
+    /// Generate YAML for a single selector candidate with comments
+    pub fn generate_candidate_yaml(&self, candidate: &SelectorCandidate, action: &str) -> String {
+        let mut output = String::new();
+        // User requested removal of selector comments for cleaner output
+        output.push_str(&candidate.to_yaml(action));
+        output
+    }
+
     /// Generate tap step with smart selector
     fn generate_tap_step(&self, selectors: &[SelectorCandidate]) -> String {
         let mut output = String::new();
@@ -166,10 +174,12 @@ impl YamlGenerator {
                     best.score,
                     alts.join(", ")
                 ));
-
-                // Add warning if selector is unstable
-                if !best.is_stable {
-                    output.push_str("# ⚠️ WARNING: This selector may be unstable. Consider asking dev to add a resource-id.\n");
+            } else {
+                if self.config.include_comments {
+                    output.push_str(&format!(
+                        "# Selector: {} (score: {})\n",
+                        best.selector_type, best.score
+                    ));
                 }
             }
 
@@ -347,6 +357,7 @@ mod tests {
             hint: String::new(),
             scrollable: false,
             index: "0".to_string(),
+            package: "com.example".to_string(),
         };
 
         let selectors = vec![

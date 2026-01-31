@@ -1,12 +1,12 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
 import { exec } from 'child_process';
-import { LumiCompletionProvider } from './completionProvider';
+import * as path from 'path';
+import * as vscode from 'vscode';
 import { LumiCodeLensProvider } from './codeLensProvider';
+import { LumiCompletionProvider } from './completionProvider';
 import { LumiDecorationProvider } from './decorationProvider';
-import { LumiTestRunner } from './testRunner';
 import { DeviceManager } from './deviceManager';
 import { InspectorPanel } from './inspectorPanel';
+import { LumiTestRunner } from './testRunner';
 
 let terminal: vscode.Terminal | undefined;
 let testRunner: LumiTestRunner | undefined;
@@ -114,7 +114,8 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       try {
-        await InspectorPanel.show(context, lumiPath);
+        const device = deviceManager?.getSelectedDevice() || undefined;
+        await InspectorPanel.show(context, lumiPath, device);
         console.log('Lumi: InspectorPanel.show() completed');
       } catch (error) {
         console.error('Lumi: Error showing inspector panel:', error);

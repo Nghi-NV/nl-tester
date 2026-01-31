@@ -165,12 +165,14 @@ async function inspectAt(x, y, clickX, clickY) {
     const data = await res.json();
 
     if (data.found) {
+      currentSelectors = data.selectors; // Update global state
       document.getElementById('selectionBadge').textContent = 'Selected';
       document.getElementById('selectionBadge').style.background = 'var(--green)';
       renderAppInfo(data.app_id);
       renderCommands(data.supported_commands);
       renderDetails(data.selectors);
     } else {
+      currentSelectors = [];
       document.getElementById('selectionBadge').textContent = 'No Selection';
       document.getElementById('selectionBadge').style.background = 'var(--muted)';
       clearDetails();
@@ -364,10 +366,16 @@ function renderDetails(selectors) {
 // External Actions
 function copyToClipboard(idx) {
   const s = currentSelectors[idx];
-  if (!s) return;
-  navigator.clipboard.writeText(s.yaml).then(() => {
-    showToast('Copied YAML');
-  });
+  if (!s || !window.parent) return;
+
+  // Use postMessage to let VS Code handle clipboard
+  window.parent.postMessage({
+    type: 'copySelector',
+    value: s.yaml
+  }, '*');
+
+  // Optimistically show toast
+  showToast('Copied to Clipboard');
 }
 
 function insertToEditor(idx) {

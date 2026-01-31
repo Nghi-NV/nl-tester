@@ -2,7 +2,7 @@
   "name": "lumi-tester",
   "displayName": "Lumi Tester",
   "description": "VSCode extension for lumi-tester: YAML autocomplete, run tests, and status display",
-  "version": "0.1.9",
+  "version": "0.1.11",
   "publisher": "lumijsc",
   "icon": "resources/icon.png",
   "engines": {
