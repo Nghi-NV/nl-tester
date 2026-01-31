@@ -134,21 +134,44 @@ export class InspectorPanel {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lumi Inspector</title>
     <style>
-        body {
-            font-family: var(--vscode-font-family);
-            background-color: var(--vscode-editor-background);
-            color: var(--vscode-editor-foreground);
-            padding: 20px;
-            margin: 0;
+        :root {
+            --primary: #007acc;
+            --bg: var(--vscode-editor-background);
+            --fg: var(--vscode-editor-foreground);
+            --border: var(--vscode-panel-border);
+            --input-bg: var(--vscode-input-background);
+            --input-fg: var(--vscode-input-foreground);
+            --input-border: var(--vscode-input-border);
         }
-        .setup-container {
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: var(--bg);
+            color: var(--fg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .setup-card {
+            background-color: var(--vscode-sideBar-background);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 32px;
+            width: 100%;
             max-width: 400px;
-            margin: 0 auto;
-            text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
         h1 {
-            color: var(--vscode-textLink-foreground);
-            margin-bottom: 30px;
+            margin: 0 0 24px 0;
+            font-size: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
         .form-group {
             margin-bottom: 20px;
@@ -157,50 +180,64 @@ export class InspectorPanel {
         label {
             display: block;
             margin-bottom: 8px;
-            font-weight: bold;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--vscode-descriptionForeground);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         select, input {
             width: 100%;
             padding: 10px;
-            border: 1px solid var(--vscode-input-border);
-            background-color: var(--vscode-input-background);
-            color: var(--vscode-input-foreground);
-            border-radius: 4px;
-            font-size: 14px;
+            border: 1px solid var(--input-border);
+            background-color: var(--input-bg);
+            color: var(--input-fg);
+            border-radius: 6px;
+            font-size: 13px;
+            outline: none;
+            box-sizing: border-box;
+        }
+        select:focus, input:focus {
+            border-color: var(--primary);
         }
         button {
-            background-color: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
+            background-color: var(--primary);
+            color: white;
             border: none;
-            padding: 12px 24px;
+            padding: 12px;
             font-size: 14px;
+            font-weight: 500;
             cursor: pointer;
-            border-radius: 4px;
+            border-radius: 6px;
             width: 100%;
             margin-top: 10px;
+            transition: opacity 0.2s;
         }
         button:hover {
-            background-color: var(--vscode-button-hoverBackground);
+            opacity: 0.9;
         }
-        .info {
+        .features {
             margin-top: 30px;
-            padding: 15px;
-            background-color: var(--vscode-textBlockQuote-background);
-            border-radius: 4px;
-            text-align: left;
+            border-top: 1px solid var(--border);
+            padding-top: 20px;
+        }
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
             font-size: 13px;
+            color: var(--vscode-descriptionForeground);
         }
-        .info h3 {
-            margin-top: 0;
-        }
-        .info ul {
-            padding-left: 20px;
-            margin-bottom: 0;
+        .feature-icon {
+            font-size: 16px;
+            width: 24px;
+            text-align: center;
         }
     </style>
 </head>
 <body>
-    <div class="setup-container">
+    <div class="setup-card">
         <h1>🔍 Lumi Inspector</h1>
         
         <div class="form-group">
@@ -212,20 +249,22 @@ export class InspectorPanel {
         </div>
         
         <div class="form-group">
-            <label for="device">Device ID (optional)</label>
+            <label for="device">Device ID</label>
             <input type="text" id="device" placeholder="Auto-detect first device">
         </div>
         
-        <button onclick="startInspector()">▶️ Start Inspector</button>
+        <button onclick="startInspector()">Start Inspector</button>
         
-        <div class="info">
-            <h3>Features:</h3>
-            <ul>
-                <li>🖥️ Live screen mirroring</li>
-                <li>🖱️ Click elements to get selectors</li>
-                <li>📝 Right-click to add commands</li>
-                <li>🔍 Smart selector suggestions</li>
-            </ul>
+        <div class="features">
+            <div class="feature-item">
+                <span class="feature-icon">🖥️</span> Live screen mirroring
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon">⚡</span> Smart selectors & commands
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon">⌨️</span> VSCode integration
+            </div>
         </div>
     </div>
     
@@ -261,47 +300,63 @@ export class InspectorPanel {
             width: 100%;
             height: 100%;
             overflow: hidden;
+            background-color: #0d1117; /* Match Inspector Dark Mode */
         }
         .toolbar {
-            background-color: var(--vscode-editor-background);
-            padding: 8px 12px;
+            background-color: #161b22;
+            padding: 8px 16px;
             display: flex;
             align-items: center;
-            gap: 10px;
-            border-bottom: 1px solid var(--vscode-panel-border);
+            gap: 12px;
+            border-bottom: 1px solid #30363d;
+            height: 40px;
+            box-sizing: border-box;
         }
         .toolbar button {
-            background-color: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-            border: none;
-            padding: 6px 12px;
+            background-color: #21262d;
+            color: #c9d1d9;
+            border: 1px solid #30363d;
+            padding: 4px 12px;
             cursor: pointer;
-            border-radius: 3px;
+            border-radius: 6px;
             font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
         .toolbar button:hover {
-            background-color: var(--vscode-button-hoverBackground);
+            background-color: #30363d;
+            border-color: #8b949e;
+            color: #fff;
         }
-        .toolbar .status {
-            color: var(--vscode-descriptionForeground);
+        .status {
             font-size: 12px;
+            color: #8b949e;
             margin-left: auto;
+            font-family: -apple-system, BlinkMacSystemFont, monospace;
         }
-        .toolbar .status.connected {
-            color: #4EC9B0;
+        .status.connected {
+            color: #3fb950;
         }
         iframe {
             width: 100%;
-            height: calc(100% - 45px);
+            height: calc(100% - 40px);
             border: none;
+            background-color: #0d1117;
         }
     </style>
 </head>
 <body>
     <div class="toolbar">
-        <button onclick="refresh()">🔄 Refresh</button>
-        <button onclick="stopInspector()">⏹️ Stop</button>
-        <span class="status connected">● Connected to localhost:${this._port}</span>
+        <button onclick="refresh()">
+            <span>↻</span> Refresh
+        </button>
+        <button onclick="stopInspector()" style="color: #f85149; border-color: rgba(248, 81, 73, 0.4);">
+            <span>⏹</span> Stop
+        </button>
+        <span class="status connected">● Connected: ${this._port}</span>
     </div>
     <iframe src="http://localhost:${this._port}" id="inspectorFrame"></iframe>
     
