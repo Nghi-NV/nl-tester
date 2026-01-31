@@ -29,3 +29,5 @@ my_testing/*
 .gemini/*
 .shared/*
 .specify/*
+
+WebDriverAgent/

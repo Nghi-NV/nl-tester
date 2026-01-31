@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OnceCell};
 use uuid::Uuid;
 
 use super::adb;
@@ -14,6 +14,7 @@ use colored::Colorize;
 use image::GenericImageView;
 
 use crate::driver::common;
+use crate::driver::ocr::OcrEngine;
 use crate::parser::types::SpeedMode;
 use std::collections::HashMap;
 
@@ -138,6 +139,8 @@ pub struct AndroidDriver {
     /// Whether to use Unicode input support (ADBKeyBoard) - default: false for speed
     #[allow(dead_code)]
     support_unicode: bool,
+    /// Lazy-loaded OCR engine
+    ocr_engine: Arc<OnceCell<OcrEngine>>,
 }
 
 impl AndroidDriver {
@@ -242,6 +245,7 @@ impl AndroidDriver {
             adbkeyboard_available,
             original_ime,
             support_unicode,
+            ocr_engine: Arc::new(OnceCell::new()),
         })
     }
 
@@ -368,6 +372,11 @@ impl AndroidDriver {
         // Handle Image selector
         if let Selector::Image { path, region } = selector {
             return self.find_image_on_screen(path, region.as_deref()).await;
+        }
+
+        // Handle OCR selector
+        if let Selector::OCR(text, index, is_regex) = selector {
+            return self.find_ocr_text(text, *index as usize, *is_regex).await;
         }
 
         let elements = self.get_ui_hierarchy().await?;
@@ -605,6 +614,7 @@ impl AndroidDriver {
                 }
                 None
             }
+            Selector::OCR(..) => None, // OCR handled separately via screenshot
         }
     }
 
@@ -714,6 +724,51 @@ impl AndroidDriver {
     }
 
     /// Find template image on screen using optimized single-pass template matching
+    /// Get (lazy-load) OCR engine
+    async fn get_ocr_engine(&self) -> Result<&OcrEngine> {
+        self.ocr_engine
+            .get_or_try_init(|| async { OcrEngine::new().await })
+            .await
+    }
+
+    /// Find text on screen using OCR
+    async fn find_ocr_text(
+        &self,
+        text: &str,
+        index: usize,
+        is_regex: bool,
+    ) -> Result<Option<(i32, i32)>> {
+        // Initialize engine first (may trigger download)
+        let engine = self.get_ocr_engine().await?;
+
+        // Capture screenshot (fast path via exec-out if possible)
+        let png_data = match adb::exec_out_binary(self.serial.as_deref(), "screencap -p").await {
+            Ok(data) if data.len() > 100 && data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) => data,
+            _ => {
+                // Fallback: take screenshot to temp file and read it
+                let screenshot_path =
+                    std::env::temp_dir().join(format!("ocr_screen_{}.png", Uuid::new_v4()));
+                let screenshot_path_str = screenshot_path.to_string_lossy().to_string();
+                self.take_screenshot_internal(&screenshot_path_str).await?;
+                let data = std::fs::read(&screenshot_path)?;
+                let _ = std::fs::remove_file(&screenshot_path);
+                data
+            }
+        };
+
+        let text = text.to_string();
+        let engine_clone = engine.clone();
+
+        // Run match in blocking task
+        let result = tokio::task::spawn_blocking(move || {
+            let match_opt = engine_clone.find_text_at_index(&png_data, &text, is_regex, index)?;
+            Ok::<_, anyhow::Error>(match_opt.map(|m| (m.x, m.y)))
+        })
+        .await??;
+
+        Ok(result)
+    }
+
     /// Uses region-based matching if region is specified
     async fn find_image_on_screen(
         &self,

@@ -506,6 +506,7 @@ impl WebDriver {
             Selector::ScrollableItem { .. } | Selector::Scrollable(_) => {
                 unimplemented!("ScrollableItem/Scrollable not supported for Web")
             }
+            Selector::OCR(..) => unimplemented!("OCR selector not yet supported for Web"),
         }
     }
 

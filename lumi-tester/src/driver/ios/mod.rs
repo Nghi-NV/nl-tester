@@ -1,11 +1,17 @@
-//! iOS Driver module using idb (iOS Development Bridge)
+//! iOS Driver module
 //!
-//! This module provides iOS automation support for both simulators and real devices.
-//! It requires idb_companion to be running on macOS.
+//! This module provides iOS automation support:
+//! - Simulators: Uses idb (iOS Development Bridge)
+//! - Real devices: Uses WebDriverAgent (WDA) via HTTP API
+//!
+//! For simulators: requires idb_companion to be running on macOS.
+//! For real devices: requires WebDriverAgent running on device (port 8100).
 
+pub mod accessibility;
 pub mod driver;
 pub mod idb;
-pub mod accessibility;
+pub mod wda;
+pub mod wda_setup;
 
 pub use driver::IosDriver;
 
@@ -14,7 +20,7 @@ use anyhow::Result;
 /// List connected iOS devices and simulators
 pub async fn list_devices() -> Result<()> {
     let devices = idb::list_targets().await?;
-    
+
     if devices.is_empty() {
         println!("No iOS devices or simulators found.");
         println!("Make sure idb_companion is running and devices are connected.");
@@ -24,6 +30,6 @@ pub async fn list_devices() -> Result<()> {
             println!("  {} - {} ({})", device.udid, device.name, device.state);
         }
     }
-    
+
     Ok(())
 }

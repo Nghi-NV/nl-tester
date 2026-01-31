@@ -120,6 +120,9 @@ pub struct CopyTextFromParams {
     pub description: Option<String>,
     #[serde(default)]
     pub index: Option<usize>,
+    /// OCR text recognition selector
+    #[serde(default)]
+    pub ocr: Option<OcrSelectorInput>,
 }
 
 /// Parameters for inputRandomNumber
@@ -136,6 +139,60 @@ pub struct RandomNumberParams {
 pub struct RandomTextParams {
     #[serde(default)]
     pub length: Option<u32>,
+}
+
+/// OCR selector parameters
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct OcrSelectorParams {
+    /// Text to find via OCR (exact or regex pattern - auto-detected)
+    pub text: String,
+    /// Index when multiple matches found (0-based)
+    #[serde(default)]
+    pub index: Option<u32>,
+}
+
+/// OCR selector input - supports both string and struct form
+/// - Short: `ocr: "some text"`
+/// - Full: `ocr: { text: "some text", index: 1 }`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum OcrSelectorInput {
+    String(String),
+    Struct(OcrSelectorParams),
+}
+
+impl OcrSelectorInput {
+    pub fn text(&self) -> &str {
+        match self {
+            Self::String(s) => s,
+            Self::Struct(p) => &p.text,
+        }
+    }
+
+    pub fn index(&self) -> usize {
+        match self {
+            Self::String(_) => 0,
+            Self::Struct(p) => p.index.unwrap_or(0) as usize,
+        }
+    }
+
+    /// Auto-detect if text is a regex pattern
+    pub fn is_regex(&self) -> bool {
+        let text = self.text();
+        text.contains('*')
+            || text.contains('+')
+            || text.contains('?')
+            || text.contains('[')
+            || text.contains('(')
+            || text.contains('|')
+            || text.contains('^')
+            || text.contains('$')
+            || text.contains("\\d")
+            || text.contains("\\w")
+            || text.contains("\\s")
+            || text.contains("\\b")
+    }
 }
 
 /// Parameters for extendedWaitUntil (forward declaration - uses AssertParams)
@@ -539,6 +596,10 @@ pub struct TapParams {
     #[serde(default, alias = "imageRegion")]
     pub image_region: Option<String>,
 
+    /// OCR text recognition selector (for Flutter/game apps)
+    #[serde(default)]
+    pub ocr: Option<OcrSelectorInput>,
+
     #[serde(default)]
     pub optional: bool,
 
@@ -701,6 +762,10 @@ pub struct ScrollUntilVisibleParams {
     #[serde(default)]
     pub image: Option<String>,
 
+    /// OCR text recognition selector (for Flutter/game apps)
+    #[serde(default)]
+    pub ocr: Option<OcrSelectorInput>,
+
     #[serde(default = "default_max_scrolls", alias = "numberScroll")]
     pub max_scrolls: u32,
 
@@ -758,6 +823,10 @@ pub struct AssertParams {
 
     #[serde(default)]
     pub image: Option<String>,
+
+    /// OCR text recognition selector (for Flutter/game apps)
+    #[serde(default)]
+    pub ocr: Option<OcrSelectorInput>,
 
     #[serde(default)]
     pub index: Option<u32>,
@@ -2050,6 +2119,7 @@ impl Default for ScrollUntilVisibleParams {
             direction: None,
             element_type: None,
             image: None,
+            ocr: None,
             from: None,
             scrollable: None,
             timeout: None,

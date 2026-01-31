@@ -577,6 +577,7 @@ impl TestExecutor {
                             params.index,
                             &params.scrollable,
                             params.exact,
+                            &params.ocr,
                         )
                         .ok_or_else(|| anyhow::anyhow!("No selector specified for tapOn"))?;
 
@@ -623,6 +624,7 @@ impl TestExecutor {
                         params.index,
                         &params.scrollable,
                         params.exact,
+                        &params.ocr,
                     )
                     .ok_or_else(|| anyhow::anyhow!("No selector specified for longPressOn"))?;
                 let timeout = self.context.default_timeout_ms;
@@ -650,6 +652,7 @@ impl TestExecutor {
                         params.index,
                         &params.scrollable,
                         params.exact,
+                        &params.ocr,
                     )
                     .ok_or_else(|| anyhow::anyhow!("No selector specified for doubleTapOn"))?;
                 let timeout = self.context.default_timeout_ms;
@@ -676,6 +679,7 @@ impl TestExecutor {
                         None,  // index
                         &None, // scrollable
                         false, // exact
+                        &params.ocr,
                     )
                     .ok_or_else(|| anyhow::anyhow!("No selector specified for rightClick"))?;
                 let timeout = self.context.default_timeout_ms;
@@ -767,6 +771,7 @@ impl TestExecutor {
                             params.index,
                             &params.scrollable,
                             false,
+                            &params.ocr,
                         )
                         .ok_or_else(|| {
                             anyhow::anyhow!("No selector specified for assertVisible")
@@ -791,6 +796,7 @@ impl TestExecutor {
                                 child_params.index,
                                 &params.scrollable,
                                 false,
+                                &child_params.ocr,
                             )
                             .ok_or(anyhow::anyhow!("Invalid child selector in containsChild"))?;
 
@@ -863,6 +869,7 @@ impl TestExecutor {
                             params.index,
                             &params.scrollable,
                             false,
+                            &params.ocr,
                         )
                         .ok_or_else(|| {
                             anyhow::anyhow!("No selector specified for waitUntilVisible")
@@ -887,6 +894,7 @@ impl TestExecutor {
                                 child_params.index,
                                 &params.scrollable,
                                 false,
+                                &child_params.ocr,
                             )
                             .ok_or(anyhow::anyhow!("Invalid child selector in containsChild"))?;
 
@@ -961,6 +969,7 @@ impl TestExecutor {
                             params.index,
                             &params.scrollable,
                             false,
+                            &params.ocr,
                         )
                         .ok_or_else(|| {
                             anyhow::anyhow!("No selector specified for assertNotVisible")
@@ -984,6 +993,7 @@ impl TestExecutor {
                                 child_params.index,
                                 &params.scrollable,
                                 false,
+                                &child_params.ocr,
                             )
                             .ok_or(anyhow::anyhow!("Invalid child selector"))?;
                         selector = crate::driver::traits::Selector::HasChild {
@@ -1052,6 +1062,7 @@ impl TestExecutor {
                         params.index,
                         &params.scrollable,
                         false,
+                        &params.ocr,
                     )
                     .ok_or_else(|| {
                         anyhow::anyhow!("No selector specified for waitUntilNotVisible")
@@ -1075,6 +1086,7 @@ impl TestExecutor {
                             child_params.index,
                             &params.scrollable,
                             false,
+                            &child_params.ocr,
                         )
                         .ok_or(anyhow::anyhow!("Invalid child selector"))?;
                     selector = crate::driver::traits::Selector::HasChild {
@@ -1360,6 +1372,7 @@ impl TestExecutor {
                         None,
                         &params.scrollable,
                         false,
+                        &params.ocr,
                     )
                     .ok_or_else(|| {
                         anyhow::anyhow!("No selector specified for scrollUntilVisible")
@@ -1392,6 +1405,7 @@ impl TestExecutor {
                         from.index,
                         &from.scrollable,
                         from.exact,
+                        &from.ocr,
                     )
                 } else if let Some(ref scrollable) = params.scrollable {
                     // Fallback: swipe the scrollable container itself
@@ -1972,6 +1986,7 @@ impl TestExecutor {
                     params.index.map(|i| i as u32),
                     &None,
                     false,
+                    &params.ocr,
                 );
 
                 if let Some(sel) = selector {
@@ -2401,6 +2416,7 @@ impl TestExecutor {
                             from.index,
                             &from.scrollable,
                             from.exact,
+                            &from.ocr,
                         )
                     } else {
                         None
@@ -2820,6 +2836,7 @@ impl TestExecutor {
         index: Option<u32>,
         scrollable: &Option<crate::parser::types::ScrollableParams>,
         exact: bool,
+        ocr: &Option<crate::parser::types::OcrSelectorInput>,
     ) -> Option<crate::driver::traits::Selector> {
         use crate::driver::traits::Selector;
 
@@ -2857,6 +2874,13 @@ impl TestExecutor {
                 path: resolved.to_string_lossy().to_string(),
                 region: None,
             }
+        } else if let Some(ocr_input) = ocr {
+            // OCR selector - similar pattern to image selector
+            Selector::OCR(
+                self.context.substitute_vars(ocr_input.text()),
+                ocr_input.index(),
+                ocr_input.is_regex(),
+            )
         } else if let Some(x) = xpath {
             Selector::XPath(self.context.substitute_vars(x))
         } else if let Some(scroll_params) = scrollable {

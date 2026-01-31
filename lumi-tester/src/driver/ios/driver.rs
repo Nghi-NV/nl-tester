@@ -1,6 +1,8 @@
-//! iOS Driver implementation using idb
+//! iOS Driver implementation
 //!
-//! This driver enables iOS automation testing using the idb CLI tool.
+//! This driver enables iOS automation testing:
+//! - Simulators: Uses idb CLI tool
+//! - Real devices: Uses WebDriverAgent (WDA) via HTTP API
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -14,6 +16,7 @@ use uuid::Uuid;
 
 use super::accessibility::{self, IosElement};
 use super::idb;
+use super::wda::WdaClient;
 use crate::driver::common;
 use crate::driver::image_matcher::{find_template, ImageRegion, MatchConfig};
 use crate::driver::traits::{PlatformDriver, Selector, SwipeDirection};
@@ -22,7 +25,9 @@ use colored::Colorize;
 use image::GenericImageView;
 use std::collections::HashMap as StdHashMap;
 
-/// iOS driver implementation using idb
+/// iOS driver implementation
+/// - Simulators: Uses idb
+/// - Real devices: Uses WebDriverAgent (WDA)
 pub struct IosDriver {
     /// Device UDID
     udid: String,
@@ -43,6 +48,8 @@ pub struct IosDriver {
     screen_size: (u32, u32),
     /// Mock location states keyed by name ("" for default)
     mock_states: Arc<Mutex<StdHashMap<String, IosMockLocationState>>>,
+    /// WDA client for real device UI automation
+    wda_client: Arc<Mutex<Option<WdaClient>>>,
 }
 
 /// State of the background mock location process for iOS
@@ -111,6 +118,31 @@ impl IosDriver {
             .await
             .unwrap_or((390, 844));
 
+        // Initialize WDA client for real devices
+        let wda_client = if !is_simulator {
+            // Try to ensure WDA is running (auto-start if possible)
+            let port = super::wda::DEFAULT_WDA_PORT;
+            let _ = super::wda_setup::ensure_wda_running(&target.udid, port).await;
+
+            // Check if WDA host was found (stored in env by wda_setup)
+            let wda_host = std::env::var("WDA_HOST").unwrap_or_else(|_| "localhost".to_string());
+            let client = WdaClient::with_host(&wda_host, port);
+
+            if client.is_ready().await.unwrap_or(false) {
+                println!(
+                    "{} WebDriverAgent ready at {}:{}",
+                    "✓".green(),
+                    wda_host,
+                    port
+                );
+                Some(client)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         Ok(Self {
             udid: target.udid,
             device_name: target.name,
@@ -121,6 +153,7 @@ impl IosDriver {
             current_recording_path: Arc::new(Mutex::new(None)),
             screen_size,
             mock_states: Arc::new(Mutex::new(StdHashMap::new())),
+            wda_client: Arc::new(Mutex::new(wda_client)),
         })
     }
 
@@ -277,6 +310,7 @@ impl IosDriver {
             } => self.find_relative_element(&elements, target, anchor, direction, max_dist),
             Selector::Point { .. } => unreachable!(),
             Selector::Image { .. } => None,
+            Selector::OCR(..) => None, // OCR handled separately via screenshot
             Selector::ScrollableItem { .. } | Selector::Scrollable(_) => None,
             Selector::HasChild { parent, child } => {
                 let flat = accessibility::flatten_elements(&elements);
@@ -700,7 +734,18 @@ impl PlatformDriver for IosDriver {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Element not found for tap: {:?}", selector))?;
 
-        idb::tap(&self.udid, pos.0, pos.1).await?;
+        if self.is_simulator {
+            idb::tap(&self.udid, pos.0, pos.1).await?;
+        } else {
+            // Use WDA for real devices
+            let mut wda = self.wda_client.lock().await;
+            if let Some(ref mut client) = *wda {
+                client.tap(pos.0, pos.1).await?;
+            } else {
+                // Fallback to idb (will likely fail)
+                idb::tap(&self.udid, pos.0, pos.1).await?;
+            }
+        }
         self.invalidate_cache().await;
         Ok(())
     }
@@ -711,7 +756,16 @@ impl PlatformDriver for IosDriver {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Element not found for long_press: {:?}", selector))?;
 
-        idb::long_press(&self.udid, pos.0, pos.1, duration_ms).await?;
+        if self.is_simulator {
+            idb::long_press(&self.udid, pos.0, pos.1, duration_ms).await?;
+        } else {
+            let mut wda = self.wda_client.lock().await;
+            if let Some(ref mut client) = *wda {
+                client.long_press(pos.0, pos.1, duration_ms).await?;
+            } else {
+                idb::long_press(&self.udid, pos.0, pos.1, duration_ms).await?;
+            }
+        }
         self.invalidate_cache().await;
         Ok(())
     }
@@ -722,10 +776,21 @@ impl PlatformDriver for IosDriver {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Element not found for double_tap: {:?}", selector))?;
 
-        // Perform two rapid taps
-        idb::tap(&self.udid, pos.0, pos.1).await?;
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        idb::tap(&self.udid, pos.0, pos.1).await?;
+        if self.is_simulator {
+            // Perform two rapid taps
+            idb::tap(&self.udid, pos.0, pos.1).await?;
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            idb::tap(&self.udid, pos.0, pos.1).await?;
+        } else {
+            let mut wda = self.wda_client.lock().await;
+            if let Some(ref mut client) = *wda {
+                client.double_tap(pos.0, pos.1).await?;
+            } else {
+                idb::tap(&self.udid, pos.0, pos.1).await?;
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                idb::tap(&self.udid, pos.0, pos.1).await?;
+            }
+        }
 
         self.invalidate_cache().await;
         Ok(())
@@ -736,18 +801,20 @@ impl PlatformDriver for IosDriver {
     }
 
     async fn input_text(&self, text: &str, _unicode: bool) -> Result<()> {
-        if text.chars().all(|c| c.is_ascii()) {
-            idb::input_text(&self.udid, text).await?;
-        } else {
-            // Fallback for non-ASCII characters (e.g. Vietnamese)
-            if self.is_simulator {
-                self.input_text_clipboard(text).await?;
+        if self.is_simulator {
+            if text.chars().all(|c| c.is_ascii()) {
+                idb::input_text(&self.udid, text).await?;
             } else {
-                // For real devices, idb input text is the only option currently, warn the user
-                println!(
-                    "{} Warning: Non-ASCII text might fail on real devices via idb.",
-                    "⚠️".yellow()
-                );
+                // Fallback for non-ASCII characters (e.g. Vietnamese)
+                self.input_text_clipboard(text).await?;
+            }
+        } else {
+            // Use WDA for real devices - supports both ASCII and Unicode
+            let mut wda = self.wda_client.lock().await;
+            if let Some(ref mut client) = *wda {
+                client.input_text(text).await?;
+            } else {
+                // Fallback to idb (will likely fail for real devices)
                 idb::input_text(&self.udid, text).await?;
             }
         }
@@ -799,12 +866,22 @@ impl PlatformDriver for IosDriver {
     }
 
     async fn hide_keyboard(&self) -> Result<()> {
-        // Try pressing return to dismiss, common pattern
-        let _ = idb::press_key(&self.udid, "XCUIKeyboardKeyReturn").await;
+        if self.is_simulator {
+            // Try pressing return to dismiss, common pattern
+            let _ = idb::press_key(&self.udid, "XCUIKeyboardKeyReturn").await;
 
-        // Alternative: tap outside the keyboard area
-        let (_, height) = self.screen_size;
-        let _ = idb::tap(&self.udid, 50, (height / 4) as i32).await;
+            // Alternative: tap outside the keyboard area
+            let (_, height) = self.screen_size;
+            let _ = idb::tap(&self.udid, 50, (height / 4) as i32).await;
+        } else {
+            let mut wda = self.wda_client.lock().await;
+            if let Some(ref mut client) = *wda {
+                // Press return key to dismiss keyboard
+                let _ = client.press_key("RETURN").await;
+            } else {
+                let _ = idb::press_key(&self.udid, "XCUIKeyboardKeyReturn").await;
+            }
+        }
 
         self.invalidate_cache().await;
         Ok(())
@@ -880,7 +957,16 @@ impl PlatformDriver for IosDriver {
             y2
         );
 
-        idb::swipe(&self.udid, x1, y1, x2, y2, duration_ms).await?;
+        if self.is_simulator {
+            idb::swipe(&self.udid, x1, y1, x2, y2, duration_ms).await?;
+        } else {
+            let mut wda = self.wda_client.lock().await;
+            if let Some(ref mut client) = *wda {
+                client.swipe(x1, y1, x2, y2, duration_ms).await?;
+            } else {
+                idb::swipe(&self.udid, x1, y1, x2, y2, duration_ms).await?;
+            }
+        }
         self.invalidate_cache().await;
         Ok(())
     }
@@ -1097,13 +1183,31 @@ impl PlatformDriver for IosDriver {
         let (_, height) = self.screen_size;
         let center_y = height as i32 / 2;
 
-        idb::swipe(&self.udid, 5, center_y, 200, center_y, Some(200)).await?;
+        if self.is_simulator {
+            idb::swipe(&self.udid, 5, center_y, 200, center_y, Some(200)).await?;
+        } else {
+            let mut wda = self.wda_client.lock().await;
+            if let Some(ref mut client) = *wda {
+                client.swipe(5, center_y, 200, center_y, Some(200)).await?;
+            } else {
+                idb::swipe(&self.udid, 5, center_y, 200, center_y, Some(200)).await?;
+            }
+        }
         self.invalidate_cache().await;
         Ok(())
     }
 
     async fn home(&self) -> Result<()> {
-        idb::press_button(&self.udid, "HOME").await?;
+        if self.is_simulator {
+            idb::press_button(&self.udid, "HOME").await?;
+        } else {
+            let mut wda = self.wda_client.lock().await;
+            if let Some(ref mut client) = *wda {
+                client.press_button("home").await?;
+            } else {
+                idb::press_button(&self.udid, "HOME").await?;
+            }
+        }
         self.invalidate_cache().await;
         Ok(())
     }

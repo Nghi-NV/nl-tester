@@ -3,6 +3,7 @@ pub mod android_auto;
 pub mod common;
 pub mod image_matcher;
 pub mod ios;
+pub mod ocr;
 pub mod traits;
 pub mod web;
 
