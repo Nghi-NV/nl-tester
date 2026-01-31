@@ -378,6 +378,7 @@ fn parse_command_with_params(
                         stop_app: None,
                         permissions: None,
                         app_id: None,
+                        label: None,
                     });
                 TestCommand::LaunchApp(Some(crate::parser::types::LaunchAppParamsInput::Struct(p)))
             }

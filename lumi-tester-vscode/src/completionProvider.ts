@@ -167,7 +167,9 @@ export class LumiCompletionProvider implements vscode.CompletionItemProvider {
       item.detail = param.type + (param.required ? ' (required)' : '');
       item.documentation = new vscode.MarkdownString(param.description);
 
-      if (param.type === 'string') {
+      if (param.snippet) {
+        item.insertText = new vscode.SnippetString(param.snippet);
+      } else if (param.type === 'string') {
         item.insertText = new vscode.SnippetString(`${param.name}: "$0"`);
       } else if (param.type === 'boolean') {
         item.insertText = new vscode.SnippetString(`${param.name}: \${1|true,false|}`);

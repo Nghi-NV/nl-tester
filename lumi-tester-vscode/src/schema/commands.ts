@@ -6,6 +6,7 @@ export interface CommandParam {
   type: 'string' | 'number' | 'boolean' | 'object';
   description: string;
   required?: boolean;
+  snippet?: string;
 }
 
 export interface LumiCommand {
@@ -33,7 +34,13 @@ export const LUMI_COMMANDS: LumiCommand[] = [
       { name: 'clearState', type: 'boolean', description: 'Clear app data before launch' },
       { name: 'clearKeychain', type: 'boolean', description: 'Clear iOS Keychain (simulator only)' },
       { name: 'stopApp', type: 'boolean', description: 'Stop app before launch (default: true)' },
-      { name: 'permissions', type: 'object', description: 'Permissions to set' }
+      {
+        name: 'permissions',
+        type: 'object',
+        description: 'Permissions to set',
+        snippet: 'permissions:\n    ${1:android.permission.CAMERA}: "${2|allow,deny|}"'
+      },
+      { name: 'label', type: 'string', description: 'Optional label for custom logging' }
     ]
   },
   {
@@ -103,12 +110,44 @@ export const LUMI_COMMANDS: LumiCommand[] = [
       { name: 'desc', type: 'string', description: 'Find by content description/accessibility ID' },
       { name: 'exact', type: 'boolean', description: 'Match text exactly (case-sensitive)' },
       { name: 'retryTapIfNoChange', type: 'boolean', description: 'Retry tap if UI does not change' },
-      { name: 'scrollable', type: 'object', description: 'Auto-scroll configuration' },
+      {
+        name: 'scrollable',
+        type: 'object',
+        description: 'Auto-scroll configuration',
+        snippet: 'scrollable:\n    index: ${1:0}\n    itemIndex: ${2:0}'
+      },
       // Relative positioning
-      { name: 'rightOf', type: 'string', description: 'Find element right of anchor' },
-      { name: 'leftOf', type: 'string', description: 'Find element left of anchor' },
-      { name: 'above', type: 'string', description: 'Find element above anchor' },
-      { name: 'below', type: 'string', description: 'Find element below anchor' }
+      {
+        name: 'rightOf',
+        type: 'string',
+        description: 'Find element right of anchor',
+        snippet: 'rightOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'leftOf',
+        type: 'string',
+        description: 'Find element left of anchor',
+        snippet: 'leftOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'above',
+        type: 'string',
+        description: 'Find element above anchor',
+        snippet: 'above:\n    text: "${1:text}"'
+      },
+      {
+        name: 'below',
+        type: 'string',
+        description: 'Find element below anchor',
+        snippet: 'below:\n    text: "${1:text}"'
+      },
+      { name: 'label', type: 'string', description: 'Optional label for custom logging' },
+      {
+        name: 'ocr',
+        type: 'object',
+        description: 'Find by OCR',
+        snippet: 'ocr:\n    text: "${1:text_to_find}"\n    region: "${2|all,top-half,bottom-half,left-half,right-half,center|}"'
+      }
     ]
   },
   {
@@ -128,7 +167,49 @@ export const LUMI_COMMANDS: LumiCommand[] = [
       { name: 'type', type: 'string', description: 'Element type (Button, EditText...)' },
       { name: 'placeholder', type: 'string', description: 'Find by placeholder text' },
       { name: 'role', type: 'string', description: 'Find by role attribute' },
-      { name: 'image', type: 'string', description: 'Find by image template matching' }
+      { name: 'image', type: 'string', description: 'Find by image template matching' },
+      { name: 'optional', type: 'boolean', description: 'Skip if not found' },
+      { name: 'desc', type: 'string', description: 'Find by content description/accessibility ID' },
+      { name: 'exact', type: 'boolean', description: 'Match text exactly (case-sensitive)' },
+      { name: 'retryTapIfNoChange', type: 'boolean', description: 'Retry tap if UI does not change' },
+      {
+        name: 'scrollable',
+        type: 'object',
+        description: 'Auto-scroll configuration',
+        snippet: 'scrollable:\n    index: ${1:0}\n    itemIndex: ${2:0}'
+      },
+      // Relative positioning
+      {
+        name: 'rightOf',
+        type: 'string',
+        description: 'Find element right of anchor',
+        snippet: 'rightOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'leftOf',
+        type: 'string',
+        description: 'Find element left of anchor',
+        snippet: 'leftOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'above',
+        type: 'string',
+        description: 'Find element above anchor',
+        snippet: 'above:\n    text: "${1:text}"'
+      },
+      {
+        name: 'below',
+        type: 'string',
+        description: 'Find element below anchor',
+        snippet: 'below:\n    text: "${1:text}"'
+      },
+      { name: 'label', type: 'string', description: 'Optional label for custom logging' },
+      {
+        name: 'ocr',
+        type: 'object',
+        description: 'Find by OCR',
+        snippet: 'ocr:\n    text: "${1:text_to_find}"\n    region: "${2|all,top-half,bottom-half,left-half,right-half,center|}"'
+      }
     ]
   },
   {
@@ -149,12 +230,48 @@ export const LUMI_COMMANDS: LumiCommand[] = [
       { name: 'placeholder', type: 'string', description: 'Find by placeholder text' },
       { name: 'role', type: 'string', description: 'Find by role attribute' },
       { name: 'image', type: 'string', description: 'Find by image template matching' },
+      { name: 'optional', type: 'boolean', description: 'Skip if not found' },
       { name: 'desc', type: 'string', description: 'Find by content description/accessibility ID' },
-      { name: 'exact', type: 'boolean', description: 'Match text exactly' },
-      { name: 'rightOf', type: 'string', description: 'Find element right of anchor' },
-      { name: 'leftOf', type: 'string', description: 'Find element left of anchor' },
-      { name: 'above', type: 'string', description: 'Find element above anchor' },
-      { name: 'below', type: 'string', description: 'Find element below anchor' }
+      { name: 'exact', type: 'boolean', description: 'Match text exactly (case-sensitive)' },
+      { name: 'retryTapIfNoChange', type: 'boolean', description: 'Retry tap if UI does not change' },
+      {
+        name: 'scrollable',
+        type: 'object',
+        description: 'Auto-scroll configuration',
+        snippet: 'scrollable:\n    index: ${1:0}\n    itemIndex: ${2:0}'
+      },
+      // Relative positioning
+      {
+        name: 'rightOf',
+        type: 'string',
+        description: 'Find element right of anchor',
+        snippet: 'rightOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'leftOf',
+        type: 'string',
+        description: 'Find element left of anchor',
+        snippet: 'leftOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'above',
+        type: 'string',
+        description: 'Find element above anchor',
+        snippet: 'above:\n    text: "${1:text}"'
+      },
+      {
+        name: 'below',
+        type: 'string',
+        description: 'Find element below anchor',
+        snippet: 'below:\n    text: "${1:text}"'
+      },
+      { name: 'label', type: 'string', description: 'Optional label for custom logging' },
+      {
+        name: 'ocr',
+        type: 'object',
+        description: 'Find by OCR',
+        snippet: 'ocr:\n    text: "${1:text_to_find}"\n    region: "${2|all,top-half,bottom-half,left-half,right-half,center|}"'
+      }
     ]
   },
   {
@@ -167,11 +284,57 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     params: [
       { name: 'text', type: 'string', description: 'Find by exact text' },
       { name: 'id', type: 'string', description: 'Find by resource ID' },
-      { name: 'css', type: 'string', description: 'Find by CSS selector' },
+      { name: 'css', type: 'string', description: 'Find by CSS selector (Web only)' },
       { name: 'xpath', type: 'string', description: 'Find by XPath' },
+      { name: 'point', type: 'string', description: 'Tap coordinates (x,y or x%,y%)' },
       { name: 'regex', type: 'string', description: 'Find by regex pattern' },
       { name: 'index', type: 'number', description: 'Element index (0-based)' },
-      { name: 'type', type: 'string', description: 'Element type' }
+      { name: 'type', type: 'string', description: 'Element type (Button, EditText...)' },
+      { name: 'placeholder', type: 'string', description: 'Find by placeholder text' },
+      { name: 'role', type: 'string', description: 'Find by role attribute' },
+      { name: 'image', type: 'string', description: 'Find by image template matching' },
+      { name: 'optional', type: 'boolean', description: 'Skip if not found' },
+      { name: 'desc', type: 'string', description: 'Find by content description/accessibility ID' },
+      { name: 'exact', type: 'boolean', description: 'Match text exactly (case-sensitive)' },
+      { name: 'retryTapIfNoChange', type: 'boolean', description: 'Retry tap if UI does not change' },
+      {
+        name: 'scrollable',
+        type: 'object',
+        description: 'Auto-scroll configuration',
+        snippet: 'scrollable:\n    index: ${1:0}\n    itemIndex: ${2:0}'
+      },
+      // Relative positioning
+      {
+        name: 'rightOf',
+        type: 'string',
+        description: 'Find element right of anchor',
+        snippet: 'rightOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'leftOf',
+        type: 'string',
+        description: 'Find element left of anchor',
+        snippet: 'leftOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'above',
+        type: 'string',
+        description: 'Find element above anchor',
+        snippet: 'above:\n    text: "${1:text}"'
+      },
+      {
+        name: 'below',
+        type: 'string',
+        description: 'Find element below anchor',
+        snippet: 'below:\n    text: "${1:text}"'
+      },
+      { name: 'label', type: 'string', description: 'Optional label for custom logging' },
+      {
+        name: 'ocr',
+        type: 'object',
+        description: 'Find by OCR',
+        snippet: 'ocr:\n    text: "${1:text_to_find}"\n    region: "${2|all,top-half,bottom-half,left-half,right-half,center|}"'
+      }
     ]
   },
   {
@@ -304,11 +467,51 @@ export const LUMI_COMMANDS: LumiCommand[] = [
       { name: 'css', type: 'string', description: 'Find by CSS selector' },
       { name: 'xpath', type: 'string', description: 'Find by XPath' },
       { name: 'regex', type: 'string', description: 'Find by regex pattern' },
+      { name: 'role', type: 'string', description: 'Find by role attribute' },
+      { name: 'type', type: 'string', description: 'Element type' },
+      { name: 'placeholder', type: 'string', description: 'Find by placeholder text' },
+      { name: 'desc', type: 'string', description: 'Find by content description/accessibility ID' },
       { name: 'direction', type: 'string', description: 'Scroll direction: up, down, left, right' },
       { name: 'maxScrolls', type: 'number', description: 'Maximum scroll attempts' },
-      { name: 'maxScrolls', type: 'number', description: 'Maximum scroll attempts' },
       { name: 'image', type: 'string', description: 'Find by image template' },
-      { name: 'from', type: 'object', description: 'Container element to scroll within' }
+      {
+        name: 'from',
+        type: 'object',
+        description: 'Container element to scroll within',
+        snippet: 'from:\n    id: "${1:resource_id}"'
+      },
+      // Relative positioning
+      {
+        name: 'rightOf',
+        type: 'string',
+        description: 'Find element right of anchor',
+        snippet: 'rightOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'leftOf',
+        type: 'string',
+        description: 'Find element left of anchor',
+        snippet: 'leftOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'above',
+        type: 'string',
+        description: 'Find element above anchor',
+        snippet: 'above:\n    text: "${1:text}"'
+      },
+      {
+        name: 'below',
+        type: 'string',
+        description: 'Find element below anchor',
+        snippet: 'below:\n    text: "${1:text}"'
+      },
+      { name: 'label', type: 'string', description: 'Optional label for custom logging' },
+      {
+        name: 'ocr',
+        type: 'object',
+        description: 'Find by OCR',
+        snippet: 'ocr:\n    text: "${1:text_to_find}"\n    region: "${2|all,top-half,bottom-half,left-half,right-half,center|}"'
+      }
     ]
   },
 
@@ -326,10 +529,58 @@ export const LUMI_COMMANDS: LumiCommand[] = [
       { name: 'css', type: 'string', description: 'Find by CSS selector' },
       { name: 'xpath', type: 'string', description: 'Find by XPath' },
       { name: 'regex', type: 'string', description: 'Find by regex pattern' },
+      { name: 'index', type: 'number', description: 'Element index (0-based)' },
+      { name: 'type', type: 'string', description: 'Element type' },
+      { name: 'placeholder', type: 'string', description: 'Find by placeholder text' },
+      { name: 'desc', type: 'string', description: 'Find by content description/accessibility ID' },
+      { name: 'role', type: 'string', description: 'Find by role attribute' },
       { name: 'image', type: 'string', description: 'Find by image template' },
       { name: 'timeout', type: 'number', description: 'Wait timeout in ms' },
       { name: 'soft', type: 'boolean', description: 'Soft assertion (continue on fail)' },
-      { name: 'containsChild', type: 'object', description: 'Assert element contains specific child' }
+      {
+        name: 'scrollable',
+        type: 'object',
+        description: 'Auto-scroll configuration',
+        snippet: 'scrollable:\n    index: ${1:0}\n    itemIndex: ${2:0}'
+      },
+      {
+        name: 'containsChild',
+        type: 'object',
+        description: 'Assert element contains specific child',
+        snippet: 'containsChild:\n    text: "${1:text}"'
+      },
+      // Relative positioning
+      {
+        name: 'rightOf',
+        type: 'string',
+        description: 'Find element right of anchor',
+        snippet: 'rightOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'leftOf',
+        type: 'string',
+        description: 'Find element left of anchor',
+        snippet: 'leftOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'above',
+        type: 'string',
+        description: 'Find element above anchor',
+        snippet: 'above:\n    text: "${1:text}"'
+      },
+      {
+        name: 'below',
+        type: 'string',
+        description: 'Find element below anchor',
+        snippet: 'below:\n    text: "${1:text}"'
+      },
+      { name: 'label', type: 'string', description: 'Optional label for custom logging' },
+      {
+        name: 'ocr',
+        type: 'object',
+        description: 'Find by OCR',
+        snippet: 'ocr:\n    text: "${1:text_to_find}"\n    region: "${2|all,top-half,bottom-half,left-half,right-half,center|}"'
+      }
     ]
   },
   {
@@ -345,7 +596,50 @@ export const LUMI_COMMANDS: LumiCommand[] = [
       { name: 'css', type: 'string', description: 'Find by CSS selector' },
       { name: 'xpath', type: 'string', description: 'Find by XPath' },
       { name: 'regex', type: 'string', description: 'Find by regex pattern' },
-      { name: 'timeout', type: 'number', description: 'Wait timeout in ms' }
+      { name: 'index', type: 'number', description: 'Element index (0-based)' },
+      { name: 'type', type: 'string', description: 'Element type' },
+      { name: 'placeholder', type: 'string', description: 'Find by placeholder text' },
+      { name: 'desc', type: 'string', description: 'Find by content description/accessibility ID' },
+      { name: 'role', type: 'string', description: 'Find by role attribute' },
+      { name: 'timeout', type: 'number', description: 'Wait timeout in ms' },
+      {
+        name: 'scrollable',
+        type: 'object',
+        description: 'Auto-scroll configuration',
+        snippet: 'scrollable:\n    index: ${1:0}\n    itemIndex: ${2:0}'
+      },
+      // Relative positioning
+      {
+        name: 'rightOf',
+        type: 'string',
+        description: 'Find element right of anchor',
+        snippet: 'rightOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'leftOf',
+        type: 'string',
+        description: 'Find element left of anchor',
+        snippet: 'leftOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'above',
+        type: 'string',
+        description: 'Find element above anchor',
+        snippet: 'above:\n    text: "${1:text}"'
+      },
+      {
+        name: 'below',
+        type: 'string',
+        description: 'Find element below anchor',
+        snippet: 'below:\n    text: "${1:text}"'
+      },
+      { name: 'label', type: 'string', description: 'Optional label for custom logging' },
+      {
+        name: 'ocr',
+        type: 'object',
+        description: 'Find by OCR',
+        snippet: 'ocr:\n    text: "${1:text_to_find}"\n    region: "${2|all,top-half,bottom-half,left-half,right-half,center|}"'
+      }
     ]
   },
   {
@@ -361,7 +655,50 @@ export const LUMI_COMMANDS: LumiCommand[] = [
       { name: 'css', type: 'string', description: 'Find by CSS selector' },
       { name: 'xpath', type: 'string', description: 'Find by XPath' },
       { name: 'regex', type: 'string', description: 'Find by regex pattern' },
-      { name: 'timeout', type: 'number', description: 'Wait timeout in ms (default: 5000)' }
+      { name: 'index', type: 'number', description: 'Element index (0-based)' },
+      { name: 'type', type: 'string', description: 'Element type' },
+      { name: 'placeholder', type: 'string', description: 'Find by placeholder text' },
+      { name: 'desc', type: 'string', description: 'Find by content description/accessibility ID' },
+      { name: 'role', type: 'string', description: 'Find by role attribute' },
+      { name: 'timeout', type: 'number', description: 'Wait timeout in ms (default: 5000)' },
+      {
+        name: 'scrollable',
+        type: 'object',
+        description: 'Auto-scroll configuration',
+        snippet: 'scrollable:\n    index: ${1:0}\n    itemIndex: ${2:0}'
+      },
+      // Relative positioning
+      {
+        name: 'rightOf',
+        type: 'string',
+        description: 'Find element right of anchor',
+        snippet: 'rightOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'leftOf',
+        type: 'string',
+        description: 'Find element left of anchor',
+        snippet: 'leftOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'above',
+        type: 'string',
+        description: 'Find element above anchor',
+        snippet: 'above:\n    text: "${1:text}"'
+      },
+      {
+        name: 'below',
+        type: 'string',
+        description: 'Find element below anchor',
+        snippet: 'below:\n    text: "${1:text}"'
+      },
+      { name: 'label', type: 'string', description: 'Optional label for custom logging' },
+      {
+        name: 'ocr',
+        type: 'object',
+        description: 'Find by OCR',
+        snippet: 'ocr:\n    text: "${1:text_to_find}"\n    region: "${2|all,top-half,bottom-half,left-half,right-half,center|}"'
+      }
     ]
   },
   {
@@ -377,7 +714,50 @@ export const LUMI_COMMANDS: LumiCommand[] = [
       { name: 'css', type: 'string', description: 'Find by CSS selector' },
       { name: 'xpath', type: 'string', description: 'Find by XPath' },
       { name: 'regex', type: 'string', description: 'Find by regex pattern' },
-      { name: 'timeout', type: 'number', description: 'Wait timeout in ms (default: 10000)' }
+      { name: 'index', type: 'number', description: 'Element index (0-based)' },
+      { name: 'type', type: 'string', description: 'Element type' },
+      { name: 'placeholder', type: 'string', description: 'Find by placeholder text' },
+      { name: 'desc', type: 'string', description: 'Find by content description/accessibility ID' },
+      { name: 'role', type: 'string', description: 'Find by role attribute' },
+      { name: 'timeout', type: 'number', description: 'Wait timeout in ms (default: 10000)' },
+      {
+        name: 'scrollable',
+        type: 'object',
+        description: 'Auto-scroll configuration',
+        snippet: 'scrollable:\n    index: ${1:0}\n    itemIndex: ${2:0}'
+      },
+      // Relative positioning
+      {
+        name: 'rightOf',
+        type: 'string',
+        description: 'Find element right of anchor',
+        snippet: 'rightOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'leftOf',
+        type: 'string',
+        description: 'Find element left of anchor',
+        snippet: 'leftOf:\n    text: "${1:text}"'
+      },
+      {
+        name: 'above',
+        type: 'string',
+        description: 'Find element above anchor',
+        snippet: 'above:\n    text: "${1:text}"'
+      },
+      {
+        name: 'below',
+        type: 'string',
+        description: 'Find element below anchor',
+        snippet: 'below:\n    text: "${1:text}"'
+      },
+      { name: 'label', type: 'string', description: 'Optional label for custom logging' },
+      {
+        name: 'ocr',
+        type: 'object',
+        description: 'Find by OCR',
+        snippet: 'ocr:\n    text: "${1:text_to_find}"\n    region: "${2|all,top-half,bottom-half,left-half,right-half,center|}"'
+      }
     ]
   },
   {

@@ -529,6 +529,7 @@ impl LaunchAppParamsInput {
                 clear_keychain: false,
                 stop_app: None,
                 permissions: None,
+                label: None,
             },
         }
     }
@@ -554,11 +555,17 @@ pub struct LaunchAppParams {
 
     #[serde(default, alias = "url")]
     pub app_id: Option<String>,
+
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TapParams {
+    #[serde(default)]
+    pub label: Option<String>,
+
     #[serde(default)]
     pub text: Option<String>,
 
@@ -684,6 +691,9 @@ pub struct InputTextParams {
     /// Enable Unicode input mode (uses ADBKeyBoard, slower but reliable)
     #[serde(default)]
     pub unicode: bool,
+
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
 /// Input for InputText command - supports both simple string and struct
@@ -700,6 +710,7 @@ impl InputTextParamsInput {
             Self::String(text) => InputTextParams {
                 text,
                 unicode: false, // default: fast mode
+                label: None,
             },
             Self::Struct(s) => s,
         }
@@ -739,6 +750,9 @@ pub struct ScrollParams {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScrollUntilVisibleParams {
+    #[serde(default)]
+    pub label: Option<String>,
+
     pub text: Option<String>,
     pub regex: Option<String>,
     pub relative: Option<RelativeParams>,
@@ -798,6 +812,9 @@ fn default_max_scrolls() -> u32 {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AssertParams {
+    #[serde(default)]
+    pub label: Option<String>,
+
     #[serde(default)]
     pub text: Option<String>,
 
@@ -870,6 +887,9 @@ pub struct AssertParams {
 pub struct WaitParams {
     #[serde(default = "default_wait_ms")]
     pub ms: u64,
+
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
 fn default_wait_ms() -> u64 {
@@ -1277,6 +1297,9 @@ impl TestCommand {
             TestCommand::LaunchApp(p_input) => {
                 let p = p_input.clone().map(|pi| pi.into_inner());
                 if let Some(params) = p {
+                    if let Some(label) = &params.label {
+                        return label.clone();
+                    }
                     let mut parts = Vec::new();
                     if let Some(app_id) = &params.app_id {
                         parts.push(format!("\"{}\"", app_id));
@@ -1299,6 +1322,9 @@ impl TestCommand {
             TestCommand::StopApp => "stopApp".to_string(),
             TestCommand::TapOn(p_input) => {
                 let p = p_input.clone().into_inner();
+                if let Some(label) = &p.label {
+                    return label.clone();
+                }
                 if let Some(text) = &p.text {
                     if let Some(idx) = p.index {
                         format!("tapOn(text: \"{}\", index: {})", text, idx)
@@ -1348,6 +1374,9 @@ impl TestCommand {
             }
             TestCommand::LongPressOn(p_input) => {
                 let p = p_input.clone().into_inner();
+                if let Some(label) = &p.label {
+                    return label.clone();
+                }
                 if let Some(text) = &p.text {
                     format!("longPressOn(text: \"{}\")", text)
                 } else if let Some(id) = &p.id {
@@ -1363,6 +1392,9 @@ impl TestCommand {
             }
             TestCommand::DoubleTapOn(p_input) => {
                 let p = p_input.clone().into_inner();
+                if let Some(label) = &p.label {
+                    return label.clone();
+                }
                 if let Some(text) = &p.text {
                     format!("doubleTapOn(text: \"{}\")", text)
                 } else if let Some(id) = &p.id {
@@ -1377,6 +1409,12 @@ impl TestCommand {
                 }
             }
             TestCommand::InputText(params_input) => {
+                // Check for label in the input
+                if let InputTextParamsInput::Struct(p) = params_input {
+                    if let Some(label) = &p.label {
+                        return label.clone();
+                    }
+                }
                 format!("inputText(\"{}\")", params_input.text())
             }
             TestCommand::EraseText(_) => "eraseText".to_string(),
@@ -1388,6 +1426,9 @@ impl TestCommand {
             TestCommand::ManualScroll(_) => "scroll".to_string(),
             TestCommand::ScrollUntilVisible(p_input) => {
                 let p = p_input.clone().into_inner();
+                if let Some(label) = &p.label {
+                    return label.clone();
+                }
                 if let Some(text) = &p.text {
                     format!("scrollUntilVisible(text: \"{}\")", text)
                 } else if let Some(id) = &p.id {
@@ -1404,6 +1445,9 @@ impl TestCommand {
             }
             TestCommand::AssertVisible(p_input) => {
                 let p = p_input.clone().into_inner();
+                if let Some(label) = &p.label {
+                    return label.clone();
+                }
                 if let Some(text) = &p.text {
                     format!("assertVisible(text: \"{}\")", text)
                 } else if let Some(id) = &p.id {
@@ -1422,6 +1466,9 @@ impl TestCommand {
             }
             TestCommand::WaitUntilVisible(p_input) => {
                 let p = p_input.clone().into_inner();
+                if let Some(label) = &p.label {
+                    return label.clone();
+                }
                 if let Some(text) = &p.text {
                     format!("waitUntilVisible(text: \"{}\")", text)
                 } else if let Some(id) = &p.id {
@@ -1440,6 +1487,9 @@ impl TestCommand {
             }
             TestCommand::AssertNotVisible(p_input) => {
                 let p = p_input.clone().into_inner();
+                if let Some(label) = &p.label {
+                    return label.clone();
+                }
                 if let Some(text) = &p.text {
                     format!("assertNotVisible(text: \"{}\")", text)
                 } else if let Some(id) = &p.id {
@@ -1452,6 +1502,9 @@ impl TestCommand {
             }
             TestCommand::WaitUntilNotVisible(p_input) => {
                 let p = p_input.clone().into_inner();
+                if let Some(label) = &p.label {
+                    return label.clone();
+                }
                 if let Some(text) = &p.text {
                     format!("waitNotSee(text: \"{}\")", text)
                 } else if let Some(id) = &p.id {
@@ -1465,6 +1518,9 @@ impl TestCommand {
             TestCommand::WaitForAnimationToEnd => "waitForAnimationToEnd".to_string(),
             TestCommand::Wait(p_input) => {
                 let p = p_input.clone().into_inner();
+                if let Some(label) = &p.label {
+                    return label.clone();
+                }
                 format!("wait({}ms)", p.ms)
             }
             TestCommand::Repeat(p) => {
@@ -2111,6 +2167,7 @@ impl Default for WaitParams {
     fn default() -> Self {
         Self {
             ms: default_wait_ms(),
+            label: None,
         }
     }
 }
@@ -2118,6 +2175,7 @@ impl Default for WaitParams {
 impl Default for ScrollUntilVisibleParams {
     fn default() -> Self {
         Self {
+            label: None,
             text: None,
             regex: None,
             relative: None,
@@ -2213,7 +2271,7 @@ pub enum WaitParamsInput {
 impl WaitParamsInput {
     pub fn into_inner(self) -> WaitParams {
         match self {
-            WaitParamsInput::Number(n) => WaitParams { ms: n },
+            WaitParamsInput::Number(n) => WaitParams { ms: n, label: None },
             WaitParamsInput::Struct(s) => s,
         }
     }
@@ -2232,11 +2290,13 @@ impl ScrollUntilVisibleInput {
                 if is_regex_string(&s) {
                     ScrollUntilVisibleParams {
                         regex: Some(s),
+                        label: None,
                         ..Default::default()
                     }
                 } else {
                     ScrollUntilVisibleParams {
                         text: Some(s),
+                        label: None,
                         ..Default::default()
                     }
                 }

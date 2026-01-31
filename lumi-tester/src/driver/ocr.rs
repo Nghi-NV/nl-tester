@@ -6,6 +6,7 @@
 //! - Linux/Fallback: Tesseract CLI
 
 use anyhow::{Context, Result};
+use log;
 use regex::Regex;
 use std::collections::HashMap;
 use std::process::Command;
@@ -99,7 +100,7 @@ impl OcrEngine {
         // Debug output
         if !all_lines.is_empty() {
             let texts: Vec<&str> = all_lines.iter().map(|l| l.text.as_str()).collect();
-            println!("      📝 Lines: {:?}", texts);
+            log::debug!("      📝 Lines: {:?}", texts);
         }
 
         // Filter matches
@@ -127,7 +128,7 @@ impl OcrEngine {
             })
             .collect();
 
-        println!(
+        log::debug!(
             "      ⚡ OCR completed in {}ms ({} matches)",
             start.elapsed().as_millis(),
             matches.len()

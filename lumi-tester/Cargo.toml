@@ -41,6 +41,10 @@ indicatif = "0.17"
 # Signal handling
 ctrlc = "3.4"
 
+# Logging
+log = "0.4"
+env_logger = "0.10"
+
 # Image processing
 image = { version = "0.24", features = ["gif"] }
 imageproc = "0.23"

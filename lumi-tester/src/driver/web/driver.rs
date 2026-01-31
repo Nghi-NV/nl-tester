@@ -83,6 +83,8 @@ pub struct WebDriver {
     current_recording_path: Arc<Mutex<Option<String>>>,
     /// Captured console logs
     console_logs: Arc<Mutex<Vec<String>>>,
+    /// OCR engine (lazy-initialized)
+    ocr_engine: tokio::sync::OnceCell<crate::driver::ocr::OcrEngine>,
 }
 
 impl WebDriver {
@@ -295,7 +297,73 @@ impl WebDriver {
             config,
             current_recording_path: Arc::new(Mutex::new(None)),
             console_logs,
+            ocr_engine: tokio::sync::OnceCell::new(),
         })
+    }
+
+    /// Get OCR engine (lazy-initialized)
+    async fn get_ocr_engine(&self) -> Result<&crate::driver::ocr::OcrEngine> {
+        self.ocr_engine
+            .get_or_try_init(|| async { crate::driver::ocr::OcrEngine::new().await })
+            .await
+    }
+
+    /// Find text on screen using OCR
+    async fn find_ocr_text(
+        &self,
+        text: &str,
+        index: usize,
+        is_regex: bool,
+        region: Option<&str>,
+    ) -> Result<Option<(i32, i32)>> {
+        use crate::driver::image_matcher::ImageRegion;
+
+        // Initialize engine first
+        let engine = self.get_ocr_engine().await?;
+
+        // Parse region
+        let image_region = region.map(ImageRegion::from_str).unwrap_or_default();
+        let region_clone = image_region;
+        let text = text.to_string();
+        let engine_clone = engine.clone();
+
+        // Use page.screenshot() for fast in-memory handling
+        let page = self.page.lock().await;
+        // Don't log every screenshot to keep logs clean, or use debug log
+        let screenshot_bytes = page
+            .screenshot_builder()
+            .r#type(playwright::api::ScreenshotType::Png)
+            .screenshot()
+            .await?;
+        drop(page);
+
+        // Run match in blocking task
+        let result = tokio::task::spawn_blocking(move || {
+            // Crop image if region specified
+            let (cropped_data, offset_x, offset_y) = if region_clone != ImageRegion::Full {
+                let img = image::load_from_memory(&screenshot_bytes)?;
+                let (w, h) = (img.width(), img.height());
+                let (x, y, rw, rh) = region_clone.get_crop_region(w, h); // Web might need higher resolution handling?
+                                                                         // Playwright screenshot is usually consistent with viewport, but need to check device pixel ratio usage
+                                                                         // However, OcrEngine handles image processing.
+
+                let cropped = img.crop_imm(x, y, rw, rh);
+                let mut buf = std::io::Cursor::new(Vec::new());
+                cropped.write_to(&mut buf, image::ImageFormat::Png)?;
+                (buf.into_inner(), x as i32, y as i32)
+            } else {
+                (screenshot_bytes, 0, 0)
+            };
+
+            let match_opt =
+                engine_clone.find_text_at_index(&cropped_data, &text, is_regex, index)?;
+
+            // Adjust coordinates back to full screen
+            Ok::<_, anyhow::Error>(match_opt.map(|m| (m.x + offset_x, m.y + offset_y)))
+        })
+        .await??;
+
+        Ok(result)
     }
 
     /// Find template image on screen
@@ -506,7 +574,7 @@ impl WebDriver {
             Selector::ScrollableItem { .. } | Selector::Scrollable(_) => {
                 unimplemented!("ScrollableItem/Scrollable not supported for Web")
             }
-            Selector::OCR(..) => unimplemented!("OCR selector not yet supported for Web"),
+            Selector::OCR(..) => String::new(), // Handled in find_element
         }
     }
 
@@ -657,6 +725,20 @@ impl PlatformDriver for WebDriver {
                     page.mouse.up(None, None).await?;
                 } else {
                     anyhow::bail!("Image not found on screen: {}", path);
+                }
+            }
+            Selector::OCR(text, index, is_regex, region) => {
+                let pos = self
+                    .find_ocr_text(text, *index, *is_regex, region.as_deref())
+                    .await?;
+                if let Some((x, y)) = pos {
+                    println!("    {} Tapping on OCR match at ({}, {})", "👆".cyan(), x, y);
+                    let page = self.page.lock().await;
+                    page.mouse.r#move(x as f64, y as f64, None).await?;
+                    page.mouse.down(None, None).await?;
+                    page.mouse.up(None, None).await?;
+                } else {
+                    anyhow::bail!("Text not found on screen via OCR: {}", text);
                 }
             }
             _ => {
@@ -903,6 +985,12 @@ impl PlatformDriver for WebDriver {
                 let found = self.find_image_on_screen(path, region.as_deref()).await?;
                 Ok(found.is_some())
             }
+            Selector::OCR(text, index, is_regex, region) => {
+                let found = self
+                    .find_ocr_text(text, *index, *is_regex, region.as_deref())
+                    .await?;
+                Ok(found.is_some())
+            }
             _ => {
                 let page = self.page.lock().await;
                 let sel = self.selector_to_playwright(selector);
@@ -950,7 +1038,7 @@ impl PlatformDriver for WebDriver {
                 }
                 Ok(false)
             }
-            Selector::Image { .. } => {
+            Selector::Image { .. } | Selector::OCR(..) => {
                 let start = std::time::Instant::now();
                 while start.elapsed().as_millis() < timeout_ms as u128 {
                     if self.is_visible(selector).await? {

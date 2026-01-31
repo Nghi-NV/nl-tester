@@ -50,6 +50,8 @@ pub struct IosDriver {
     mock_states: Arc<Mutex<StdHashMap<String, IosMockLocationState>>>,
     /// WDA client for real device UI automation
     wda_client: Arc<Mutex<Option<WdaClient>>>,
+    /// OCR engine (lazy-initialized)
+    ocr_engine: tokio::sync::OnceCell<crate::driver::ocr::OcrEngine>,
 }
 
 /// State of the background mock location process for iOS
@@ -154,6 +156,7 @@ impl IosDriver {
             screen_size,
             mock_states: Arc::new(Mutex::new(StdHashMap::new())),
             wda_client: Arc::new(Mutex::new(wda_client)),
+            ocr_engine: tokio::sync::OnceCell::new(),
         })
     }
 
@@ -192,6 +195,66 @@ impl IosDriver {
         *time = Some(Instant::now());
 
         Ok(elements)
+    }
+
+    /// Get OCR engine (lazy-initialized)
+    async fn get_ocr_engine(&self) -> Result<&crate::driver::ocr::OcrEngine> {
+        self.ocr_engine
+            .get_or_try_init(|| async { crate::driver::ocr::OcrEngine::new().await })
+            .await
+    }
+
+    /// Find text on screen using OCR
+    async fn find_ocr_text(
+        &self,
+        text: &str,
+        index: usize,
+        is_regex: bool,
+        region: Option<&str>,
+    ) -> Result<Option<(i32, i32)>> {
+        use crate::driver::image_matcher::ImageRegion;
+
+        // Initialize engine first
+        let engine = self.get_ocr_engine().await?;
+
+        // Capture screenshot
+        let screenshot_path = std::env::temp_dir().join(format!("ios_ocr_{}.png", Uuid::new_v4()));
+        let screenshot_path_str = screenshot_path.to_string_lossy().to_string();
+        idb::screenshot(&self.udid, &screenshot_path_str).await?;
+        let png_data = std::fs::read(&screenshot_path)?;
+        let _ = std::fs::remove_file(&screenshot_path);
+
+        // Parse region for cropping
+        let image_region = region.map(ImageRegion::from_str).unwrap_or_default();
+        let region_clone = image_region;
+        let text = text.to_string();
+        let engine_clone = engine.clone();
+
+        // Run match in blocking task
+        let result = tokio::task::spawn_blocking(move || {
+            // Crop image if region specified
+            let (cropped_data, offset_x, offset_y) = if region_clone != ImageRegion::Full {
+                let img = image::load_from_memory(&png_data)?;
+                let (w, h) = (img.width(), img.height());
+                let (x, y, rw, rh) = region_clone.get_crop_region(w, h);
+
+                let cropped = img.crop_imm(x, y, rw, rh);
+                let mut buf = std::io::Cursor::new(Vec::new());
+                cropped.write_to(&mut buf, image::ImageFormat::Png)?;
+                (buf.into_inner(), x as i32, y as i32)
+            } else {
+                (png_data, 0, 0)
+            };
+
+            let match_opt =
+                engine_clone.find_text_at_index(&cropped_data, &text, is_regex, index)?;
+
+            // Adjust coordinates back to full screen
+            Ok::<_, anyhow::Error>(match_opt.map(|m| (m.x + offset_x, m.y + offset_y)))
+        })
+        .await??;
+
+        Ok(result)
     }
 
     /// Find template image on screen using optimized single-pass template matching
@@ -356,6 +419,13 @@ impl IosDriver {
         // Handle Image selector
         if let Selector::Image { path, region } = selector {
             return self.find_image_on_screen(path, region.as_deref()).await;
+        }
+
+        // Handle OCR selector
+        if let Selector::OCR(text, index, is_regex, region) = selector {
+            return self
+                .find_ocr_text(text, *index, *is_regex, region.as_deref())
+                .await;
         }
 
         let el = self.find_element_internal(selector).await?;
@@ -1272,11 +1342,47 @@ impl PlatformDriver for IosDriver {
     }
 
     async fn rotate_screen(&self, _mode: &str) -> Result<()> {
-        println!(
-            "  {} rotate_screen not supported on iOS via idb",
-            "⚠️".yellow()
-        );
-        Ok(())
+        if self.is_simulator {
+            // Use AppleScript to rotate simulator
+            // Requires Simulator app to be running
+            println!(
+                "      {} Rotating simulator via AppleScript...",
+                "🔄".blue()
+            );
+
+            // Script to rotate left (Cmd+Left Arrow equivalent via menu)
+            let script = r#"
+                tell application "Simulator" to activate
+                tell application "System Events" 
+                    tell process "Simulator"
+                        click menu item "Rotate Left" of menu "Device" of menu bar 1
+                    end tell
+                end tell
+            "#;
+
+            use std::process::Command;
+            let output = Command::new("osascript").arg("-e").arg(script).output()?;
+
+            if !output.status.success() {
+                let err = String::from_utf8_lossy(&output.stderr);
+                // Don't fail the test, just warn, as this is brittle
+                println!(
+                    "      {} Failed to rotate simulator: {}",
+                    "⚠️".yellow(),
+                    err.trim()
+                );
+            } else {
+                // Wait a bit for rotation animation
+                tokio::time::sleep(Duration::from_millis(1000)).await;
+            }
+            Ok(())
+        } else {
+            // Physical device rotation via WDA is complex (needs orientation endpoint)
+            // For now return error to be explicit
+            anyhow::bail!(
+                "rotate_screen not yet supported on physical iOS devices (requires WDA update)"
+            );
+        }
     }
 
     async fn press_key(&self, key: &str) -> Result<()> {

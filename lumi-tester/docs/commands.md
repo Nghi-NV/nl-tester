@@ -20,6 +20,7 @@ Nhiều lệnh tương tác (như `tap`, `see`, `scrollTo`) sử dụng chung m�
 | `css` | - | (Chỉ Web) CSS Selector. |
 | `xpath` | - | XPath Selector. |
 | `image` | - | Template matching theo ảnh mẫu. |
+| `ocr` | - | Tìm text bằng nhận diện quang học (OCR). Hỗ trợ regex. |
 
 ---
 
@@ -78,6 +79,30 @@ Dùng để tìm phần tử dựa trên một "mỏ neo" (Anchor) khác.
     type: "EditText"
 ```
 
+### 📷 OCR Selector (Nhận diện văn bản)
+Dùng khi text không thể tìm thấy bằng selector thông thường (VD: Text trong ảnh, trong Canvas game).
+Hỗ trợ tìm chính xác hoặc Regex (tự động nhận diện nếu có ký tự đặc biệt).
+
+**Sử dụng đơn giản (Shorthand):**
+```yaml
+- tap:
+    ocr: "Login" # Tìm chữ "Login" bằng OCR
+```
+
+**Sử dụng đầy đủ:**
+```yaml
+- tap:
+    ocr:
+      text: "Start Game"
+      index: 1         # Chọn kết quả thứ 2 nếu có nhiều chữ giống nhau
+      region: "bottom-half" # Chỉ tìm ở nửa dưới màn hình để nhanh hơn
+```
+
+**Các vùng tìm kiếm (`region`):**
+- `top-left`, `top-right`, `bottom-left`, `bottom-right`
+- `top-half` (50% trên), `bottom-half` (50% dưới), `left-half`, `right-half`
+- `center` (vùng giữa màn hình)
+
 ### Tự động cuộn (Auto-scroll)
 Nếu phần tử không có sẵn trên màn hình, bạn có thể kích hoạt tự động cuộn trong selector.
 ```yaml
@@ -117,6 +142,7 @@ tap:
 | `clearKeychain`| - | Boolean | `false` | Xóa Keychain (chỉ áp dụng iOS Simulator). |
 | `stopApp` | - | Boolean | `true` | Dừng ứng dụng nếu đang chạy trước khi mở lại. |
 | `permissions`| - | Map | - | Danh sách quyền cần thiết lập (key là tên quyền, value là `allow`/`deny`). |
+| `label` | - | String | - | Label tùy chỉnh cho log (VD: "Mở app ABC"). |
 
 **Giá trị Enum/Đặc biệt**:
 - `permissions`:
@@ -323,6 +349,7 @@ If `secret` is provided, the message will be signed (HMAC-SHA256).
 | `placeholder`| - | String | Tìm theo text placeholder. |
 | `role` | - | String | Tìm theo ARIA role (Web) hoặc accessibility traits. |
 | `image` | - | String | Path tới file ảnh để tìm kiếm bằng template matching. |
+| `ocr` | - | String/Object | Tìm theo OCR (`"text"` hoặc `{text, index, region}`). |
 
 **Tham số Điều khiển**:
 | Trường | Alias | Kiểu dữ liệu | Mặc định | Mô tả |
@@ -331,6 +358,7 @@ If `secret` is provided, the message will be signed (HMAC-SHA256).
 | `exact` | - | Boolean | `false` | Buộc khớp text chính xác tuyệt đối (case-sensitive). |
 | `retryTapIfNoChange`| - | Boolean | `true` | Thử nhấn lại nếu không thấy tín hiệu UI thay đổi. |
 | `scrollable`| - | Object | - | Cấu hình tự động cuộn màn hình để tìm phần tử. |
+| `label` | - | String | - | Label tùy chỉnh cho log (VD: "Nhấn nút Login"). |
 
 **Shorthand Vị trí tương đối** (Sử dụng thay cho Selector chính):
 - `rightOf`, `leftOf`, `above`, `below`. (Alias tương ứng: `rightOf`, `leftOf`).
@@ -415,6 +443,7 @@ If `secret` is provided, the message will be signed (HMAC-SHA256).
 | `text` | String | - | Nội dung văn bản cần nhập. |
 | `unicode` | Boolean | `false` | Dùng chế độ Unicode (Android AdbIME) cho tiếng Việt/Ký tự đặc biệt. |
 | `selector` | String | - | (Chỉ lệnh `type`) Selector tìm phần tử trước khi nhập. |
+| `label` | String | - | Label tùy chỉnh cho log. |
 
 ---
 
@@ -558,6 +587,7 @@ If `secret` is provided, the message will be signed (HMAC-SHA256).
 | `maxScrolls` | `numberScroll` | Number | `10` | Số lần cuộn tối đa trước khi dừng. |
 | `from` | - | Selector | - | Chỉ định Container thực hiện cuộn. |
 | `timeout` | - | Number | - | Thời gian chờ tối đa (ms). |
+| `label` | - | String | - | Label tùy chỉnh cho log. |
 
 ---
 
@@ -792,6 +822,7 @@ If `secret` is provided, the message will be signed (HMAC-SHA256).
 | `timeout` | Number | `defaultTimeout` | Thời gian chờ tối đa cho phần tử xuất hiện (ms). |
 | `soft` | Boolean | `false` | Nếu `true`, chỉ log lỗi và đánh dấu bước fail nhưng vẫn chạy tiếp. |
 | `containsChild`| Selector | - | Kiểm tra phần tử cha có chứa một phần tử con cụ thể hay không. |
+| `label` | String | - | Label tùy chỉnh cho log. |
 
 ---
 
