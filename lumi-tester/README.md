@@ -81,8 +81,8 @@ lumi-tester devices
 Deep-dive into our guides located in the `docs/` directory:
 
 1. [**Writing Tests Guide**](docs/writing_tests.md): Master YAML syntax and selectors.
-2. [**Commands Reference**](docs/commands.md): Comprehensive details on all supported commands (`tap`, `see`, `mockLocation`, `assertColor`, etc.).
-3. [**Test Flow Structure**](docs/flows.md): Understand the lifecycle and flow of a test session.
+2. [**Commands Reference**](docs/api/commands.md): Comprehensive details on all supported commands (`tap`, `see`, `mockLocation`, `assertColor`, etc.).
+3. [**Test Flow Structure**](docs/flows/test_execution_flow.md): Understand the lifecycle and flow of a test session.
 
 ---
 
