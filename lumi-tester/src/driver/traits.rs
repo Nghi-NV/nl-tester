@@ -538,4 +538,31 @@ pub trait PlatformDriver: Send + Sync {
         );
         Ok(())
     }
+
+    // Audio Test Commands
+
+    /// Play media file on device
+    async fn play_media(&self, _file_path: &Path, _loop_playback: bool) -> Result<()> {
+        Err(anyhow::anyhow!("play_media not implemented"))
+    }
+
+    /// Stop media playback
+    async fn stop_media(&self) -> Result<()> {
+        Err(anyhow::anyhow!("stop_media not implemented"))
+    }
+
+    /// Start audio capture from device
+    async fn start_audio_capture(&self, _duration_ms: u64, _port: u16) -> Result<()> {
+        Err(anyhow::anyhow!("start_audio_capture not implemented"))
+    }
+
+    /// Stop audio capture
+    async fn stop_audio_capture(&self) -> Result<()> {
+        Err(anyhow::anyhow!("stop_audio_capture not implemented"))
+    }
+
+    /// Verify audio ducking occurred
+    async fn verify_audio_ducking(&self, _min_events: usize, _drop_threshold: f64) -> Result<()> {
+        Err(anyhow::anyhow!("verify_audio_ducking not implemented"))
+    }
 }

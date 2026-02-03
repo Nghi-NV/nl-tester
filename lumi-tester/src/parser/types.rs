@@ -464,6 +464,18 @@ pub enum TestCommand {
     // Locale/Language
     #[serde(alias = "locale")]
     SetLocale(String),
+
+    // Audio Test Commands
+    #[serde(alias = "playMedia")]
+    PlayMedia(PlayMediaParams),
+    #[serde(alias = "stopMedia")]
+    StopMedia,
+    #[serde(alias = "startAudioCapture")]
+    StartAudioCapture(StartAudioCaptureParams),
+    #[serde(alias = "stopAudioCapture")]
+    StopAudioCapture,
+    #[serde(alias = "verifyAudioDucking")]
+    VerifyAudioDucking(VerifyAudioDuckingParams),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -491,6 +503,56 @@ pub struct WaitForMockCompletionParams {
     /// Timeout in ms. If not provided, waits indefinitely until mock completes.
     #[serde(default)]
     pub timeout: Option<u64>,
+}
+
+// Audio Test Params
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayMediaParams {
+    /// Path to audio file (relative to test file or absolute)
+    pub file: String,
+    /// Loop playback
+    #[serde(default)]
+    pub loop_playback: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartAudioCaptureParams {
+    /// Capture duration in milliseconds
+    #[serde(default = "default_audio_capture_duration")]
+    pub duration: u64,
+    /// Audio server port (default: 8890)
+    #[serde(default = "default_audio_port")]
+    pub port: u16,
+}
+
+fn default_audio_capture_duration() -> u64 {
+    30000 // 30 seconds
+}
+
+fn default_audio_port() -> u16 {
+    8890
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerifyAudioDuckingParams {
+    /// Minimum number of ducking events required
+    #[serde(default = "default_min_ducking_count")]
+    pub min_ducking_count: usize,
+    /// Minimum volume drop percentage (0-100)
+    #[serde(default = "default_volume_drop_threshold")]
+    pub volume_drop_threshold: f64,
+}
+
+fn default_min_ducking_count() -> usize {
+    1
+}
+
+fn default_volume_drop_threshold() -> f64 {
+    30.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1783,6 +1845,11 @@ impl TestCommand {
             }
             TestCommand::SelectDisplay(id) => format!("selectDisplay({})", id),
             TestCommand::SetLocale(locale) => format!("setLocale(\"{}\")", locale),
+            TestCommand::PlayMedia(p) => format!("playMedia(\"{}\")", p.file),
+            TestCommand::StopMedia => "stopMedia".to_string(),
+            TestCommand::StartAudioCapture(p) => format!("startAudioCapture({}ms)", p.duration),
+            TestCommand::StopAudioCapture => "stopAudioCapture".to_string(),
+            TestCommand::VerifyAudioDucking(_) => "verifyAudioDucking".to_string(),
         }
     }
 }

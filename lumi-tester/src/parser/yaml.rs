@@ -340,6 +340,8 @@ fn parse_simple_command(name: &str) -> Result<Option<TestCommand>> {
         "pressHome" | "home" => TestCommand::PressHome,
         "eraseText" | "clear" => TestCommand::EraseText(None),
         "stopMockLocation" | "stopGps" => TestCommand::StopMockLocation,
+        "stopMedia" => TestCommand::StopMedia,
+        "stopAudioCapture" => TestCommand::StopAudioCapture,
         "pasteText" => TestCommand::PasteText,
         "inputRandomEmail" => TestCommand::InputRandomEmail,
         "inputRandomNumber" | "inputRandomPhoneNumber" => TestCommand::InputRandomNumber(None),
@@ -972,6 +974,30 @@ fn parse_command_with_params(
                 _ => serde_yaml::from_value(params.clone())?,
             };
             TestCommand::SelectDisplay(id)
+        }
+
+        "playMedia" => {
+            let p: crate::parser::types::PlayMediaParams = serde_yaml::from_value(params.clone())?;
+            TestCommand::PlayMedia(p)
+        }
+
+        "stopMedia" => TestCommand::StopMedia,
+
+        "startAudioCapture" => {
+            let p: crate::parser::types::StartAudioCaptureParams =
+                serde_yaml::from_value(params.clone())?;
+            TestCommand::StartAudioCapture(p)
+        }
+
+        "stopAudioCapture" => TestCommand::StopAudioCapture,
+
+        "verifyAudioDucking" => {
+            let p: crate::parser::types::VerifyAudioDuckingParams = if params.is_null() {
+                serde_yaml::from_str("{}")?
+            } else {
+                serde_yaml::from_value(params.clone())?
+            };
+            TestCommand::VerifyAudioDucking(p)
         }
 
         _ => return Ok(None),

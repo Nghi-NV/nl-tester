@@ -138,7 +138,7 @@ impl MirrorService {
         Err(anyhow!("nl-mirror service failed to start"))
     }
 
-    /// Setup ADB port forwarding for nl-mirror
+    /// Setup ADB port forwarding for nl-mirror (command + audio)
     pub async fn setup_port_forward(serial: Option<&str>) -> Result<()> {
         let serial_args: Vec<String> = match serial {
             Some(s) => vec!["-s".to_string(), s.to_string()],
@@ -167,6 +167,19 @@ impl MirrorService {
                 stderr
             ));
         }
+
+        // Forward audio port (8890)
+        let mut audio_args = serial_args;
+        audio_args.extend([
+            "forward".to_string(),
+            "tcp:8890".to_string(),
+            "tcp:8890".to_string(),
+        ]);
+
+        let _ = tokio::process::Command::new("adb")
+            .args(&audio_args)
+            .output()
+            .await;
 
         Ok(())
     }

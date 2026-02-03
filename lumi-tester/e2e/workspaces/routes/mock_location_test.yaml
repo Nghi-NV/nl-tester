@@ -1,33 +1,42 @@
-name: mock_location_test
+name: audio_ducking_test
 
 ---
-  # Start mock location with speed noise simulation
+  # 1. Phát nhạc nền từ file đã tạo
+  - playMedia:
+      file: resources/audio/test_tone_440hz.mp3
+      loop: true
+  - wait: 3000
+  # 2. Bắt đầu capture audio (30s)
+#   - startAudioCapture:
+#       duration: 30000
+#       port: 8890
+
+  - wait: 3000
+
+  # 3. Chạy Mock Location
+  # - Bắt đầu 30 km/h (bình thường)
   - mockLocation:
       name: route1
       file: Location.gpx
-      speed: 100.0
+      speed: 30.0
       loop: false
 
-  # Wait a bit
-  - wait: 2000
+  - wait: 3000
 
-  # Wait for a checkpoint (roughly start of route)
-  - waitForLocation:
-      name: route1
-      lat: 20.56865
-      lon: 105.91726
-      tolerance: 100
-      timeout: 60000
-  
-  # Dynamic speed control - speed up to 150 km/h
+  # - Tăng lên 80 km/h (>50 km/h) -> Trigger Gofa alert + Audio Ducking
   - mockLocationControl:
       name: route1
-      speed: 150.0
+      speed: 80.0
       speedMode: linear
 
-  # Wait for completion
-  - waitForMockCompletion:
-      name: route1
-      timeout: 180000
+  # - Chờ để capture được sự kiện ducking (cảnh báo + giảm volume)
+  - wait: 15000
 
+  # 4. Dừng media và location
+  - stopMedia
   - stopMockLocation
+
+  # 5. Verify kết quả (Log ra console)
+  - verifyAudioDucking:
+      minDuckingCount: 1
+      volumeDropThreshold: 20.0

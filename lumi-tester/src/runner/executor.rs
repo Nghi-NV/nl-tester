@@ -2879,6 +2879,30 @@ impl TestExecutor {
                 self.driver.set_locale(&locale_val).await
             }
 
+            // Audio Test Commands
+            TestCommand::PlayMedia(params) => {
+                let file_path = self.context.resolve_path(&params.file);
+                self.driver
+                    .play_media(&file_path, params.loop_playback)
+                    .await
+            }
+
+            TestCommand::StopMedia => self.driver.stop_media().await,
+
+            TestCommand::StartAudioCapture(params) => {
+                self.driver
+                    .start_audio_capture(params.duration, params.port)
+                    .await
+            }
+
+            TestCommand::StopAudioCapture => self.driver.stop_audio_capture().await,
+
+            TestCommand::VerifyAudioDucking(params) => {
+                self.driver
+                    .verify_audio_ducking(params.min_ducking_count, params.volume_drop_threshold)
+                    .await
+            }
+
             TestCommand::SendLarkMessage(params) => {
                 let webhook_url = self.context.substitute_vars(&params.webhook);
 
