@@ -1769,6 +1769,16 @@ impl PlatformDriver for AndroidDriver {
             );
         }
 
+        // Initialize nl-mirror service (auto-deploy and start if needed)
+        if let Err(e) = super::mirror_service::MirrorService::init_session(serial.as_deref()).await
+        {
+            eprintln!(
+                "  ⚠️ nl-mirror init failed: {}. Speed may not be accurate.",
+                e
+            );
+            // Continue anyway - mock location will still work without speed
+        }
+
         // Initialize Mock Location using 'cmd location' (Android 10+)
         let setup_cmds = vec![
             "settings put global wifi_scan_always_enabled 0",
@@ -1853,7 +1863,43 @@ impl PlatformDriver for AndroidDriver {
                         0.0 // Default bearing
                     };
 
-                    // Send location to device (bearing not supported by cmd location on all devices)
+                    // Calculate effective speed for this segment (m/s)
+                    let effective_speed_kmh = match current_mode {
+                        SpeedMode::Linear => current_speed.unwrap_or(0.0),
+                        SpeedMode::Noise => {
+                            let base = current_speed.unwrap_or(0.0);
+                            let noise_range = _current_noise.unwrap_or(5.0);
+                            let noise: f64 = rng.gen_range(-noise_range..noise_range);
+                            (base + noise).max(1.0)
+                        }
+                    };
+                    let speed_ms = effective_speed_kmh / 3.6; // Convert km/h to m/s
+
+                    // Method 1: Use nl-android (nl-mirror) via socket - FULL SPEED SUPPORT
+                    // nl-android uses LocationManager.setTestProviderLocation with proper speed field
+                    let nl_cmd = format!(
+                        r#"{{"cmd":"set_location","lat":{},"lon":{},"alt":{},"bearing":{:.2},"speed":{:.2}}}"#,
+                        lat,
+                        lon,
+                        point.altitude.unwrap_or(0.0),
+                        bearing,
+                        speed_ms
+                    );
+                    // Send via local forwarded port - fire and forget with short timeout
+                    let nl_cmd_clone = nl_cmd.clone();
+                    tokio::spawn(async move {
+                        use std::io::Write;
+                        if let Ok(mut stream) = std::net::TcpStream::connect_timeout(
+                            &"127.0.0.1:8889".parse().unwrap(),
+                            std::time::Duration::from_millis(50),
+                        ) {
+                            let _ = stream
+                                .set_write_timeout(Some(std::time::Duration::from_millis(50)));
+                            let _ = stream.write_all(format!("{}\n", nl_cmd_clone).as_bytes());
+                        }
+                    });
+
+                    // Method 2: Standard cmd location (fallback, no speed support)
                     let providers = vec!["gps", "network", "fused"];
                     for provider in providers {
                         let cmd_loc = format!(
@@ -1863,14 +1909,7 @@ impl PlatformDriver for AndroidDriver {
                         let _ = adb::shell(serial.as_deref(), &cmd_loc).await;
                     }
 
-                    // Older Android / Generic Mock App (am broadcast) - add bearing
-                    let cmd_broadcast = format!(
-                        "am broadcast -a android.intent.action.MOCK_LOCATION -e latitude {} -e longitude {} -e altitude {} -e bearing {:.2} -e accuracy 5",
-                        lat, lon, point.altitude.unwrap_or(0.0), bearing
-                    );
-                    let _ = adb::shell(serial.as_deref(), &cmd_broadcast).await;
-
-                    // Emulator (geo fix) - doesn't support bearing directly
+                    // Method 3: Emulator (geo fix)
                     let geo_cmd = format!("geo fix {} {}", lon, lat);
                     let _ = adb::shell(serial.as_deref(), &geo_cmd).await;
 

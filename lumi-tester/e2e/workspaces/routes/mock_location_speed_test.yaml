@@ -1,0 +1,22 @@
+name: mock_location_speed_test
+
+---
+  # Start mock location with 100 km/h
+  - mockLocation:
+      name: route1
+      file: Location.gpx
+      speed: 100.0
+      loop: true
+
+  # Wait to see initial speed
+  - wait: 5000
+
+  # Change speed to 150 km/h
+  - mockLocationControl:
+      name: route1
+      speed: 150.0
+
+  # Wait to see updated speed
+  - wait: 8000
+
+  - stopMockLocation

@@ -1,8 +1,6 @@
-flow: mock_location_ios_test
-description: Test iOS mock location simulation
-label: iOS Mock Location Test
+name: mock_location_test
 
-commands:
+---
   # Start mock location with speed noise simulation
   - mockLocation:
       name: route1
