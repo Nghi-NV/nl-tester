@@ -1840,14 +1840,17 @@ impl PlatformDriver for AndroidDriver {
         }
 
         // Initialize nl-mirror service (auto-deploy and start if needed)
-        if let Err(e) = super::mirror_service::MirrorService::init_session(serial.as_deref()).await
-        {
+        let mirror_result =
+            super::mirror_service::MirrorService::init_session(serial.as_deref()).await;
+        let mirror_active = if let Err(e) = &mirror_result {
             eprintln!(
                 "  ⚠️ nl-mirror init failed: {}. Speed may not be accurate.",
                 e
             );
-            // Continue anyway - mock location will still work without speed
-        }
+            false
+        } else {
+            true
+        };
 
         // Initialize Mock Location using 'cmd location' (Android 10+)
         let setup_cmds = vec![
@@ -1978,7 +1981,6 @@ impl PlatformDriver for AndroidDriver {
                     let speed_ms = effective_speed_kmh / 3.6; // Convert km/h to m/s
 
                     // Method 1: Use nl-android (nl-mirror) via socket - FULL SPEED SUPPORT
-                    // nl-android uses LocationManager.setTestProviderLocation with proper speed field
                     let nl_cmd = format!(
                         r#"{{"cmd":"set_location","lat":{},"lon":{},"alt":{},"bearing":{:.2},"speed":{:.2}}}"#,
                         lat,
@@ -1987,33 +1989,50 @@ impl PlatformDriver for AndroidDriver {
                         bearing,
                         speed_ms
                     );
-                    // Send via local forwarded port - fire and forget with short timeout
-                    let nl_cmd_clone = nl_cmd.clone();
-                    tokio::spawn(async move {
-                        use std::io::Write;
-                        if let Ok(mut stream) = std::net::TcpStream::connect_timeout(
+
+                    // Try to send to nl-mirror synchronously with better timeout
+                    let nl_success = if mirror_active {
+                        match std::net::TcpStream::connect_timeout(
                             &"127.0.0.1:8889".parse().unwrap(),
-                            std::time::Duration::from_millis(50),
+                            std::time::Duration::from_millis(200),
                         ) {
-                            let _ = stream
-                                .set_write_timeout(Some(std::time::Duration::from_millis(50)));
-                            let _ = stream.write_all(format!("{}\n", nl_cmd_clone).as_bytes());
+                            Ok(mut stream) => {
+                                let _ = stream
+                                    .set_write_timeout(Some(std::time::Duration::from_millis(200)));
+                                use std::io::Write;
+                                if let Err(e) = stream.write_all(format!("{}\n", nl_cmd).as_bytes())
+                                {
+                                    eprintln!("  ⚠️ nl-mirror write failed: {}", e);
+                                    false
+                                } else {
+                                    true
+                                }
+                            }
+                            Err(_) => {
+                                // Silent failure on connect is common if service momentarily busy
+                                false
+                            }
                         }
-                    });
+                    } else {
+                        false
+                    };
 
-                    // Method 2: Standard cmd location (fallback, no speed support)
-                    let providers = vec!["gps", "network", "fused"];
-                    for provider in providers {
-                        let cmd_loc = format!(
-                            "cmd location providers set-test-provider-location {} --location {},{}",
-                            provider, lat, lon
-                        );
-                        let _ = adb::shell(serial.as_deref(), &cmd_loc).await;
+                    // Only use fallback if nl-mirror failed
+                    if !nl_success {
+                        // Method 2: Standard cmd location (fallback, no bearing support)
+                        let providers = vec!["gps", "network", "fused"];
+                        for provider in providers {
+                            let cmd_loc = format!(
+                                "cmd location providers set-test-provider-location {} --location {},{}",
+                                provider, lat, lon
+                            );
+                            let _ = adb::shell(serial.as_deref(), &cmd_loc).await;
+                        }
+
+                        // Method 3: Emulator (geo fix)
+                        let geo_cmd = format!("geo fix {} {}", lon, lat);
+                        let _ = adb::shell(serial.as_deref(), &geo_cmd).await;
                     }
-
-                    // Method 3: Emulator (geo fix)
-                    let geo_cmd = format!("geo fix {} {}", lon, lat);
-                    let _ = adb::shell(serial.as_deref(), &geo_cmd).await;
 
                     if i < points_clone.len() - 1 {
                         let next_point = &points_clone[i + 1];

@@ -42,6 +42,18 @@ impl MirrorService {
         }
     }
 
+    /// Verify connectivity to nl-mirror port
+    pub async fn verify_connection() -> bool {
+        // Try to connect to the forwarded port
+        match std::net::TcpStream::connect_timeout(
+            &"127.0.0.1:8889".parse().unwrap(),
+            std::time::Duration::from_millis(200),
+        ) {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    }
+
     /// Get the APK file size on device (0 if not exists)
     async fn get_device_apk_size(serial: Option<&str>) -> u64 {
         let cmd = format!("stat -c %s {} 2>/dev/null || echo 0", DEVICE_APK_PATH);
@@ -196,9 +208,26 @@ impl MirrorService {
         // 3. Deploy if needed
         let _ = Self::deploy_if_needed(serial, &apk_path).await?;
 
-        // 4. Start if not running
-        if !Self::is_running(serial).await {
+        // 4. Start if not running or not reachable
+        let is_process_running = Self::is_running(serial).await;
+        let is_reachable = if is_process_running {
+            Self::verify_connection().await
+        } else {
+            false
+        };
+
+        if !is_process_running || !is_reachable {
+            if is_process_running {
+                eprintln!("  ⚠️ nl-mirror process exists but unreachable. Restarting...");
+            }
             Self::start(serial).await?;
+
+            // Verify again after start
+            // Wait a bit for server to bind
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            if !Self::verify_connection().await {
+                return Err(anyhow!("nl-mirror started but port 8889 is invalid"));
+            }
         } else {
             eprintln!("  ✓ nl-mirror already running");
         }
