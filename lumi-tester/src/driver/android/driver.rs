@@ -876,6 +876,76 @@ impl AndroidDriver {
     fn to_ascii_fallback(&self, text: &str) -> String {
         common::to_ascii_fallback(text)
     }
+
+    /// Install XAPK (split APK bundle) by extracting and using install-multiple
+    async fn install_xapk(&self, xapk_path: &str) -> Result<()> {
+        use std::io::Read;
+        use zip::ZipArchive;
+
+        println!("  {} Installing XAPK from: {}", "⬇".cyan(), xapk_path);
+
+        // Create temp directory for extraction
+        let temp_dir = std::env::temp_dir().join(format!("xapk_{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir)?;
+
+        // Extract XAPK (it's a ZIP file)
+        let file = std::fs::File::open(xapk_path)?;
+        let mut archive = ZipArchive::new(file)?;
+
+        let mut apk_files: Vec<String> = Vec::new();
+
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i)?;
+            let outpath = temp_dir.join(file.name());
+
+            if file.name().ends_with('/') {
+                std::fs::create_dir_all(&outpath)?;
+            } else {
+                if let Some(p) = outpath.parent() {
+                    if !p.exists() {
+                        std::fs::create_dir_all(p)?;
+                    }
+                }
+
+                // Only extract APK files
+                if file.name().to_lowercase().ends_with(".apk") {
+                    let mut outfile = std::fs::File::create(&outpath)?;
+                    let mut contents = Vec::new();
+                    file.read_to_end(&mut contents)?;
+                    std::io::Write::write_all(&mut outfile, &contents)?;
+                    apk_files.push(outpath.to_string_lossy().to_string());
+                    println!("    {} Extracted: {}", "📦".blue(), file.name());
+                }
+            }
+        }
+
+        if apk_files.is_empty() {
+            // Cleanup
+            let _ = std::fs::remove_dir_all(&temp_dir);
+            anyhow::bail!("No APK files found in XAPK: {}", xapk_path);
+        }
+
+        // Build install-multiple command
+        let mut args: Vec<&str> = vec!["install-multiple", "-r", "-g"];
+        for apk in &apk_files {
+            args.push(apk);
+        }
+
+        println!(
+            "    {} Installing {} APK files...",
+            "📲".green(),
+            apk_files.len()
+        );
+
+        let result = adb::exec(self.serial.as_deref(), &args).await;
+
+        // Cleanup temp directory
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        result?;
+        println!("    {} XAPK installed successfully", "✓".green());
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -1826,8 +1896,40 @@ impl PlatformDriver for AndroidDriver {
                     let lat = point.lat;
                     let lon = point.lon;
 
-                    // Check for pause
+                    // Check for pause and external control file
                     loop {
+                        // Read external control file for VSCode integration
+                        let control_path = "/tmp/lumi-gps-control.json";
+                        if let Ok(content) = std::fs::read_to_string(control_path) {
+                            if let Ok(ctrl) = serde_json::from_str::<serde_json::Value>(&content) {
+                                let mut states = mock_states.lock().await;
+                                if let Some(state) = states.get_mut(&instance_key) {
+                                    // Update speed if specified
+                                    if let Some(speed) = ctrl.get("speed").and_then(|v| v.as_f64())
+                                    {
+                                        state.speed = Some(speed);
+                                    }
+                                    // Update pause state
+                                    if let Some(paused) =
+                                        ctrl.get("paused").and_then(|v| v.as_bool())
+                                    {
+                                        state.paused = paused;
+                                    }
+                                    // Update speed mode
+                                    if let Some(mode) =
+                                        ctrl.get("speedMode").and_then(|v| v.as_str())
+                                    {
+                                        state.speed_mode = match mode {
+                                            "noise" => SpeedMode::Noise,
+                                            _ => SpeedMode::Linear,
+                                        };
+                                    }
+                                }
+                                // Clear control file after reading
+                                let _ = std::fs::remove_file(control_path);
+                            }
+                        }
+
                         let is_paused = {
                             let states = mock_states.lock().await;
                             states.get(&instance_key).map(|s| s.paused).unwrap_or(false)
@@ -2192,8 +2294,14 @@ impl PlatformDriver for AndroidDriver {
 
     async fn install_app(&self, path: &str) -> Result<()> {
         if !std::path::Path::new(path).exists() {
-            anyhow::bail!("APK file not found: {}", path);
+            anyhow::bail!("App file not found: {}", path);
         }
+
+        // Check if it's an XAPK (split APK bundle)
+        if path.to_lowercase().ends_with(".xapk") {
+            return self.install_xapk(path).await;
+        }
+
         println!("  {} Installing app from: {}", "⬇".cyan(), path);
         adb::exec(
             self.serial.as_deref(),
@@ -2455,6 +2563,49 @@ impl PlatformDriver for AndroidDriver {
         .await?;
         println!("  {} Set device locale to: {}", "🌐".green(), locale);
         Ok(())
+    }
+
+    // App Status Commands
+
+    async fn detect_app_crash(&self, app_id: &str) -> Result<bool> {
+        // Check recent logcat for FATAL EXCEPTION specifically for this app
+        // Format in logcat: "FATAL EXCEPTION: main" followed by "Process: com.example.app, PID: 12345"
+
+        // Get recent crash logs and filter for this specific app
+        let output = adb::shell(
+            self.serial.as_deref(),
+            "logcat -d -t 200 AndroidRuntime:E *:S",
+        )
+        .await;
+
+        match output {
+            Ok(logs) => {
+                // Look for crash pattern: FATAL EXCEPTION followed by Process line with our app_id
+                // The logs are sequential, so we check if the app appears in crash context
+                let lines: Vec<&str> = logs.lines().collect();
+
+                for (i, line) in lines.iter().enumerate() {
+                    // Look for "Process: {app_id}, PID:" pattern
+                    if line.contains(&format!("Process: {}, PID:", app_id))
+                        || line.contains(&format!("Process: {},", app_id))
+                    {
+                        // Check if there's a FATAL EXCEPTION nearby (within 5 lines before)
+                        let start = i.saturating_sub(5);
+                        for j in start..=i {
+                            if lines
+                                .get(j)
+                                .map_or(false, |l| l.contains("FATAL EXCEPTION"))
+                            {
+                                return Ok(true);
+                            }
+                        }
+                    }
+                }
+
+                Ok(false)
+            }
+            Err(_) => Ok(false), // If logcat fails, assume no crash
+        }
     }
 
     // Audio Test Commands

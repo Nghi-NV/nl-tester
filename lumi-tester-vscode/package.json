@@ -2,7 +2,7 @@
   "name": "lumi-tester",
   "displayName": "Lumi Tester",
   "description": "VSCode extension for lumi-tester: YAML autocomplete, run tests, and status display",
-  "version": "0.1.11",
+  "version": "0.1.16",
   "publisher": "lumijsc",
   "icon": "resources/icon.png",
   "engines": {
@@ -62,6 +62,11 @@
         "command": "lumi-tester.openInspector",
         "title": "Lumi: Open Element Inspector",
         "icon": "$(search)"
+      },
+      {
+        "command": "lumi-tester.openGpsControl",
+        "title": "Lumi: GPS Speed Control",
+        "icon": "$(compass)"
       }
     ],
     "configuration": {

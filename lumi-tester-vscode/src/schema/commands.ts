@@ -1339,5 +1339,58 @@ export const LUMI_COMMANDS: LumiCommand[] = [
       { name: 'format', type: 'string', description: 'Report format: html, json' },
       { name: 'output', type: 'string', description: 'Output file path' }
     ]
+  },
+
+  // Audio Test Commands
+  {
+    name: 'playMedia',
+    aliases: ['playMedia'],
+    category: 'Audio',
+    description: 'Play audio/video file on device',
+    hasParams: true,
+    snippet: 'playMedia:\n    file: "$1"',
+    params: [
+      { name: 'file', type: 'string', description: 'Path to audio file (relative or absolute)' },
+      { name: 'loopPlayback', type: 'boolean', description: 'Loop playback continuously' }
+    ],
+    platforms: ['android']
+  },
+  {
+    name: 'stopMedia',
+    category: 'Audio',
+    description: 'Stop media playback',
+    hasParams: false,
+    platforms: ['android']
+  },
+  {
+    name: 'startAudioCapture',
+    category: 'Audio',
+    description: 'Start capturing device audio for analysis',
+    hasParams: true,
+    snippet: 'startAudioCapture:\n    duration: ${1:30000}',
+    params: [
+      { name: 'duration', type: 'number', description: 'Capture duration in ms (default: 30000)' },
+      { name: 'port', type: 'number', description: 'Audio server port (default: 8890)' }
+    ],
+    platforms: ['android']
+  },
+  {
+    name: 'stopAudioCapture',
+    category: 'Audio',
+    description: 'Stop audio capture',
+    hasParams: false,
+    platforms: ['android']
+  },
+  {
+    name: 'verifyAudioDucking',
+    category: 'Audio',
+    description: 'Verify audio ducking occurred during capture',
+    hasParams: true,
+    snippet: 'verifyAudioDucking:\n    minDuckingCount: ${1:1}',
+    params: [
+      { name: 'minDuckingCount', type: 'number', description: 'Minimum ducking events required (default: 1)' },
+      { name: 'volumeDropThreshold', type: 'number', description: 'Minimum volume drop percentage (default: 30)' }
+    ],
+    platforms: ['android']
   }
 ];

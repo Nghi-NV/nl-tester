@@ -6,21 +6,47 @@ import { LumiCompletionProvider } from './completionProvider';
 import { LumiDecorationProvider } from './decorationProvider';
 import { DeviceManager } from './deviceManager';
 import { InspectorPanel } from './inspectorPanel';
+import { MockLocationPanel } from './mockLocationPanel';
 import { LumiTestRunner } from './testRunner';
 
 let terminal: vscode.Terminal | undefined;
 let testRunner: LumiTestRunner | undefined;
 let decorationProvider: LumiDecorationProvider | undefined;
 let deviceManager: DeviceManager | undefined;
+let gpsStatusBarItem: vscode.StatusBarItem | undefined;
+let extensionContext: vscode.ExtensionContext | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Lumi Tester extension is now active!');
+  extensionContext = context;
 
   // Initialize device manager
   deviceManager = DeviceManager.getInstance();
   context.subscriptions.push({
     dispose: () => deviceManager?.dispose()
   });
+
+  // Create GPS Control Status Bar Item
+  gpsStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  gpsStatusBarItem.text = '$(compass) GPS Control';
+  gpsStatusBarItem.tooltip = 'Open GPS Speed Control Panel';
+  gpsStatusBarItem.command = 'lumi-tester.openGpsControl';
+  context.subscriptions.push(gpsStatusBarItem);
+
+  // Show status bar when editing YAML files
+  const updateStatusBarVisibility = () => {
+    const editor = vscode.window.activeTextEditor;
+    if (editor && editor.document.languageId === 'yaml') {
+      gpsStatusBarItem?.show();
+    } else {
+      gpsStatusBarItem?.hide();
+    }
+  };
+
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(updateStatusBarVisibility)
+  );
+  updateStatusBarVisibility();
 
   // Register completion provider for YAML files
   const completionProvider = new LumiCompletionProvider();
@@ -52,6 +78,23 @@ export function activate(context: vscode.ExtensionContext) {
   testRunner.onStatusChange((status) => {
     decorationProvider?.updateDecorations(status);
   });
+
+  // Mock location event handlers
+  testRunner.onMockLocationStarted((data) => {
+    const editor = vscode.window.activeTextEditor;
+    const filePath = editor?.document.uri.fsPath || '';
+    const lumiPath = findLumiTesterPath(filePath);
+
+    if (lumiPath) {
+      MockLocationPanel.show(context, lumiPath, 60);
+      vscode.window.showInformationMessage(`🛰️ GPS Mock started with ${data.pointCount} points`);
+    }
+  });
+
+  // Note: Auto-hide disabled - panel persists until manually closed
+  // testRunner.onMockLocationStopped(() => {
+  //   MockLocationPanel.hide();
+  // });
 
   // Register commands
   context.subscriptions.push(
@@ -121,6 +164,22 @@ export function activate(context: vscode.ExtensionContext) {
         console.error('Lumi: Error showing inspector panel:', error);
         vscode.window.showErrorMessage(`Failed to open inspector: ${error}`);
       }
+    })
+  );
+
+  // GPS Speed Control command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lumi-tester.openGpsControl', async () => {
+      const editor = vscode.window.activeTextEditor;
+      const filePath = editor?.document.uri.fsPath || '';
+      const lumiPath = findLumiTesterPath(filePath);
+
+      if (!lumiPath) {
+        vscode.window.showErrorMessage('Could not find lumi-tester. Please set lumi-tester.lumiTesterPath in settings.');
+        return;
+      }
+
+      MockLocationPanel.show(context, lumiPath, 60);
     })
   );
 
@@ -217,6 +276,21 @@ async function runTestFile(uri: vscode.Uri): Promise<void> {
     return;
   }
 
+  // Check if YAML contains mockLocation/gps command and auto-show GPS Control panel
+  try {
+    const fs = require('fs');
+    const content = fs.readFileSync(filePath, 'utf8');
+    if (/(?:mockLocation|gps):/i.test(content) && extensionContext) {
+      // Parse speed from YAML content
+      const speedMatch = content.match(/speed:\s*([\d.]+)/i);
+      const initialSpeed = speedMatch ? parseFloat(speedMatch[1]) : 60;
+
+      MockLocationPanel.show(extensionContext, lumiPath, initialSpeed);
+    }
+  } catch (e) {
+    // Ignore read errors
+  }
+
   // Ensure device is selected (auto-select if only 1, prompt if multiple)
   await deviceManager?.ensureDeviceSelected();
 
@@ -263,6 +337,9 @@ export function deactivate() {
   }
   if (deviceManager) {
     deviceManager.dispose();
+  }
+  if (gpsStatusBarItem) {
+    gpsStatusBarItem.dispose();
   }
 }
 

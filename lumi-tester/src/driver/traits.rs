@@ -539,6 +539,20 @@ pub trait PlatformDriver: Send + Sync {
         Ok(())
     }
 
+    // App Status Commands
+
+    /// Detect if an application has crashed (not just stopped)
+    ///
+    /// # Arguments
+    /// * `app_id` - Package name (Android) or bundle ID (iOS)
+    ///
+    /// # Returns
+    /// True if the app crashed (FATAL EXCEPTION found in recent logs), false otherwise
+    async fn detect_app_crash(&self, _app_id: &str) -> Result<bool> {
+        // Default: assume no crash (for Web/unsupported platforms)
+        Ok(false)
+    }
+
     // Audio Test Commands
 
     /// Play media file on device

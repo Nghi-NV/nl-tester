@@ -1598,3 +1598,122 @@ If `secret` is provided, the message will be signed (HMAC-SHA256).
     selector: "#search-input"
     text: "lumi-tester"
 ```
+
+---
+
+## 🔊 Audio Testing (Kiểm thử Âm thanh)
+
+### `playMedia`
+**Mô tả**: Phát file audio/video trên thiết bị. Hỗ trợ Android.
+**Aliases**: `playMedia`
+
+**Ví dụ**:
+```yaml
+# Phát file audio đơn giản
+- playMedia: "./sounds/notification.mp3"
+
+# Phát với tùy chọn loop
+- playMedia:
+    file: "./sounds/background_music.mp3"
+    loopPlayback: true
+```
+
+**Tham số**:
+| Trường | Kiểu dữ liệu | Mặc định | Mô tả |
+| :--- | :--- | :--- | :--- |
+| `file` | String | - | Đường dẫn file audio (tương đối hoặc tuyệt đối). |
+| `loopPlayback` | Boolean | `false` | Phát lặp liên tục. |
+
+---
+
+### `stopMedia`
+**Mô tả**: Dừng phát media đang chạy.
+**Aliases**: `stopMedia`
+
+**Ví dụ**:
+```yaml
+- stopMedia
+```
+
+---
+
+### `startAudioCapture`
+**Mô tả**: Bắt đầu ghi nhận audio từ thiết bị để phân tích sau. Hỗ trợ Android.
+**Aliases**: `startAudioCapture`
+
+**Ví dụ**:
+```yaml
+# Capture với thời lượng mặc định (30 giây)
+- startAudioCapture
+
+# Capture với thời lượng tùy chỉnh
+- startAudioCapture:
+    duration: 60000  # 60 giây
+    port: 8890
+```
+
+**Tham số**:
+| Trường | Kiểu dữ liệu | Mặc định | Mô tả |
+| :--- | :--- | :--- | :--- |
+| `duration` | Number | `30000` | Thời lượng capture tối đa (ms). |
+| `port` | Number | `8890` | Port của audio server. |
+
+---
+
+### `stopAudioCapture`
+**Mô tả**: Dừng ghi nhận audio.
+**Aliases**: `stopAudioCapture`
+
+**Ví dụ**:
+```yaml
+- stopAudioCapture
+```
+
+---
+
+### `verifyAudioDucking`
+**Mô tả**: Xác minh rằng Audio Ducking đã xảy ra trong quá trình capture. Audio Ducking là khi âm lượng nhạc nền giảm xuống khi có thông báo hoặc hướng dẫn điều hướng.
+**Aliases**: `verifyAudioDucking`
+
+**Ví dụ**:
+```yaml
+# Verify với tham số mặc định
+- verifyAudioDucking
+
+# Verify với tham số tùy chỉnh
+- verifyAudioDucking:
+    minDuckingCount: 2      # Yêu cầu ít nhất 2 lần ducking
+    volumeDropThreshold: 40 # Yêu cầu âm lượng giảm ít nhất 40%
+```
+
+**Tham số**:
+| Trường | Kiểu dữ liệu | Mặc định | Mô tả |
+| :--- | :--- | :--- | :--- |
+| `minDuckingCount` | Number | `1` | Số lần ducking tối thiểu cần phát hiện. |
+| `volumeDropThreshold` | Number | `30` | Ngưỡng giảm âm lượng tối thiểu (%). |
+
+**Ví dụ Use Case hoàn chỉnh**:
+```yaml
+# Test Audio Ducking cho ứng dụng Navigation
+- playMedia:
+    file: "./audio/background_music.mp3"
+    loopPlayback: true
+
+- startAudioCapture:
+    duration: 30000
+
+- wait: 5000
+
+# Trigger navigation instruction (app sẽ phát thông báo)
+- tap: "Start Navigation"
+
+- wait: 10000
+
+- stopAudioCapture
+
+- verifyAudioDucking:
+    minDuckingCount: 1
+    volumeDropThreshold: 30
+
+- stopMedia
+```

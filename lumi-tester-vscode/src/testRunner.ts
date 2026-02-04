@@ -101,6 +101,19 @@ export class LumiTestRunner extends EventEmitter {
             };
             this.emit('statusChange', status);
           }
+
+          // Match: "  📍 Loaded X GPS points from file" (mockLocation started)
+          const gpsStartMatch = line.match(/📍\s+Loaded\s+(\d+)\s+GPS\s+points/i);
+          if (gpsStartMatch) {
+            const pointCount = parseInt(gpsStartMatch[1], 10);
+            this.emit('mockLocationStarted', { pointCount });
+          }
+
+          // Match: GPS stop patterns
+          const gpsStopMatch = line.match(/(?:stopGps|stopMockLocation|GPS\s+stopped)/i);
+          if (gpsStopMatch) {
+            this.emit('mockLocationStopped');
+          }
         }
       });
 
@@ -194,5 +207,13 @@ export class LumiTestRunner extends EventEmitter {
 
   public onStatusChange(callback: (status: TestStatus) => void): void {
     this.on('statusChange', callback);
+  }
+
+  public onMockLocationStarted(callback: (data: { pointCount: number }) => void): void {
+    this.on('mockLocationStarted', callback);
+  }
+
+  public onMockLocationStopped(callback: () => void): void {
+    this.on('mockLocationStopped', callback);
   }
 }

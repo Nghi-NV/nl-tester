@@ -60,6 +60,14 @@ pub enum TestEvent {
         depth: usize,
     },
 
+    /// App crashed during test execution
+    AppCrashed {
+        app_id: String,
+        flow_name: String,
+        command_index: usize,
+        depth: usize,
+    },
+
     // Log event for coordinated output
     Log {
         message: String,
@@ -378,6 +386,23 @@ impl ConsoleEventListener {
                             spinner_styles[depth] = None;
                         }
                     }
+                }
+
+                TestEvent::AppCrashed {
+                    app_id,
+                    flow_name: _,
+                    command_index: _,
+                    depth,
+                } => {
+                    let indent = "    ".repeat(depth);
+                    multi
+                        .println(format!(
+                            "{}      {} {} is no longer running!",
+                            indent,
+                            "💀 APP CRASHED:".red().bold(),
+                            app_id.red()
+                        ))
+                        .ok();
                 }
 
                 TestEvent::Log { message, depth } => {

@@ -3318,11 +3318,30 @@ impl TestExecutor {
     }
 
     /// Handle command failure by dumping UI and taking screenshot
-    async fn handle_failure(&self, flow_name: &str, index: usize, _error: &str) {
+    /// Returns true if app crashed
+    async fn handle_failure(&self, flow_name: &str, index: usize, _error: &str) -> bool {
         let safe_flow_name = flow_name.replace("/", "_").replace("\\", "_");
+        let mut app_crashed = false;
+
+        // Check for app crash (do this first to include in logs)
+        // Only detects real crashes (FATAL EXCEPTION in logcat), not intentional stops
+        if let Some(ref app_id) = self.context.app_id {
+            match self.driver.detect_app_crash(app_id).await {
+                Ok(crashed) if crashed => {
+                    app_crashed = true;
+                    self.emitter.emit(TestEvent::AppCrashed {
+                        app_id: app_id.clone(),
+                        flow_name: flow_name.to_string(),
+                        command_index: index,
+                        depth: self.depth,
+                    });
+                }
+                _ => {}
+            }
+        }
 
         if !self.report_enabled {
-            return;
+            return app_crashed;
         }
 
         self.emitter.emit(TestEvent::Log {
@@ -3384,6 +3403,8 @@ impl TestExecutor {
             }
             Err(e) => println!("  {} Failed to dump logs: {}", "⚠".yellow(), e),
         }
+
+        app_crashed
     }
 
     /// Crop image by percentage region
