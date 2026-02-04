@@ -1998,6 +1998,10 @@ pub struct MockLocationParams {
     /// Update interval in milliseconds (default: 1000)
     #[serde(default)]
     pub interval_ms: Option<u64>,
+
+    /// Fixed altitude in meters (overrides altitude from file)
+    #[serde(default)]
+    pub altitude: Option<f64>,
 }
 
 /// Mock location control parameters for dynamic speed adjustment
@@ -2049,6 +2053,7 @@ impl MockLocationParamsInput {
                 loop_route: false,
                 start_index: None,
                 interval_ms: None,
+                altitude: None,
             },
         }
     }

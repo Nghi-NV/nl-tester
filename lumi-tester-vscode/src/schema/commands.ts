@@ -993,6 +993,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     params: [
       { name: 'file', type: 'string', description: 'Path to GPX/KML file' },
       { name: 'speed', type: 'number', description: 'Speed in km/h' },
+      { name: 'altitude', type: 'number', description: 'Fixed altitude in meters (overrides file)' },
       { name: 'loop', type: 'boolean', description: 'Loop playback' },
       { name: 'speedMode', type: 'string', description: 'linear or noise' },
       { name: 'speedNoise', type: 'number', description: 'Noise amount for speed' },

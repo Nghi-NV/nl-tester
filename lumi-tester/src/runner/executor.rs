@@ -1923,6 +1923,13 @@ impl TestExecutor {
 
                 let interval_ms = p.interval_ms.unwrap_or(1000);
 
+                // Apply fixed altitude if specified
+                if let Some(alt) = p.altitude {
+                    for point in &mut points {
+                        point.altitude = Some(alt);
+                    }
+                }
+
                 println!(
                     "  {} Loaded {} GPS points from {}",
                     "📍".green(),
