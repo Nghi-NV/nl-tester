@@ -141,6 +141,9 @@ pub struct AndroidDriver {
     support_unicode: bool,
     /// Lazy-loaded OCR engine
     ocr_engine: Arc<OnceCell<OcrEngine>>,
+    /// Cached Android SDK version (API level) - used to determine feature support
+    /// -d flag for input command requires API 29+ (Android 10+)
+    sdk_version: u32,
 }
 
 impl AndroidDriver {
@@ -233,6 +236,14 @@ impl AndroidDriver {
             println!("  {} Unicode input mode enabled (ADBKeyBoard)", "✓".green());
         }
 
+        // Get Android SDK version for feature detection
+        let sdk_version = adb::shell(selected_serial.as_deref(), "getprop ro.build.version.sdk")
+            .await
+            .unwrap_or_default()
+            .trim()
+            .parse::<u32>()
+            .unwrap_or(28); // Default to API 28 (Android 9) if parsing fails
+
         Ok(Self {
             serial: selected_serial,
             screen_size,
@@ -246,6 +257,7 @@ impl AndroidDriver {
             original_ime,
             support_unicode,
             ocr_engine: Arc::new(OnceCell::new()),
+            sdk_version,
         })
     }
 
@@ -253,6 +265,16 @@ impl AndroidDriver {
     async fn invalidate_cache(&self) {
         let mut cache = self.ui_cache.lock().await;
         *cache = None;
+    }
+
+    /// Get input command prefix with optional display ID flag
+    /// The -d flag is only supported on Android 10+ (API 29+)
+    fn input_prefix(&self) -> String {
+        if self.sdk_version >= 29 {
+            format!("input -d {}", self.display_id.load(Ordering::Relaxed))
+        } else {
+            "input".to_string()
+        }
     }
 
     /// Wait for UI to become idle (no animations)
@@ -680,12 +702,7 @@ impl AndroidDriver {
 
         adb::shell(
             self.serial.as_deref(),
-            &format!(
-                "input -d {} tap {} {}",
-                self.display_id.load(Ordering::Relaxed),
-                x,
-                y
-            ),
+            &format!("{} tap {} {}", self.input_prefix(), x, y),
         )
         .await?;
         self.smart_delay_after_action().await;
@@ -714,11 +731,7 @@ impl AndroidDriver {
 
         adb::shell(
             self.serial.as_deref(),
-            &format!(
-                "input -d {} text '{}'",
-                self.display_id.load(Ordering::Relaxed),
-                escaped
-            ),
+            &format!("{} text '{}'", self.input_prefix(), escaped),
         )
         .await?;
 
@@ -1145,14 +1158,11 @@ impl PlatformDriver for AndroidDriver {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Element not found: {:?}", selector))?;
 
+        log::debug!("Tap coordinates: ({}, {}), selector: {:?}", x, y, selector);
+
         adb::shell(
             self.serial.as_deref(),
-            &format!(
-                "input -d {} tap {} {}",
-                self.display_id.load(Ordering::Relaxed),
-                x,
-                y
-            ),
+            &format!("{} tap {} {}", self.input_prefix(), x, y),
         )
         .await?;
 
@@ -1173,8 +1183,8 @@ impl PlatformDriver for AndroidDriver {
         adb::shell(
             self.serial.as_deref(),
             &format!(
-                "input -d {} swipe {} {} {} {} {}",
-                self.display_id.load(Ordering::Relaxed),
+                "{} swipe {} {} {} {} {}",
+                self.input_prefix(),
                 x,
                 y,
                 x,
@@ -1194,14 +1204,14 @@ impl PlatformDriver for AndroidDriver {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Element not found: {:?}", selector))?;
 
-        let display_id = self.display_id.load(Ordering::Relaxed);
+        let prefix = self.input_prefix();
 
         // Batch both taps into one shell command for speed
         adb::shell(
             self.serial.as_deref(),
             &format!(
-                "input -d {} tap {} {} && sleep 0.08 && input -d {} tap {} {}",
-                display_id, x, y, display_id, x, y
+                "{} tap {} {} && sleep 0.08 && {} tap {} {}",
+                prefix, x, y, prefix, x, y
             ),
         )
         .await?;
@@ -1235,11 +1245,7 @@ impl PlatformDriver for AndroidDriver {
 
             adb::shell(
                 self.serial.as_deref(),
-                &format!(
-                    "input -d {} text '{}'",
-                    self.display_id.load(Ordering::Relaxed),
-                    escaped
-                ),
+                &format!("{} text '{}'", self.input_prefix(), escaped),
             )
             .await?;
 
@@ -1382,11 +1388,7 @@ impl PlatformDriver for AndroidDriver {
 
         adb::shell(
             self.serial.as_deref(),
-            &format!(
-                "input -d {} text '{}'",
-                self.display_id.load(Ordering::Relaxed),
-                escaped
-            ),
+            &format!("{} text '{}'", self.input_prefix(), escaped),
         )
         .await?;
 
@@ -1397,13 +1399,10 @@ impl PlatformDriver for AndroidDriver {
         let count = char_count.unwrap_or(100);
 
         // Send DEL key multiple times
-        let display_id = self.display_id.load(Ordering::Relaxed);
+        let prefix = self.input_prefix();
         for _ in 0..count {
-            adb::shell(
-                self.serial.as_deref(),
-                &format!("input -d {} keyevent 67", display_id),
-            )
-            .await?; // KEYCODE_DEL
+            adb::shell(self.serial.as_deref(), &format!("{} keyevent 67", prefix)).await?;
+            // KEYCODE_DEL
         }
         self.invalidate_cache().await;
 
@@ -1487,8 +1486,8 @@ impl PlatformDriver for AndroidDriver {
         adb::shell(
             self.serial.as_deref(),
             &format!(
-                "input -d {} swipe {} {} {} {} {}",
-                self.display_id.load(Ordering::Relaxed),
+                "{} swipe {} {} {} {} {}",
+                self.input_prefix(),
                 start_x,
                 start_y,
                 end_x,
@@ -1894,6 +1893,11 @@ impl PlatformDriver for AndroidDriver {
             use rand::SeedableRng;
             let mut rng = rand::rngs::StdRng::from_entropy();
 
+            // Track consecutive connection failures for auto-reconnect
+            let mut consecutive_failures: u32 = 0;
+            const MAX_FAILURES_BEFORE_RECONNECT: u32 = 5;
+            let mut mirror_active_local = mirror_active;
+
             'outer: loop {
                 for (i, point) in points_clone.iter().enumerate() {
                     let lat = point.lat;
@@ -1991,7 +1995,8 @@ impl PlatformDriver for AndroidDriver {
                     );
 
                     // Try to send to nl-mirror synchronously with better timeout
-                    let nl_success = if mirror_active {
+                    // Auto-reconnect if too many consecutive failures
+                    let nl_success = if mirror_active_local {
                         match std::net::TcpStream::connect_timeout(
                             &"127.0.0.1:8889".parse().unwrap(),
                             std::time::Duration::from_millis(200),
@@ -2003,13 +2008,48 @@ impl PlatformDriver for AndroidDriver {
                                 if let Err(e) = stream.write_all(format!("{}\n", nl_cmd).as_bytes())
                                 {
                                     eprintln!("  ⚠️ nl-mirror write failed: {}", e);
+                                    consecutive_failures += 1;
                                     false
                                 } else {
+                                    consecutive_failures = 0; // Reset on success
                                     true
                                 }
                             }
                             Err(_) => {
-                                // Silent failure on connect is common if service momentarily busy
+                                consecutive_failures += 1;
+
+                                // Auto-reconnect: re-establish port forward and restart service
+                                if consecutive_failures >= MAX_FAILURES_BEFORE_RECONNECT {
+                                    eprintln!("  🔄 nl-mirror connection lost. Re-establishing port forward...");
+
+                                    // Re-establish port forward
+                                    if let Ok(_) =
+                                        super::mirror_service::MirrorService::setup_port_forward(
+                                            serial.as_deref(),
+                                        )
+                                        .await
+                                    {
+                                        // Also try to restart service
+                                        let _ = super::mirror_service::MirrorService::start(
+                                            serial.as_deref(),
+                                        )
+                                        .await;
+                                        tokio::time::sleep(std::time::Duration::from_millis(500))
+                                            .await;
+
+                                        // Verify connection
+                                        if super::mirror_service::MirrorService::verify_connection()
+                                            .await
+                                        {
+                                            eprintln!("  ✅ nl-mirror reconnected successfully");
+                                            consecutive_failures = 0;
+                                            mirror_active_local = true;
+                                        } else {
+                                            eprintln!("  ⚠️ nl-mirror reconnect failed. Using fallback method.");
+                                            mirror_active_local = false;
+                                        }
+                                    }
+                                }
                                 false
                             }
                         }
@@ -2063,7 +2103,58 @@ impl PlatformDriver for AndroidDriver {
                             interval.as_millis() as u64
                         };
 
-                        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                        // INTERPOLATION LOGIC: Break down long delays into smaller steps
+                        let interval_ms = interval.as_millis() as u64;
+                        if delay > interval_ms && interval_ms > 0 {
+                            let steps = (delay as f64 / interval_ms as f64).ceil() as u32;
+                            let step_lat = (next_point.lat - point.lat) / steps as f64;
+                            let step_lon = (next_point.lon - point.lon) / steps as f64;
+
+                            // We already sent the start point (i), now send intermediate points
+                            // Note: We skip the last step here because it will be handled by the next iteration of the main loop (i+1)
+                            for s in 1..steps {
+                                let interp_lat = point.lat + step_lat * s as f64;
+                                let interp_lon = point.lon + step_lon * s as f64;
+
+                                // Send interpolated point
+                                let nl_cmd = format!(
+                                    r#"{{"cmd":"set_location","lat":{},"lon":{},"alt":{},"bearing":{:.2},"speed":{:.2}}}"#,
+                                    interp_lat,
+                                    interp_lon,
+                                    point.altitude.unwrap_or(0.0),
+                                    bearing,
+                                    effective_speed_kmh / 3.6
+                                );
+
+                                if mirror_active_local {
+                                    if let Ok(mut stream) = std::net::TcpStream::connect_timeout(
+                                        &"127.0.0.1:8889".parse().unwrap(),
+                                        std::time::Duration::from_millis(100),
+                                    ) {
+                                        let _ = stream.set_write_timeout(Some(
+                                            std::time::Duration::from_millis(100),
+                                        ));
+                                        use std::io::Write;
+                                        let _ =
+                                            stream.write_all(format!("{}\n", nl_cmd).as_bytes());
+                                    }
+                                }
+
+                                tokio::time::sleep(std::time::Duration::from_millis(interval_ms))
+                                    .await;
+                            }
+
+                            // Sleep whatever remains (should be small or 0)
+                            let elapsed = steps as u64 * interval_ms;
+                            if delay > elapsed {
+                                tokio::time::sleep(std::time::Duration::from_millis(
+                                    delay - elapsed,
+                                ))
+                                .await;
+                            }
+                        } else {
+                            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                        }
                     }
                 }
 
@@ -2183,11 +2274,7 @@ impl PlatformDriver for AndroidDriver {
 
         adb::shell(
             self.serial.as_deref(),
-            &format!(
-                "input -d {} keyevent {}",
-                self.display_id.load(Ordering::Relaxed),
-                keycode
-            ),
+            &format!("{} keyevent {}", self.input_prefix(), keycode),
         )
         .await?;
         self.invalidate_cache().await;

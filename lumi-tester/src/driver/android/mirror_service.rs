@@ -42,14 +42,35 @@ impl MirrorService {
         }
     }
 
-    /// Verify connectivity to nl-mirror port
+    /// Verify connectivity to nl-mirror port by sending a ping command
     pub async fn verify_connection() -> bool {
-        // Try to connect to the forwarded port
+        use std::io::{Read, Write};
+
+        // Try to connect and send a ping command
         match std::net::TcpStream::connect_timeout(
             &"127.0.0.1:8889".parse().unwrap(),
-            std::time::Duration::from_millis(200),
+            std::time::Duration::from_millis(300),
         ) {
-            Ok(_) => true,
+            Ok(mut stream) => {
+                let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(300)));
+                let _ = stream.set_write_timeout(Some(std::time::Duration::from_millis(300)));
+
+                // Send ping command
+                if stream.write_all(b"{\"cmd\":\"ping\"}\n").is_err() {
+                    return false;
+                }
+
+                // Try to read response (any response means it's working)
+                let mut buf = [0u8; 64];
+                match stream.read(&mut buf) {
+                    Ok(n) if n > 0 => true,
+                    _ => {
+                        // No response but connection succeeded - might still work
+                        // Give it benefit of the doubt if write succeeded
+                        true
+                    }
+                }
+            }
             Err(_) => false,
         }
     }
@@ -202,31 +223,47 @@ impl MirrorService {
         let apk_path = Self::find_apk_path()
             .ok_or_else(|| anyhow!("nl-mirror APK not found. Please build nl-android first."))?;
 
-        // 2. Setup port forwarding first (fast)
-        Self::setup_port_forward(serial).await?;
-
-        // 3. Deploy if needed
+        // 2. Deploy APK if needed
         let _ = Self::deploy_if_needed(serial, &apk_path).await?;
 
-        // 4. Start if not running or not reachable
+        // 3. Check if nl-mirror is already running and reachable
         let is_process_running = Self::is_running(serial).await;
-        let is_reachable = if is_process_running {
+        let mut is_reachable = if is_process_running {
             Self::verify_connection().await
         } else {
             false
         };
 
-        if !is_process_running || !is_reachable {
+        // 4. If not reachable, try to re-establish port forward first
+        if !is_reachable {
+            eprintln!("  🔄 Setting up port forward...");
+            if let Err(e) = Self::setup_port_forward(serial).await {
+                eprintln!("  ⚠️ Port forward failed: {}", e);
+            } else {
+                // Check again after port forward
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                is_reachable = Self::verify_connection().await;
+            }
+        }
+
+        // 5. If still not reachable, start/restart the service
+        if !is_reachable {
             if is_process_running {
                 eprintln!("  ⚠️ nl-mirror process exists but unreachable. Restarting...");
             }
             Self::start(serial).await?;
 
             // Verify again after start
-            // Wait a bit for server to bind
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             if !Self::verify_connection().await {
-                return Err(anyhow!("nl-mirror started but port 8889 is invalid"));
+                // One more attempt: re-establish port forward after service start
+                eprintln!("  🔄 Re-establishing port forward after service start...");
+                Self::setup_port_forward(serial).await?;
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+                if !Self::verify_connection().await {
+                    return Err(anyhow!("nl-mirror started but port 8889 is not reachable"));
+                }
             }
         } else {
             eprintln!("  ✓ nl-mirror already running");

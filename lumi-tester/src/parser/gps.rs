@@ -43,7 +43,36 @@ pub fn parse_gpx(content: &str) -> Result<Vec<GpsPoint>> {
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => match e.name().as_ref() {
+            Ok(Event::Empty(ref e)) => match e.name().as_ref() {
+                b"trkpt" | b"wpt" => {
+                    // Self-closing tag like <wpt lat="..." lon="..."/>
+                    let mut lat = 0.0;
+                    let mut lon = 0.0;
+
+                    for attr in e.attributes().flatten() {
+                        match attr.key.as_ref() {
+                            b"lat" => {
+                                lat = std::str::from_utf8(&attr.value)
+                                    .unwrap_or("0")
+                                    .parse()
+                                    .unwrap_or(0.0);
+                            }
+                            b"lon" => {
+                                lon = std::str::from_utf8(&attr.value)
+                                    .unwrap_or("0")
+                                    .parse()
+                                    .unwrap_or(0.0);
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    // Push immediately since there's no closing tag
+                    points.push(GpsPoint::new(lat, lon));
+                }
+                _ => {}
+            },
+            Ok(Event::Start(ref e)) => match e.name().as_ref() {
                 b"trkpt" | b"wpt" => {
                     let mut lat = 0.0;
                     let mut lon = 0.0;
@@ -306,6 +335,25 @@ mod tests {
         assert_eq!(points.len(), 2);
         assert!((points[0].lat - 10.762622).abs() < 0.0001);
         assert!(points[0].altitude.is_some());
+    }
+
+    #[test]
+    fn test_parse_gpx_self_closing_wpt() {
+        // Test for self-closing <wpt/> tags (Lockito format)
+        let gpx = r#"<?xml version="1.0" encoding="UTF-8"?><gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1">
+  <wpt lat="20.86954" lon="105.83221"/>
+  <wpt lat="20.86953" lon="105.8323"/>
+  <wpt lat="20.86952" lon="105.83239"/>
+</gpx>"#;
+
+        let points = parse_gpx(gpx).unwrap();
+        assert_eq!(points.len(), 3);
+        assert!((points[0].lat - 20.86954).abs() < 0.0001);
+        assert!((points[0].lon - 105.83221).abs() < 0.0001);
+        assert!((points[2].lat - 20.86952).abs() < 0.0001);
+        // Self-closing tags don't have child elements, so no altitude/timestamp
+        assert!(points[0].altitude.is_none());
+        assert!(points[0].timestamp.is_none());
     }
 
     #[test]
