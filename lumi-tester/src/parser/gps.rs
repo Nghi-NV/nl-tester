@@ -32,12 +32,21 @@ impl GpsPoint {
 /// GPX format: <trkpt lat="x" lon="y"><time>ISO8601</time><ele>altitude</ele></trkpt>
 pub fn parse_gpx(content: &str) -> Result<Vec<GpsPoint>> {
     let mut reader = Reader::from_str(content);
-    // quick-xml 0.31 uses trim_text on reader directly, skip config for compatibility
 
-    let mut points = Vec::new();
+    let mut wpt_points = Vec::new();
+    let mut trk_points = Vec::new();
     let mut current_point: Option<GpsPoint> = None;
     let mut in_time = false;
     let mut in_ele = false;
+    let mut in_trk = false;
+
+    // Lockito trkseg extensions state
+    let mut in_trkseg = false;
+    let mut trkseg_start_idx: usize = 0;
+    let mut trkseg_speed: Option<f64> = None;
+    let mut trkseg_altitude: Option<f64> = None;
+    let mut in_lockito_speed = false;
+    let mut in_lockito_altitude = false;
 
     let mut buf = Vec::new();
 
@@ -67,44 +76,76 @@ pub fn parse_gpx(content: &str) -> Result<Vec<GpsPoint>> {
                         }
                     }
 
-                    // Push immediately since there's no closing tag
-                    points.push(GpsPoint::new(lat, lon));
+                    if in_trk {
+                        trk_points.push(GpsPoint::new(lat, lon));
+                    } else {
+                        wpt_points.push(GpsPoint::new(lat, lon));
+                    }
                 }
                 _ => {}
             },
-            Ok(Event::Start(ref e)) => match e.name().as_ref() {
-                b"trkpt" | b"wpt" => {
-                    let mut lat = 0.0;
-                    let mut lon = 0.0;
+            Ok(Event::Start(ref e)) => {
+                let local_name = e.local_name();
+                match local_name.as_ref() {
+                    b"trkpt" | b"wpt" => {
+                        let mut lat = 0.0;
+                        let mut lon = 0.0;
 
-                    for attr in e.attributes().flatten() {
-                        match attr.key.as_ref() {
-                            b"lat" => {
-                                lat = std::str::from_utf8(&attr.value)
-                                    .unwrap_or("0")
-                                    .parse()
-                                    .unwrap_or(0.0);
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"lat" => {
+                                    lat = std::str::from_utf8(&attr.value)
+                                        .unwrap_or("0")
+                                        .parse()
+                                        .unwrap_or(0.0);
+                                }
+                                b"lon" => {
+                                    lon = std::str::from_utf8(&attr.value)
+                                        .unwrap_or("0")
+                                        .parse()
+                                        .unwrap_or(0.0);
+                                }
+                                _ => {}
                             }
-                            b"lon" => {
-                                lon = std::str::from_utf8(&attr.value)
-                                    .unwrap_or("0")
-                                    .parse()
-                                    .unwrap_or(0.0);
-                            }
-                            _ => {}
+                        }
+
+                        current_point = Some(GpsPoint::new(lat, lon));
+                    }
+                    b"trk" => {
+                        in_trk = true;
+                    }
+                    b"trkseg" => {
+                        in_trkseg = true;
+                        trkseg_start_idx = trk_points.len();
+                        trkseg_speed = None;
+                        trkseg_altitude = None;
+                    }
+                    b"time" => in_time = true,
+                    b"ele" => in_ele = true,
+                    b"speed" => {
+                        if in_trkseg {
+                            in_lockito_speed = true;
                         }
                     }
-
-                    current_point = Some(GpsPoint::new(lat, lon));
+                    b"altitude" => {
+                        if in_trkseg {
+                            in_lockito_altitude = true;
+                        }
+                    }
+                    _ => {}
                 }
-                b"time" => in_time = true,
-                b"ele" => in_ele = true,
-                _ => {}
-            },
+            }
             Ok(Event::Text(ref e)) => {
-                if let Some(ref mut point) = current_point {
-                    let text = e.unescape().unwrap_or_default();
+                let text = e.unescape().unwrap_or_default();
 
+                // Handle Lockito extensions text (outside of current_point context)
+                if in_lockito_speed {
+                    trkseg_speed = parse_lockito_value(&text);
+                    in_lockito_speed = false;
+                } else if in_lockito_altitude {
+                    trkseg_altitude = parse_lockito_value(&text);
+                    in_lockito_altitude = false;
+                } else if let Some(ref mut point) = current_point {
                     if in_time {
                         if let Ok(dt) = DateTime::parse_from_rfc3339(&text) {
                             point.timestamp = Some(dt.with_timezone(&Utc));
@@ -117,16 +158,43 @@ pub fn parse_gpx(content: &str) -> Result<Vec<GpsPoint>> {
                     }
                 }
             }
-            Ok(Event::End(ref e)) => match e.name().as_ref() {
-                b"trkpt" | b"wpt" => {
-                    if let Some(point) = current_point.take() {
-                        points.push(point);
+            Ok(Event::End(ref e)) => {
+                let local_name = e.local_name();
+                match local_name.as_ref() {
+                    b"trkpt" | b"wpt" => {
+                        if let Some(point) = current_point.take() {
+                            if in_trk {
+                                trk_points.push(point);
+                            } else {
+                                wpt_points.push(point);
+                            }
+                        }
                     }
+                    b"trk" => {
+                        in_trk = false;
+                    }
+                    b"trkseg" => {
+                        // Apply trkseg extensions to all points in this segment
+                        if in_trkseg {
+                            let speed_ms = trkseg_speed.map(|s| s / 3.6); // km/h -> m/s
+                            for point in &mut trk_points[trkseg_start_idx..] {
+                                if let Some(spd) = speed_ms {
+                                    point.speed = Some(spd);
+                                }
+                                if let Some(alt) = trkseg_altitude {
+                                    point.altitude = Some(alt);
+                                }
+                            }
+                            in_trkseg = false;
+                        }
+                    }
+                    b"time" => in_time = false,
+                    b"ele" => in_ele = false,
+                    b"speed" => in_lockito_speed = false,
+                    b"altitude" => in_lockito_altitude = false,
+                    _ => {}
                 }
-                b"time" => in_time = false,
-                b"ele" => in_ele = false,
-                _ => {}
-            },
+            }
             Ok(Event::Eof) => break,
             Err(e) => return Err(anyhow::anyhow!("GPX parse error: {}", e)),
             _ => {}
@@ -134,14 +202,34 @@ pub fn parse_gpx(content: &str) -> Result<Vec<GpsPoint>> {
         buf.clear();
     }
 
+    // Prefer trk points over wpt when both exist (Lockito files duplicate data)
+    let mut points = if !trk_points.is_empty() {
+        trk_points
+    } else {
+        wpt_points
+    };
+
     if points.is_empty() {
         return Err(anyhow::anyhow!("No GPS points found in GPX file"));
     }
 
-    // Calculate speed between points if timestamps exist
+    // Deduplicate consecutive identical coordinates
+    points.dedup_by(|a, b| (a.lat - b.lat).abs() < 1e-9 && (a.lon - b.lon).abs() < 1e-9);
+
+    // Calculate speed between points if timestamps exist (only where speed not already set)
     calculate_speeds(&mut points);
 
     Ok(points)
+}
+
+/// Parse Lockito extension value format: "fixed:50.0" -> Some(50.0), "random:2.0:4.0" -> Some(2.0)
+fn parse_lockito_value(text: &str) -> Option<f64> {
+    let parts: Vec<&str> = text.split(':').collect();
+    if parts.len() >= 2 {
+        parts[1].parse::<f64>().ok()
+    } else {
+        text.parse::<f64>().ok()
+    }
 }
 
 /// Parse KML file content (Google Maps export)
@@ -361,5 +449,66 @@ mod tests {
         // Ho Chi Minh City to Hanoi ~1140km
         let dist = haversine_distance(10.762622, 106.660172, 21.028511, 105.804817);
         assert!(dist > 1_100_000.0 && dist < 1_200_000.0);
+    }
+
+    #[test]
+    fn test_parse_gpx_lockito_trk_format() {
+        // Test Lockito <trk><trkseg> format with extensions
+        // When both wpt and trk exist, only trk points should be used
+        let gpx = r#"<?xml version="1.0" encoding="UTF-8"?><gpx xmlns="http://www.topografix.com/GPX/1/1" xmlns:lockito="https://lockito-app.com/import-gpx-2.xsd" version="1.1">
+  <wpt lat="20.98427" lon="105.79338"/>
+  <wpt lat="20.98431" lon="105.79334"/>
+  <trk>
+    <trkseg>
+      <trkpt lat="20.98427" lon="105.79338"/>
+      <trkpt lat="20.98431" lon="105.79334"/>
+      <extensions>
+        <lockito:speed>fixed:50.0</lockito:speed>
+        <lockito:accuracy>random:2.0:4.0</lockito:accuracy>
+        <lockito:altitude>fixed:15.0</lockito:altitude>
+      </extensions>
+    </trkseg>
+    <trkseg>
+      <trkpt lat="20.98431" lon="105.79334"/>
+      <trkpt lat="20.98435" lon="105.7933"/>
+      <extensions>
+        <lockito:speed>fixed:80.0</lockito:speed>
+        <lockito:accuracy>random:2.0:4.0</lockito:accuracy>
+        <lockito:altitude>fixed:20.0</lockito:altitude>
+      </extensions>
+    </trkseg>
+  </trk>
+</gpx>"#;
+
+        let points = parse_gpx(gpx).unwrap();
+        // wpt ignored since trk exists
+        // 2 trkpt (seg1) + 2 trkpt (seg2) = 4, but seg boundary overlap deduped = 3
+        assert_eq!(
+            points.len(),
+            3,
+            "Expected 3 points after dedup, got {}",
+            points.len()
+        );
+
+        // First point: from seg1 (speed=50 km/h, alt=15.0)
+        let speed1 = points[0].speed.unwrap();
+        assert!((speed1 - 50.0 / 3.6).abs() < 0.01, "speed1={}", speed1);
+        assert!((points[0].altitude.unwrap() - 15.0).abs() < 0.01);
+
+        // Second point: boundary point (dedup keeps first = seg1 speed 50 km/h, alt 15.0)
+        let speed2 = points[1].speed.unwrap();
+        assert!((speed2 - 50.0 / 3.6).abs() < 0.01, "speed2={}", speed2);
+        assert!((points[1].altitude.unwrap() - 15.0).abs() < 0.01);
+
+        // Third point: from seg2 (speed=80 km/h, alt=20.0)
+        assert!((points[2].speed.unwrap() - 80.0 / 3.6).abs() < 0.01);
+        assert!((points[2].altitude.unwrap() - 20.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_lockito_value() {
+        assert!((parse_lockito_value("fixed:50.0").unwrap() - 50.0).abs() < 0.01);
+        assert!((parse_lockito_value("random:2.0:4.0").unwrap() - 2.0).abs() < 0.01);
+        assert!((parse_lockito_value("fixed:0.0").unwrap() - 0.0).abs() < 0.01);
     }
 }

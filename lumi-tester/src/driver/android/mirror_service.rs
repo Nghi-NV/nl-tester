@@ -49,25 +49,25 @@ impl MirrorService {
         // Try to connect and send a ping command
         match std::net::TcpStream::connect_timeout(
             &"127.0.0.1:8889".parse().unwrap(),
-            std::time::Duration::from_millis(300),
+            std::time::Duration::from_millis(500),
         ) {
             Ok(mut stream) => {
-                let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(300)));
-                let _ = stream.set_write_timeout(Some(std::time::Duration::from_millis(300)));
+                let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(500)));
+                let _ = stream.set_write_timeout(Some(std::time::Duration::from_millis(500)));
 
                 // Send ping command
                 if stream.write_all(b"{\"cmd\":\"ping\"}\n").is_err() {
                     return false;
                 }
 
-                // Try to read response (any response means it's working)
-                let mut buf = [0u8; 64];
+                // Must receive a response to confirm server is actually processing commands
+                let mut buf = [0u8; 256];
                 match stream.read(&mut buf) {
                     Ok(n) if n > 0 => true,
                     _ => {
-                        // No response but connection succeeded - might still work
-                        // Give it benefit of the doubt if write succeeded
-                        true
+                        // No response = server is stuck/zombie, force restart
+                        eprintln!("  ⚠️ nl-mirror connected but no response (stuck?)");
+                        false
                     }
                 }
             }

@@ -2004,15 +2004,33 @@ impl PlatformDriver for AndroidDriver {
                             Ok(mut stream) => {
                                 let _ = stream
                                     .set_write_timeout(Some(std::time::Duration::from_millis(200)));
-                                use std::io::Write;
+                                let _ = stream
+                                    .set_read_timeout(Some(std::time::Duration::from_millis(200)));
+                                use std::io::{Read, Write};
                                 if let Err(e) = stream.write_all(format!("{}\n", nl_cmd).as_bytes())
                                 {
                                     eprintln!("  ⚠️ nl-mirror write failed: {}", e);
                                     consecutive_failures += 1;
                                     false
                                 } else {
-                                    consecutive_failures = 0; // Reset on success
-                                    true
+                                    // Validate response every 10 points to detect stuck server
+                                    if i % 10 == 0 {
+                                        let mut buf = [0u8; 256];
+                                        match stream.read(&mut buf) {
+                                            Ok(n) if n > 0 => {
+                                                consecutive_failures = 0;
+                                                true
+                                            }
+                                            _ => {
+                                                eprintln!("  ⚠️ nl-mirror no response at point {} (stuck?)", i);
+                                                consecutive_failures += 1;
+                                                false
+                                            }
+                                        }
+                                    } else {
+                                        consecutive_failures = 0;
+                                        true
+                                    }
                                 }
                             }
                             Err(_) => {
