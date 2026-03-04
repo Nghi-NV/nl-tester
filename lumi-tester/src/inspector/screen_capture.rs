@@ -60,6 +60,7 @@ impl ScreenCapture {
     async fn capture_android_bytes(&self) -> Result<Vec<u8>> {
         let adb_path = crate::utils::binary_resolver::find_adb()?;
 
+        // Method 1: Try exec-out (fastest, no temp file)
         let mut args = Vec::new();
         if let Some(ref serial) = self.device_serial {
             args.push("-s");
@@ -75,13 +76,47 @@ impl ScreenCapture {
             .await?;
 
         if output.status.success() {
-            Ok(output.stdout)
-        } else {
-            anyhow::bail!(
-                "Screenshot failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
+            // Validate PNG header (0x89 0x50 0x4E 0x47 = \x89PNG)
+            // Samsung multi-display devices may prepend warning text before PNG data
+            if let Some(pos) = output.stdout.windows(4).position(|w| w == b"\x89PNG") {
+                if pos == 0 {
+                    return Ok(output.stdout);
+                }
+                // Strip leading warning text
+                return Ok(output.stdout[pos..].to_vec());
+            }
         }
+
+        // Method 2: Fallback - save to file on device then pull
+        // Works on Samsung multi-display devices where exec-out output is corrupted
+        let device_path = "/sdcard/lumi_screenshot.png";
+        let temp_path = std::env::temp_dir().join("lumi_screenshot.png");
+
+        adb::shell(
+            self.device_serial.as_deref(),
+            &format!("screencap -p {}", device_path),
+        )
+        .await?;
+        adb::pull(
+            self.device_serial.as_deref(),
+            device_path,
+            temp_path.to_str().unwrap(),
+        )
+        .await?;
+
+        let bytes = tokio::fs::read(&temp_path).await?;
+        let _ = tokio::fs::remove_file(&temp_path).await;
+        let _ = adb::shell(
+            self.device_serial.as_deref(),
+            &format!("rm {}", device_path),
+        )
+        .await;
+
+        if bytes.len() < 8 {
+            anyhow::bail!("Screenshot file is too small");
+        }
+
+        Ok(bytes)
     }
 
     async fn capture_android_base64(&self) -> Result<String> {

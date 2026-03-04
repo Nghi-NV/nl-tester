@@ -99,6 +99,9 @@ struct MockLocationState {
     speed: Option<f64>,
     speed_mode: SpeedMode,
     speed_noise: Option<f64>,
+    total_points: usize,
+    current_index: usize,
+    estimated_duration_ms: u64,
 }
 
 impl Default for MockLocationState {
@@ -112,6 +115,9 @@ impl Default for MockLocationState {
             speed: None,
             speed_mode: SpeedMode::Linear,
             speed_noise: None,
+            total_points: 0,
+            current_index: 0,
+            estimated_duration_ms: 0,
         }
     }
 }
@@ -1887,6 +1893,27 @@ impl PlatformDriver for AndroidDriver {
             state.speed = speed_kmh;
             state.speed_mode = speed_mode.clone();
             state.speed_noise = speed_noise;
+            state.total_points = points.len();
+            state.current_index = 0;
+
+            // Estimate total duration based on route distance and speed
+            let mut total_dist = 0.0_f64;
+            for w in points.windows(2) {
+                total_dist +=
+                    crate::parser::gps::haversine_distance(w[0].lat, w[0].lon, w[1].lat, w[1].lon);
+            }
+            let spd = speed_kmh.unwrap_or(50.0) / 3.6; // m/s
+            state.estimated_duration_ms = if spd > 0.001 {
+                (total_dist / spd * 1000.0) as u64 + 5000 // +5s buffer
+            } else {
+                300_000 // 5 min default
+            };
+            println!(
+                "  {} Route distance: {:.1} km, estimated time: {:.0}s",
+                "📏".cyan(),
+                total_dist / 1000.0,
+                state.estimated_duration_ms as f64 / 1000.0
+            );
         }
 
         tokio::spawn(async move {
@@ -1898,10 +1925,49 @@ impl PlatformDriver for AndroidDriver {
             const MAX_FAILURES_BEFORE_RECONNECT: u32 = 5;
             let mut mirror_active_local = mirror_active;
 
+            // Samsung workaround: track when to re-register providers via adb shell
+            let mut last_provider_refresh = std::time::Instant::now();
+            const PROVIDER_REFRESH_INTERVAL_SECS: u64 = 25; // Samsung removes after ~60s, refresh at 25s
+
             'outer: loop {
                 for (i, point) in points_clone.iter().enumerate() {
                     let lat = point.lat;
                     let lon = point.lon;
+
+                    // Update current_index in state
+                    {
+                        let mut states = mock_states.lock().await;
+                        if let Some(state) = states.get_mut(&instance_key) {
+                            state.current_index = i;
+                        }
+                    }
+
+                    // Samsung workaround: periodically re-register test providers via adb shell
+                    // Samsung SLocation removes providers after ~60s
+                    if last_provider_refresh.elapsed().as_secs() >= PROVIDER_REFRESH_INTERVAL_SECS {
+                        let refresh_cmds = [
+                            "cmd location providers add-test-provider gps",
+                            "cmd location providers set-test-provider-enabled gps true",
+                            "cmd location providers add-test-provider network",
+                            "cmd location providers set-test-provider-enabled network true",
+                            "cmd location providers add-test-provider fused",
+                            "cmd location providers set-test-provider-enabled fused true",
+                        ];
+                        for cmd in &refresh_cmds {
+                            let _ = adb::shell(serial.as_deref(), cmd).await;
+                        }
+                        // Also send start_mock_location to nl-mirror to re-register from app side
+                        if mirror_active_local {
+                            if let Ok(mut stream) = std::net::TcpStream::connect_timeout(
+                                &"127.0.0.1:8889".parse().unwrap(),
+                                std::time::Duration::from_millis(200),
+                            ) {
+                                use std::io::Write;
+                                let _ = stream.write_all(b"{\"cmd\":\"start_mock_location\"}\n");
+                            }
+                        }
+                        last_provider_refresh = std::time::Instant::now();
+                    }
 
                     // Check for pause and external control file
                     loop {
@@ -2007,9 +2073,9 @@ impl PlatformDriver for AndroidDriver {
                                 let _ = stream
                                     .set_read_timeout(Some(std::time::Duration::from_millis(200)));
                                 use std::io::{Read, Write};
-                                if let Err(e) = stream.write_all(format!("{}\n", nl_cmd).as_bytes())
+                                if let Err(_e) =
+                                    stream.write_all(format!("{}\n", nl_cmd).as_bytes())
                                 {
-                                    eprintln!("  ⚠️ nl-mirror write failed: {}", e);
                                     consecutive_failures += 1;
                                     false
                                 } else {
@@ -2022,7 +2088,6 @@ impl PlatformDriver for AndroidDriver {
                                                 true
                                             }
                                             _ => {
-                                                eprintln!("  ⚠️ nl-mirror no response at point {} (stuck?)", i);
                                                 consecutive_failures += 1;
                                                 false
                                             }
@@ -3034,6 +3099,24 @@ impl AndroidDriver {
         let start = Instant::now();
         let instance_key = name.unwrap_or_default();
 
+        // Get estimated duration from state to auto-adjust timeout
+        let effective_timeout = {
+            let states = self.mock_states.lock().await;
+            if let Some(state) = states.get(&instance_key) {
+                let estimated = state.estimated_duration_ms;
+                let user_timeout = timeout_ms.unwrap_or(u64::MAX);
+                if user_timeout < estimated {
+                    eprintln!("  ⚠️ Timeout {}s is shorter than estimated route duration {}s. Auto-adjusting to {}s.",
+                        user_timeout / 1000, estimated / 1000, (estimated + 30_000) / 1000);
+                    Some(estimated + 30_000) // estimated + 30s buffer
+                } else {
+                    timeout_ms
+                }
+            } else {
+                timeout_ms
+            }
+        };
+
         println!(
             "  {} Waiting for mock location '{}' completion...",
             "⏳".cyan(),
@@ -3046,9 +3129,12 @@ impl AndroidDriver {
 
         loop {
             // Check timeout only if specified
-            if let Some(t) = timeout_ms {
+            if let Some(t) = effective_timeout {
                 if start.elapsed() > Duration::from_millis(t) {
-                    anyhow::bail!("Timeout waiting for mock location completion");
+                    anyhow::bail!(
+                        "Timeout waiting for mock location completion after {}s",
+                        t / 1000
+                    );
                 }
             }
 

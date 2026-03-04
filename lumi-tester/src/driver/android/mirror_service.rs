@@ -66,7 +66,6 @@ impl MirrorService {
                     Ok(n) if n > 0 => true,
                     _ => {
                         // No response = server is stuck/zombie, force restart
-                        eprintln!("  ⚠️ nl-mirror connected but no response (stuck?)");
                         false
                     }
                 }
@@ -224,9 +223,24 @@ impl MirrorService {
             .ok_or_else(|| anyhow!("nl-mirror APK not found. Please build nl-android first."))?;
 
         // 2. Deploy APK if needed
-        let _ = Self::deploy_if_needed(serial, &apk_path).await?;
+        let apk_updated = Self::deploy_if_needed(serial, &apk_path).await?;
 
-        // 3. Check if nl-mirror is already running and reachable
+        // 3. If APK was updated, force restart to load new code
+        if apk_updated {
+            eprintln!("  🔄 APK updated, restarting nl-mirror...");
+            Self::start(serial).await?;
+            Self::setup_port_forward(serial).await?;
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+            if Self::verify_connection().await {
+                eprintln!("  ✓ nl-mirror restarted with new APK");
+                return Ok(());
+            } else {
+                return Err(anyhow!("nl-mirror failed to start after APK update"));
+            }
+        }
+
+        // 4. Check if nl-mirror is already running and reachable
         let is_process_running = Self::is_running(serial).await;
         let mut is_reachable = if is_process_running {
             Self::verify_connection().await
@@ -234,7 +248,7 @@ impl MirrorService {
             false
         };
 
-        // 4. If not reachable, try to re-establish port forward first
+        // 5. If not reachable, try to re-establish port forward first
         if !is_reachable {
             eprintln!("  🔄 Setting up port forward...");
             if let Err(e) = Self::setup_port_forward(serial).await {
@@ -246,7 +260,7 @@ impl MirrorService {
             }
         }
 
-        // 5. If still not reachable, start/restart the service
+        // 6. If still not reachable, start/restart the service
         if !is_reachable {
             if is_process_running {
                 eprintln!("  ⚠️ nl-mirror process exists but unreachable. Restarting...");
