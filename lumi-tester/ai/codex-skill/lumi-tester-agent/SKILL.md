@@ -39,6 +39,13 @@ lumi-tester <command>
 If no CLI is installed, install the AI pack:
 
 ```bash
+brew install nghi-nv/tap/lumi-tester
+lumi-tester ai install
+```
+
+Or use the one-line installer:
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.sh | bash
 ```
 

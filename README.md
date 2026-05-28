@@ -51,6 +51,13 @@ For more details, see [nexus-api/README.md](nexus-api/README.md).
 
 This installs the `lumi-tester` CLI, the platform-matched MCP package, and the Codex skill that teaches AI agents how to write, validate, run, and debug Lumi YAML tests.
 
+If you installed the CLI with Homebrew, use the built-in AI installer:
+
+```bash
+brew install nghi-nv/tap/lumi-tester
+lumi-tester ai install
+```
+
 macOS / Linux:
 
 ```bash
@@ -67,7 +74,7 @@ Requirements for the AI pack:
 
 - `node` and `npm` for the MCP server.
 - A restarted AI client after installation so it reloads the new MCP config/skill.
-- Android/iOS/Web runtime tools as needed; the installer runs `lumi-tester system install --all` by default.
+- Android/iOS/Web runtime tools as needed; run `lumi-tester system install --all` when you want Lumi Tester to install common local dependencies.
 
 Quick check after install:
 
@@ -93,7 +100,7 @@ iwr https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts
 Install a pinned release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | LUMI_TESTER_VERSION=v0.1.5 bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | LUMI_TESTER_VERSION=v0.1.6 bash
 ```
 
 ### Package managers

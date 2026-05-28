@@ -14,8 +14,8 @@
 Create a Git tag from the repository root:
 
 ```bash
-git tag v0.1.5
-git push origin v0.1.5
+git tag v0.1.6
+git push origin v0.1.6
 ```
 
 The GitHub Actions release workflow builds all targets, uploads the binaries, publishes `SHA256SUMS`, includes install scripts, and generates Homebrew/Scoop/Winget manifest files as release assets.
@@ -23,6 +23,13 @@ The GitHub Actions release workflow builds all targets, uploads the binaries, pu
 ## AI Pack Install
 
 Use this path when the target machine should be ready for AI-assisted Lumi test authoring, execution, and debugging.
+
+For Homebrew users, the simplest flow is:
+
+```bash
+brew install nghi-nv/tap/lumi-tester
+lumi-tester ai install
+```
 
 macOS and Linux:
 
@@ -53,7 +60,8 @@ Requirements:
 Pin a release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.sh | LUMI_TESTER_VERSION=v0.1.5 bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.sh | LUMI_TESTER_VERSION=v0.1.6 bash
+lumi-tester ai install --version v0.1.6
 ```
 
 ## One-line Install
@@ -73,7 +81,7 @@ iwr https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts
 Install a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | LUMI_TESTER_VERSION=v0.1.5 bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | LUMI_TESTER_VERSION=v0.1.6 bash
 ```
 
 Skip `system install --all`:
@@ -109,6 +117,7 @@ Expected UX:
 
 ```bash
 brew install nghi-nv/tap/lumi-tester
+lumi-tester ai install
 ```
 
 Formula behavior:
@@ -116,6 +125,7 @@ Formula behavior:
 - Download the correct release tar/binary for macOS.
 - Install `lumi-tester` into Homebrew's `bin`.
 - Do not run `system install --all` automatically; print caveats telling users to run it.
+- Users who want Codex/MCP support run `lumi-tester ai install`.
 
 ### Scoop
 

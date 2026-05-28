@@ -33,6 +33,13 @@ The AI pack installs:
 - The Codex skill `lumi-tester-agent`.
 - MCP config snippets for Codex and Claude-style clients.
 
+If you installed the CLI with Homebrew, use the built-in AI installer:
+
+```bash
+brew install nghi-nv/tap/lumi-tester
+lumi-tester ai install
+```
+
 macOS / Linux:
 
 ```bash
@@ -49,12 +56,13 @@ Requirements:
 
 - `node` and `npm` for the MCP server.
 - Restart the AI client after install.
-- Device/browser dependencies for the platform under test. The installer runs `lumi-tester system install --all` unless `LUMI_SKIP_SYSTEM_INSTALL=1` is set.
+- Device/browser dependencies for the platform under test. Run `lumi-tester system install --all` when you want Lumi Tester to install common local dependencies.
 
 Pin a specific release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.sh | LUMI_TESTER_VERSION=v0.1.5 bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.sh | LUMI_TESTER_VERSION=v0.1.6 bash
+lumi-tester ai install --version v0.1.6
 ```
 
 Quick checks:
@@ -83,7 +91,7 @@ The scripts detect OS/CPU, download the matching GitHub Release binary, add it t
 Install a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | LUMI_TESTER_VERSION=v0.1.5 bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | LUMI_TESTER_VERSION=v0.1.6 bash
 ```
 
 Skip driver/browser initialization:

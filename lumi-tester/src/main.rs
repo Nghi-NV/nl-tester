@@ -3,6 +3,8 @@ use colored::Colorize;
 use serde::Serialize;
 use std::path::PathBuf;
 
+mod ai;
+
 use lumi_tester::{driver, recorder, report, runner, utils};
 
 #[derive(Parser)]
@@ -147,6 +149,12 @@ enum Commands {
         command: SystemCommands,
     },
 
+    /// Install AI agent integrations for Lumi Tester
+    Ai {
+        #[command(subcommand)]
+        command: AiCommands,
+    },
+
     /// Record user interactions and generate YAML test file
     Record {
         /// Output file path for the generated YAML
@@ -201,6 +209,36 @@ enum SystemCommands {
         /// Install all components
         #[arg(long)]
         all: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum AiCommands {
+    /// Install Codex skill and MCP server for AI-assisted test authoring/debugging
+    Install {
+        /// GitHub repo that hosts release assets and skill files
+        #[arg(long, default_value = "Nghi-NV/nl-tester", env = "LUMI_TESTER_REPO")]
+        repo: String,
+
+        /// Release tag to install assets from. Defaults to this CLI version.
+        #[arg(long, env = "LUMI_TESTER_VERSION")]
+        version: Option<String>,
+
+        /// Git ref used for raw skill files when --version latest is used
+        #[arg(long = "ref", default_value = "main", env = "LUMI_TESTER_REF")]
+        git_ref: String,
+
+        /// Directory for MCP package and generated config snippets
+        #[arg(long, env = "LUMI_AI_HOME")]
+        ai_home: Option<PathBuf>,
+
+        /// Codex home directory
+        #[arg(long, env = "CODEX_HOME")]
+        codex_home: Option<PathBuf>,
+
+        /// Write snippets only; do not modify CODEX_HOME/config.toml
+        #[arg(long, default_value = "false")]
+        no_configure_codex: bool,
     },
 }
 
@@ -358,6 +396,27 @@ async fn main() -> anyhow::Result<()> {
             SystemCommands::Install { all } => {
                 utils::system::handle_system_command(utils::system::SystemCommand::Install { all })
                     .await?;
+            }
+        },
+
+        Commands::Ai { command } => match command {
+            AiCommands::Install {
+                repo,
+                version,
+                git_ref,
+                ai_home,
+                codex_home,
+                no_configure_codex,
+            } => {
+                let options = ai::AiInstallOptions {
+                    repo,
+                    version,
+                    git_ref,
+                    ai_home,
+                    codex_home,
+                    configure_codex: !no_configure_codex,
+                };
+                ai::install(options).await?;
             }
         },
 
