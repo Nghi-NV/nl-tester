@@ -674,6 +674,14 @@ fn parse_command_with_params(
             TestCommand::TakeScreenshot(p)
         }
 
+        "assertScreenshot" => {
+            let path = match params {
+                serde_yaml::Value::String(s) => s.clone(),
+                _ => serde_yaml::from_value(params.clone())?,
+            };
+            TestCommand::AssertScreenshot(path)
+        }
+
         "startRecording" => {
             let p: crate::parser::types::RecordingParamsInput =
                 serde_yaml::from_value(params.clone())?;
@@ -811,6 +819,47 @@ fn parse_command_with_params(
                 )
             };
             TestCommand::WaitForMockCompletion(p)
+        }
+
+        "startProfiling" => {
+            let p: Option<crate::parser::types::StartProfilingParams> = if params.is_null() {
+                None
+            } else {
+                serde_yaml::from_value(params.clone()).ok()
+            };
+            TestCommand::StartProfiling(p)
+        }
+
+        "stopProfiling" => {
+            let p: Option<crate::parser::types::StopProfilingParams> = if params.is_null() {
+                None
+            } else {
+                serde_yaml::from_value(params.clone()).ok()
+            };
+            TestCommand::StopProfiling(p)
+        }
+
+        "assertPerformance" => {
+            let p: crate::parser::types::AssertPerformanceParams =
+                serde_yaml::from_value(params.clone())?;
+            TestCommand::AssertPerformance(p)
+        }
+
+        "setCpuThrottling" => {
+            let value = if params.is_number() {
+                params.as_f64().unwrap_or(1.0)
+            } else {
+                serde_yaml::from_value(params.clone())?
+            };
+            TestCommand::SetCpuThrottling(value)
+        }
+
+        "setNetworkConditions" => {
+            let profile = match params {
+                serde_yaml::Value::String(s) => s.clone(),
+                _ => serde_yaml::from_value(params.clone())?,
+            };
+            TestCommand::SetNetworkConditions(profile)
         }
 
         "mockLocationControl" => {
@@ -1104,5 +1153,32 @@ steps:
         assert_eq!(flow.default_timeout_ms, Some(3000));
         assert_eq!(flow.close_when_finish, Some(false));
         assert_eq!(flow.commands.len(), 1);
+    }
+
+    #[test]
+    fn parses_performance_and_screenshot_commands_from_custom_parser() {
+        let yaml = r#"
+platform: android
+---
+- assertScreenshot: baseline.png
+- startProfiling:
+    package: com.example.app
+- stopProfiling:
+    savePath: profile.trace
+- assertPerformance:
+    metric: memory
+    limit: 200MB
+- setCpuThrottling: 4
+- setNetworkConditions: 3g
+"#;
+
+        let flow = parse_yaml_content(yaml, Path::new("test.yaml")).unwrap();
+        assert_eq!(flow.commands.len(), 6);
+        assert!(matches!(flow.commands[0], TestCommand::AssertScreenshot(_)));
+        assert!(matches!(flow.commands[1], TestCommand::StartProfiling(_)));
+        assert!(matches!(flow.commands[2], TestCommand::StopProfiling(_)));
+        assert!(matches!(flow.commands[3], TestCommand::AssertPerformance(_)));
+        assert!(matches!(flow.commands[4], TestCommand::SetCpuThrottling(_)));
+        assert!(matches!(flow.commands[5], TestCommand::SetNetworkConditions(_)));
     }
 }

@@ -110,17 +110,35 @@ def main() -> int:
         )
     )
 
-    missing = sorted(parser_commands().difference(csv_command_names()))
+    parser_names = parser_commands()
+    csv_names = csv_command_names()
+    schema_names = schema_command_names()
+
+    missing = sorted(parser_names.difference(csv_names))
     if missing:
         errors.append(
             "commands.csv is missing parser commands/aliases: " + ", ".join(missing)
         )
 
-    schema_missing = sorted(parser_commands().difference(schema_command_names()))
+    extra_csv = sorted(csv_names.difference(parser_names))
+    if extra_csv:
+        errors.append(
+            "commands.csv contains commands/aliases not accepted by parser: "
+            + ", ".join(extra_csv)
+        )
+
+    schema_missing = sorted(parser_names.difference(schema_names))
     if schema_missing:
         errors.append(
             "lumi-test.schema.json is missing parser commands/aliases: "
             + ", ".join(schema_missing)
+        )
+
+    extra_schema = sorted(schema_names.difference(parser_names))
+    if extra_schema:
+        errors.append(
+            "lumi-test.schema.json contains commands/aliases not accepted by parser: "
+            + ", ".join(extra_schema)
         )
 
     if errors:

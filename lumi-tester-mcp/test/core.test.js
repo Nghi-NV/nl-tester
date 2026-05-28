@@ -10,6 +10,7 @@ import {
   readJsonFile,
   readTextArtifact,
   resolveOutputFile,
+  suggestSelectorsFromAndroidXml,
 } from "../src/core.js";
 
 test("buildLumiCommand prefers repo-local cargo when lumi-tester/Cargo.toml exists", async () => {
@@ -84,4 +85,33 @@ test("readJsonFile and readTextArtifact return bounded content", async () => {
 
   assert.deepEqual(await readJsonFile(jsonPath), { ok: true });
   assert.equal(await readTextArtifact(textPath, 11), "line1\nline2");
+});
+
+test("suggestSelectorsFromAndroidXml ranks stable selectors", () => {
+  const xml = `
+    <hierarchy>
+      <node index="0" text="Login" resource-id="com.example:id/login" class="android.widget.Button" content-desc="" clickable="true" enabled="true" bounds="[10,20][210,100]" />
+      <node index="1" text="" resource-id="" class="android.widget.ImageButton" content-desc="Open menu" clickable="true" enabled="true" bounds="[220,20][300,100]" />
+      <node index="2" text="Login" resource-id="" class="android.widget.TextView" content-desc="" clickable="false" enabled="true" bounds="[10,120][210,180]" />
+    </hierarchy>`;
+
+  const result = suggestSelectorsFromAndroidXml(xml, { query: "login" });
+
+  assert.equal(result.count, 2);
+  assert.equal(result.suggestions[0].bestSelector.type, "id");
+  assert.equal(result.suggestions[0].bestSelector.value, "com.example:id/login");
+  assert.match(result.suggestions[0].bestSelector.yaml, /id: "com\.example:id\/login"/);
+});
+
+test("suggestSelectorsFromAndroidXml can prioritize point matches", () => {
+  const xml = `
+    <hierarchy>
+      <node index="0" text="Cancel" resource-id="cancel" class="android.widget.Button" clickable="true" enabled="true" bounds="[0,0][100,100]" />
+      <node index="1" text="Continue" resource-id="continue" class="android.widget.Button" clickable="true" enabled="true" bounds="[200,0][320,100]" />
+    </hierarchy>`;
+
+  const result = suggestSelectorsFromAndroidXml(xml, { point: "250,50" });
+
+  assert.equal(result.suggestions[0].text, "Continue");
+  assert.equal(result.suggestions[0].bestSelector.value, "continue");
 });

@@ -19,6 +19,7 @@ tools in this order:
 3. `list_tests`
 4. `run_test`
 5. `read_report`, `read_events`, `read_artifact`
+6. `suggest_selectors` when a UI XML artifact is available
 
 If MCP tools are not available, use the CLI flow below.
 
@@ -63,11 +64,13 @@ The helper prints stdout/stderr and exits with the Lumi command exit code.
 2. Search `references/selectors.csv` first when choosing a selector.
 3. Read `references/command-catalog.md` when examples or command intent are
    still unclear.
-4. Write YAML in canonical `header --- commands` format.
-5. Run validation before any device/browser execution.
-6. Use `list --json` to discover command indexes.
-7. Run with reports, snapshots, and event JSONL for debug-friendly artifacts.
-8. On failure, inspect artifacts and rerun the smallest failing command index.
+4. Read `references/patterns.md` when the request matches a common workflow
+   such as login, onboarding, search, settings, permission, GPS, or web form.
+5. Write YAML in canonical `header --- commands` format.
+6. Run validation before any device/browser execution.
+7. Use `list --json` to discover command indexes.
+8. Run with reports, snapshots, and event JSONL for debug-friendly artifacts.
+9. On failure, inspect artifacts and rerun the smallest failing command index.
 
 Canonical commands:
 
@@ -178,6 +181,8 @@ Treat these as runtime/debug bugs:
   category, parameter shape, selector support, platform, and example.
 - Read or search `references/selectors.csv` for selector priority, platform
   support, examples, and anti-patterns.
+- Read `references/patterns.md` for common end-to-end flow templates and
+  adaptation rules.
 - Read `references/selector-discovery.md` when the app/page is unfamiliar,
   selectors are unknown, or a selector fails.
 - Read `references/debug-artifacts.md` only when interpreting runtime files or

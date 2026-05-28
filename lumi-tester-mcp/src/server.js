@@ -12,6 +12,7 @@ import {
   resolveOutputFile,
   runLumiJson,
   runProcess,
+  suggestSelectorsFromAndroidXml,
 } from "./core.js";
 
 const server = new McpServer({
@@ -278,6 +279,35 @@ server.registerTool(
     } catch {
       return jsonText({ status: response.status, body: text });
     }
+  },
+);
+
+server.registerTool(
+  "suggest_selectors",
+  {
+    title: "Suggest Lumi Selectors",
+    description:
+      "Suggest stable Lumi selectors from a UI hierarchy XML artifact. Supports Android UIAutomator XML today.",
+    inputSchema: {
+      outputDir: z.string().describe("Lumi output directory containing the XML artifact."),
+      file: z.string().describe("XML artifact file relative to outputDir."),
+      query: z.string().optional().describe("Optional text/id/description/class substring to filter by."),
+      point: z.string().optional().describe("Optional absolute point like '540,960' to prioritize containing elements."),
+      limit: z.number().int().positive().max(50).default(10),
+      includeNonClickable: z.boolean().default(false),
+    },
+  },
+  async ({ outputDir, file, query, point, limit, includeNonClickable }) => {
+    const resolved = resolveOutputFile(outputDir, file);
+    const xml = await readTextArtifact(resolved, 2_000_000);
+    return jsonText(
+      suggestSelectorsFromAndroidXml(xml, {
+        query,
+        point,
+        limit,
+        includeNonClickable,
+      }),
+    );
   },
 );
 

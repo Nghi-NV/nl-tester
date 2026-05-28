@@ -56,6 +56,20 @@ Use `/api/element-at?x=<x>&y=<y>` when the user can point to the visual target
 or when screenshot coordinates are known. Prefer the top selector suggestion
 unless it is clearly unstable, generated, localized, or duplicated.
 
+## MCP Selector Suggestions
+
+When a failure XML exists, prefer `suggest_selectors` before manually reading a
+large hierarchy:
+
+```text
+suggest_selectors outputDir=./output file=fail_login_cmd3_ui.xml query=Login
+suggest_selectors outputDir=./output file=fail_login_cmd3_ui.xml point=540,960
+```
+
+Use `query` when you know visible text, resource id, content description, or
+class. Use `point` when you know where the target appears in the screenshot.
+The tool returns ranked selector candidates with YAML snippets.
+
 ## Snapshot Workflow
 
 Run a small flow that reaches the screen and captures artifacts:

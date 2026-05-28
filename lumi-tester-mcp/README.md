@@ -52,4 +52,4 @@ separate `lumi-tester` install.
 - `read_events`
 - `read_artifact`
 - `inspector_get`
-
+- `suggest_selectors`

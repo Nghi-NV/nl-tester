@@ -115,6 +115,7 @@ install_codex_skill() {
     "references/command-catalog.md"
     "references/commands.csv"
     "references/debug-artifacts.md"
+    "references/patterns.md"
     "references/selector-discovery.md"
     "references/selectors.csv"
     "scripts/lumi_agent.py"
