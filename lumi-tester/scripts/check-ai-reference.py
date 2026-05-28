@@ -51,6 +51,7 @@ DEBUG_ARTIFACTS_MD = SKILL_DIR / "references" / "debug-artifacts.md"
 PATTERNS_MD = SKILL_DIR / "references" / "patterns.md"
 DESKTOP_MD = SKILL_DIR / "references" / "desktop.md"
 ANDROID_AUTO_MD = SKILL_DIR / "references" / "android-auto.md"
+AI_AUTHORING_MD = ROOT / "lumi-tester" / "docs" / "ai-authoring.md"
 SCHEMA_JSON = ROOT / "lumi-tester" / "schema" / "lumi-test.schema.json"
 HELPER_SCRIPT = SKILL_DIR / "scripts" / "lumi_agent.py"
 AI_RS = ROOT / "lumi-tester" / "src" / "ai.rs"
@@ -587,6 +588,38 @@ def validate_user_install_docs() -> list[str]:
     for platform in ("android", "android auto", "ios", "web", "macos", "windows"):
         if platform not in readme:
             errors.append(f"{README_MD}: missing platform mention: {platform}")
+    return errors
+
+
+def validate_ai_authoring_contract() -> list[str]:
+    errors: list[str] = []
+    text = AI_AUTHORING_MD.read_text(encoding="utf-8").lower()
+    required_terms = {
+        "doctor --platform <platform> --json": "explicit platform doctor loop",
+        "run ./test.yaml --platform <platform>": "explicit platform run loop",
+        "doctor --platform all --json": "environment audit guidance",
+        "platform: android_auto": "Android Auto platform identity",
+        "platform: macos": "macOS platform identity",
+        "platform: windows": "Windows platform identity",
+        "dhu": "Android Auto DHU guidance",
+        "`.app` path or bundle id": "macOS app identity guidance",
+        "executable path": "Windows app identity guidance",
+    }
+    for platform in REQUIRED_AGENT_PLATFORMS:
+        required_terms[f"doctor --platform {platform} --json"] = (
+            f"{platform} doctor command"
+        )
+    for term, label in required_terms.items():
+        if term not in text:
+            errors.append(f"{AI_AUTHORING_MD}: missing {label}")
+    stale_terms = [
+        "`doctor --json` defaults to android",
+        "for other targets",
+        "--platform android --report",
+    ]
+    for term in stale_terms:
+        if term in text:
+            errors.append(f"{AI_AUTHORING_MD}: stale platform guidance still present: {term}")
     return errors
 
 
@@ -1741,6 +1774,7 @@ def main() -> int:
     errors.extend(validate_skill_app_identity_guidance())
     errors.extend(validate_mcp_tool_references())
     errors.extend(validate_user_install_docs())
+    errors.extend(validate_ai_authoring_contract())
     errors.extend(validate_package_manager_ai_guidance())
     errors.extend(validate_ai_installer_skill_fallback())
     errors.extend(validate_testcase_design_reference())

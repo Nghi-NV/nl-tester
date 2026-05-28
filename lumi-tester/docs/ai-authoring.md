@@ -8,8 +8,8 @@ test generators.
 ```bash
 lumi-tester validate ./test.yaml --json
 lumi-tester list ./test.yaml --json
-lumi-tester doctor --json
-lumi-tester run ./test.yaml --platform android --report --snapshot --events-jsonl --output ./output
+lumi-tester doctor --platform <platform> --json
+lumi-tester run ./test.yaml --platform <platform> --report --snapshot --events-jsonl --output ./output
 ```
 
 When using the source checkout:
@@ -18,13 +18,23 @@ When using the source checkout:
 cd lumi-tester
 cargo run -- validate ./test.yaml --json
 cargo run -- list ./test.yaml --json
-cargo run -- doctor --json
-cargo run -- run ./test.yaml --platform android --report --snapshot --events-jsonl --output ./output
+cargo run -- doctor --platform <platform> --json
+cargo run -- run ./test.yaml --platform <platform> --report --snapshot --events-jsonl --output ./output
 ```
 
-`doctor --json` defaults to Android dependency checks. Use
-`doctor --platform ios --json`, `doctor --platform web --json`, or
-`doctor --platform all --json` for other targets.
+Use an explicit platform for every device/browser/desktop run:
+
+```bash
+lumi-tester doctor --platform android --json
+lumi-tester doctor --platform android_auto --json
+lumi-tester doctor --platform ios --json
+lumi-tester doctor --platform web --json
+lumi-tester doctor --platform macos --json
+lumi-tester doctor --platform windows --json
+```
+
+`doctor --platform all --json` is useful for environment audits, but AI agents
+should still run the exact target platform before executing a flow.
 
 ## Canonical File Shape
 
@@ -47,6 +57,16 @@ tags:
 
 Agents should emit this `header --- commands` shape unless the user explicitly
 asks for top-level `steps:`.
+
+Always set the platform and app identity explicitly:
+
+- Android: `platform: android` with package name in `appId`.
+- Android Auto: `platform: android_auto` with package name in `appId` and DHU
+  available.
+- iOS: `platform: ios` with bundle id in `appId`.
+- Web: `platform: web` with `url`.
+- macOS: `platform: macos` with `.app` path or bundle id in `appId`.
+- Windows: `platform: windows` with executable path in `appId`.
 
 ## Preferred Commands
 
