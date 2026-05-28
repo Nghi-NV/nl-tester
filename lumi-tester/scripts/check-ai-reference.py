@@ -45,6 +45,7 @@ CLI_CSV = (
     / "references"
     / "cli.csv"
 )
+HEADERS_CSV = SKILL_DIR / "references" / "headers.csv"
 OPENAI_YAML = SKILL_DIR / "agents" / "openai.yaml"
 TESTCASE_DESIGN_MD = SKILL_DIR / "references" / "testcase-design.md"
 DEBUG_ARTIFACTS_MD = SKILL_DIR / "references" / "debug-artifacts.md"
@@ -167,6 +168,53 @@ def validate_csv_alias_quality(path: Path, primary_column: str) -> list[str]:
             for alias in split_aliases(row.get("aliases", "")):
                 if alias == primary:
                     errors.append(f"{path}: {primary} aliases itself")
+    return errors
+
+
+def validate_headers_catalog() -> list[str]:
+    errors: list[str] = []
+    with HEADERS_CSV.open(newline="", encoding="utf-8") as fh:
+        rows = {row["field"].strip(): row for row in csv.DictReader(fh)}
+
+    required_fields = {
+        "platform",
+        "appId",
+        "url",
+        "desktopState",
+        "desktopState.clear",
+        "desktopState.clear.mode",
+        "desktopState.clear.paths",
+        "desktopState.clear.keychainServices",
+        "desktopState.clear.registryKeys",
+    }
+    missing = sorted(required_fields.difference(rows))
+    if missing:
+        errors.append(f"{HEADERS_CSV}: missing header fields: {', '.join(missing)}")
+
+    schema = json.loads(SCHEMA_JSON.read_text(encoding="utf-8"))
+    for field in ("platform", "appId", "url", "desktopState"):
+        if field not in schema["properties"]:
+            errors.append(f"{SCHEMA_JSON}: missing documented header field: {field}")
+
+    desktop_clear = schema["$defs"].get("desktopClear", {})
+    clear_properties = desktop_clear.get("properties", {})
+    for field in ("mode", "paths", "keychainServices", "registryKeys"):
+        if field not in clear_properties:
+            errors.append(f"{SCHEMA_JSON}: missing documented desktop clear field: {field}")
+
+    mode_row = rows.get("desktopState.clear.mode", {})
+    if "autosafe" not in mode_row.get("notes", "").lower():
+        errors.append(f"{HEADERS_CSV}: desktopState.clear.mode should explain autoSafe")
+    if "manual" not in mode_row.get("notes", "").lower():
+        errors.append(f"{HEADERS_CSV}: desktopState.clear.mode should explain manual")
+
+    catalog_text = (SKILL_DIR / "references" / "command-catalog.md").read_text(
+        encoding="utf-8"
+    )
+    skill_text = SKILL_MD.read_text(encoding="utf-8")
+    for term in ("references/headers.csv", "desktopState.clear.mode", "registryKeys"):
+        if term not in catalog_text and term not in skill_text:
+            errors.append(f"{HEADERS_CSV}: {term} is not surfaced in skill guidance")
     return errors
 
 
@@ -1850,10 +1898,26 @@ def main() -> int:
             },
         )
     )
+    errors.extend(
+        validate_csv(
+            HEADERS_CSV,
+            {
+                "field",
+                "aliases",
+                "type",
+                "platforms",
+                "required",
+                "example",
+                "notes",
+            },
+        )
+    )
     errors.extend(validate_skill_references())
     errors.extend(validate_skill_install_file_lists())
     errors.extend(validate_csv_alias_quality(COMMANDS_CSV, "command"))
     errors.extend(validate_csv_alias_quality(SELECTORS_CSV, "selector"))
+    errors.extend(validate_csv_alias_quality(HEADERS_CSV, "field"))
+    errors.extend(validate_headers_catalog())
     errors.extend(validate_reference_navigation())
     errors.extend(validate_agents_metadata())
     errors.extend(validate_helper_script_reference())

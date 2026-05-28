@@ -1,0 +1,12 @@
+platform: macos
+appId: /System/Applications/Calculator.app
+desktopState:
+  clear:
+    mode: autoSafe
+---
+- launchApp:
+    clearState: true
+- waitUntilVisible:
+    text: "Calculator"
+    timeout: 5000
+- stopApp

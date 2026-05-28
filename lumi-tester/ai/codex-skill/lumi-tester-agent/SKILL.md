@@ -106,36 +106,39 @@ and exits with the Lumi command exit code.
 ## Authoring Loop
 
 1. Search `references/cli.csv` first when choosing a Lumi CLI command.
-2. Search `references/commands.csv` first when choosing a YAML command.
-3. Search `references/selectors.csv` first when choosing a selector.
-4. Run `schema --json` when the YAML shape is unclear, but treat it as a
+2. Search `references/headers.csv` first when choosing YAML header fields
+   such as `platform`, `appId`, `url`, `desktopState.clear`, permissions setup
+   strategy, or desktop state reset shape.
+3. Search `references/commands.csv` first when choosing a YAML command.
+4. Search `references/selectors.csv` first when choosing a selector.
+5. Run `schema --json` when the YAML shape is unclear, but treat it as a
    guardrail, not a strict contract. Some command params/selectors are
    permissive; a successful validation means parseable, not proof that every
    field is semantically used.
-5. Read `references/command-catalog.md` when examples or command intent are
+6. Read `references/command-catalog.md` when examples or command intent are
    still unclear.
-6. Read `references/testcase-design.md` before generating a suite from product
+7. Read `references/testcase-design.md` before generating a suite from product
    requirements, user stories, screenshots, API specs, or exploratory findings.
-7. Read `references/patterns.md` when the request matches a common workflow
+8. Read `references/patterns.md` when the request matches a common workflow
    such as login, onboarding, search, settings, permission, GPS, or web form.
-8. Read `references/android-auto.md` for Android Auto DHU tests.
-9. Read `references/desktop.md` for native macOS or Windows desktop app tests.
-10. For device-backed or desktop-backed requests, confirm the target device/app,
+9. Read `references/android-auto.md` for Android Auto DHU tests.
+10. Read `references/desktop.md` for native macOS or Windows desktop app tests.
+11. For device-backed or desktop-backed requests, confirm the target device/app,
    local desktop host/app, or browser before writing or running a flow. If the
    user says "current app", inspect current focus/frontmost app instead of
    assuming an appId from an existing YAML file.
-11. Discover the app identity before launch: Android package, iOS bundle id,
+12. Discover the app identity before launch: Android package, iOS bundle id,
    Web URL/browser target, macOS `.app` path/bundle id, or Windows executable
    path.
-12. After `launchApp`, wait for a stable screen element with `waitUntilVisible`
+13. After `launchApp`, wait for a stable screen element with `waitUntilVisible`
    or `waitSee`; do not use a fixed delay as launch readiness. Android Auto is
    the exception because DHU has no UI hierarchy; use bounded `wait` plus
    screenshot/log assertions there.
-13. Write YAML in canonical `header --- commands` format.
-14. Run validation before any device/browser/desktop execution.
-15. Use `list --json` to discover command indexes.
-16. Run with reports, snapshots, and event JSONL for debug-friendly artifacts.
-17. On failure, inspect artifacts and rerun the smallest failing command index.
+14. Write YAML in canonical `header --- commands` format.
+15. Run validation before any device/browser/desktop execution.
+16. Use `list --json` to discover command indexes.
+17. Run with reports, snapshots, and event JSONL for debug-friendly artifacts.
+18. On failure, inspect artifacts and rerun the smallest failing command index.
 
 ## Preflight Before Running
 

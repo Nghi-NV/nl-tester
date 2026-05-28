@@ -1,0 +1,13 @@
+platform: windows
+appId: C:\Windows\System32\notepad.exe
+desktopState:
+  clear:
+    mode: autoSafe
+---
+- launchApp:
+    clearState: true
+- inputText: "lumi desktop windows clear state smoke"
+- waitUntilVisible:
+    text: "lumi desktop windows clear state smoke"
+    timeout: 5000
+- stopApp

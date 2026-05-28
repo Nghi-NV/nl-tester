@@ -42,6 +42,17 @@ when the flow intentionally bridges app and web context. For macOS/Windows
 `clearState`, add a header-level `desktopState.clear` plan and then launch with
 `clearState: true`.
 
+When the header shape is unclear, search `references/headers.csv` before
+writing YAML. The desktop reset fields are:
+
+- `desktopState.clear.mode`: `autoSafe` or `manual`.
+- `desktopState.clear.paths`: app-scoped files/directories to remove.
+- `desktopState.clear.keychainServices`: macOS Keychain service names.
+- `desktopState.clear.registryKeys`: Windows `HKCU:\Software\...` keys.
+
+Do not put these fields under `launchApp`; `launchApp` only carries
+`clearState: true` to activate the header-level plan.
+
 ## Core App And Navigation
 
 `launchApp`: start the app or open the configured web URL.
