@@ -190,11 +190,17 @@ runner has been verified to support that selector form.
     equals: test@example.com
 ```
 
-`runScript`: run JavaScript against variables/context.
+`runScript`: run a host shell command or local script. A `.js` file path runs
+against Lumi variables/context; other strings run through the host shell.
 
 ```yaml
-- runScript: "vars.count = 1 + 1"
+- runScript:
+    command: "./scripts/setup_db.sh"
+    timeoutMs: 30000
+- runScript: "./scripts/update_vars.js"
 ```
+
+Use `evalScript` for inline JavaScript expressions.
 
 `httpRequest`: call an HTTP endpoint as part of setup/assertion.
 
@@ -210,7 +216,7 @@ runner has been verified to support that selector form.
 
 ```yaml
 - screenshot:
-    name: login_screen
+    path: "login_screen.png"
 ```
 
 `startRecording`, `stopRecording`: record video.
@@ -229,8 +235,9 @@ workflow commands. Use for visual bug reports, not normal assertions.
 
 ```yaml
 - mockLocation:
-    latitude: 21.0278
-    longitude: 105.8342
+    file: "./routes/home-to-office.gpx"
+    speed: 30
+    loop: false
 - stopMockLocation
 ```
 

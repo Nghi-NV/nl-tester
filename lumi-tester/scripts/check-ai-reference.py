@@ -97,6 +97,30 @@ def validate_skill_references() -> list[str]:
     return errors
 
 
+def validate_reference_examples() -> list[str]:
+    stale_patterns = {
+        "killApp command": r"\bkillApp\b",
+        "runScript.file field": r"runScript:\s*\n(?:[ \t]+[A-Za-z0-9_]+:.*\n)*[ \t]+file:",
+        "runScript.env field": r"runScript:\s*\n(?:[ \t]+[A-Za-z0-9_]+:.*\n)*[ \t]+env:",
+        "runScript inline vars JS": r"runScript:\s*[\"']?vars\.",
+        "screenshot.name field": r"screenshot:\s*\n(?:[ \t]+[A-Za-z0-9_]+:.*\n)*[ \t]+name:",
+        "mockLocation latitude field": r"mockLocation:\s*\n(?:[ \t]+[A-Za-z0-9_]+:.*\n)*[ \t]+latitude:",
+        "mockLocation longitude field": r"mockLocation:\s*\n(?:[ \t]+[A-Za-z0-9_]+:.*\n)*[ \t]+longitude:",
+        "conditional.when field": r"conditional:\s*\n(?:[ \t]+[A-Za-z0-9_]+:.*\n)*[ \t]+when:",
+        "conditional.commands field": r"conditional:\s*\n(?:[ \t]+[A-Za-z0-9_]+:.*\n)*[ \t]+commands:",
+    }
+    errors: list[str] = []
+    paths = [SKILL_MD, *sorted((SKILL_DIR / "references").glob("*"))]
+    for path in paths:
+        if path.suffix not in {".md", ".csv"}:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for label, pattern in stale_patterns.items():
+            if re.search(pattern, text):
+                errors.append(f"{path}: stale AI reference example: {label}")
+    return errors
+
+
 def main() -> int:
     errors: list[str] = []
     errors.extend(
@@ -148,6 +172,7 @@ def main() -> int:
         )
     )
     errors.extend(validate_skill_references())
+    errors.extend(validate_reference_examples())
 
     parser_names = parser_commands()
     csv_names = csv_command_names()
