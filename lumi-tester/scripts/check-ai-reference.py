@@ -667,6 +667,61 @@ def validate_selector_catalog() -> list[str]:
     return errors
 
 
+def validate_selector_quality() -> list[str]:
+    errors: list[str] = []
+    rows: dict[str, dict[str, str]] = {}
+    with SELECTORS_CSV.open(newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            selector = row["selector"].strip()
+            rows[selector] = row
+            for column in ("when_to_use", "example", "anti_patterns"):
+                if not row[column].strip():
+                    errors.append(f"{SELECTORS_CSV}: selector {selector} has empty {column}")
+            try:
+                rank = int(row["stability_rank"])
+            except ValueError:
+                errors.append(f"{SELECTORS_CSV}: selector {selector} has non-numeric rank")
+                continue
+            if rank < 0 or rank > 9:
+                errors.append(f"{SELECTORS_CSV}: selector {selector} rank must be 0..9")
+
+    required = {"id", "accessibilityId", "text", "regex", "relative", "ocr", "image", "point"}
+    missing = sorted(required.difference(rows))
+    if missing:
+        errors.append(f"{SELECTORS_CSV}: missing selector priority rows: " + ", ".join(missing))
+        return errors
+
+    ranks = {name: int(row["stability_rank"]) for name, row in rows.items()}
+    if ranks["point"] <= ranks["ocr"]:
+        errors.append(f"{SELECTORS_CSV}: point must rank below OCR fallback")
+    if ranks["point"] <= ranks["image"]:
+        errors.append(f"{SELECTORS_CSV}: point must rank below image fallback")
+    if ranks["relative"] >= ranks["point"]:
+        errors.append(f"{SELECTORS_CSV}: relative selectors must rank above point")
+    for semantic in ("id", "accessibilityId"):
+        if ranks[semantic] > 2:
+            errors.append(f"{SELECTORS_CSV}: {semantic} should be a high-stability selector")
+    if "coordinate" not in rows["point"]["anti_patterns"].lower():
+        errors.append(f"{SELECTORS_CSV}: point anti-pattern should warn about coordinates")
+
+    aliases = rows["accessibilityId"].get("aliases", "")
+    for alias in ("desc", "contentDesc"):
+        if alias not in aliases:
+            errors.append(f"{SELECTORS_CSV}: accessibilityId aliases should include {alias}")
+
+    discovery = (SKILL_DIR / "references" / "selector-discovery.md").read_text(
+        encoding="utf-8"
+    ).lower()
+    for phrase in (
+        "coordinates are allowed only",
+        "do not immediately replace it with `point`",
+        "do not start with `point`",
+    ):
+        if phrase not in discovery:
+            errors.append(f"selector-discovery.md: missing coordinate guard: {phrase}")
+    return errors
+
+
 def validate_cli_catalog() -> list[str]:
     errors: list[str] = []
     source_names = cli_commands()
@@ -783,6 +838,7 @@ def main() -> int:
     errors.extend(validate_reference_examples())
     errors.extend(validate_command_example_fields())
     errors.extend(validate_selector_catalog())
+    errors.extend(validate_selector_quality())
     errors.extend(validate_cli_catalog())
 
     parser_names = parser_commands()
