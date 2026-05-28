@@ -82,6 +82,10 @@ def csv_command_names() -> set[str]:
     return names
 
 
+def split_field_names(value: str) -> set[str]:
+    return {item.strip() for item in re.split(r"[|,]", value) if item.strip()}
+
+
 def validate_csv(path: Path, required_columns: set[str]) -> list[str]:
     errors: list[str] = []
     with path.open(newline="", encoding="utf-8") as fh:
@@ -210,6 +214,69 @@ def selector_example_keys(example: str) -> set[str]:
     return keys
 
 
+def top_level_map_keys(map_text: str) -> set[str]:
+    keys: set[str] = set()
+    depth = 0
+    in_quote: str | None = None
+    escape = False
+    token_start = 0
+    segments: list[str] = []
+    for idx, char in enumerate(map_text):
+        if in_quote:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == in_quote:
+                in_quote = None
+            continue
+        if char in {"'", '"'}:
+            in_quote = char
+        elif char in "{[":
+            depth += 1
+        elif char in "}]":
+            depth -= 1
+        elif char == "," and depth == 0:
+            segments.append(map_text[token_start:idx])
+            token_start = idx + 1
+    segments.append(map_text[token_start:])
+
+    for segment in segments:
+        match = re.match(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*:", segment)
+        if match:
+            keys.add(match.group(1))
+    return keys
+
+
+def command_example_param_keys(example: str) -> set[str]:
+    match = re.search(r"-\s+[A-Za-z][A-Za-z0-9_]*\s*:\s*\{(.*)\}\s*$", example)
+    if match:
+        return top_level_map_keys(match.group(1))
+    return set()
+
+
+def validate_command_example_fields() -> list[str]:
+    errors: list[str] = []
+    selector_names = schema_selector_names()
+    with COMMANDS_CSV.open(newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            example_keys = command_example_param_keys(row["example"])
+            if not example_keys:
+                continue
+            allowed = split_field_names(row["required_fields"]).union(
+                split_field_names(row["common_fields"])
+            )
+            if row["selector_supported"].strip().lower() in {"yes", "partial"}:
+                allowed.update(selector_names)
+            unknown = sorted(example_keys.difference(allowed))
+            if unknown:
+                errors.append(
+                    f"{COMMANDS_CSV}: example for {row['command']} has fields "
+                    "not declared in required/common fields: " + ", ".join(unknown)
+                )
+    return errors
+
+
 def validate_selector_catalog() -> list[str]:
     errors: list[str] = []
     schema_names = schema_selector_names()
@@ -302,6 +369,7 @@ def main() -> int:
     )
     errors.extend(validate_skill_references())
     errors.extend(validate_reference_examples())
+    errors.extend(validate_command_example_fields())
     errors.extend(validate_selector_catalog())
     errors.extend(validate_cli_catalog())
 
