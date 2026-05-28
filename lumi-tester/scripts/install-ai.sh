@@ -134,6 +134,7 @@ install_codex_skill() {
     "references/debug-artifacts.md"
     "references/desktop.md"
     "references/headers.csv"
+    "references/index.md"
     "references/patterns.md"
     "references/selector-discovery.md"
     "references/selectors.csv"

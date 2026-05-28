@@ -1243,6 +1243,40 @@ desktopState:
     }
 
     #[test]
+    fn parses_windows_desktop_state_clear_header() {
+        let yaml = r#"
+platform: windows
+appId: C:\Program Files\Example\Example.exe
+desktopState:
+  clear:
+    mode: manual
+    paths:
+      - "%APPDATA%\\Example"
+    registryKeys:
+      - "HKCU:\\Software\\Example"
+---
+- launchApp:
+    clearState: true
+"#;
+
+        let flow = parse_yaml_content(yaml, Path::new("windows.yaml")).unwrap();
+        let desktop_state = flow.desktop_state.expect("desktopState should parse");
+        let clear = desktop_state
+            .clear
+            .expect("desktopState.clear should parse");
+
+        assert_eq!(
+            clear.mode,
+            Some(crate::parser::types::DesktopClearMode::Manual)
+        );
+        assert_eq!(clear.paths, vec![r"%APPDATA%\Example".to_string()]);
+        assert_eq!(
+            clear.registry_keys,
+            vec![r"HKCU:\Software\Example".to_string()]
+        );
+    }
+
+    #[test]
     fn bundled_schema_allows_desktop_platforms() {
         let schema: serde_json::Value =
             serde_json::from_str(include_str!("../../schema/lumi-test.schema.json")).unwrap();

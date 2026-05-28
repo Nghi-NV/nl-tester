@@ -49,6 +49,7 @@ HEADERS_CSV = SKILL_DIR / "references" / "headers.csv"
 OPENAI_YAML = SKILL_DIR / "agents" / "openai.yaml"
 TESTCASE_DESIGN_MD = SKILL_DIR / "references" / "testcase-design.md"
 DEBUG_ARTIFACTS_MD = SKILL_DIR / "references" / "debug-artifacts.md"
+REFERENCE_INDEX_MD = SKILL_DIR / "references" / "index.md"
 PATTERNS_MD = SKILL_DIR / "references" / "patterns.md"
 DESKTOP_MD = SKILL_DIR / "references" / "desktop.md"
 ANDROID_AUTO_MD = SKILL_DIR / "references" / "android-auto.md"
@@ -332,6 +333,32 @@ def validate_reference_navigation() -> list[str]:
                 errors.append(
                     f"{path}: Contents bullet does not match a ## heading: {bullet}"
                 )
+    return errors
+
+
+def validate_reference_index() -> list[str]:
+    errors: list[str] = []
+    text = REFERENCE_INDEX_MD.read_text(encoding="utf-8")
+    skill_text = SKILL_MD.read_text(encoding="utf-8")
+    if "references/index.md" not in skill_text:
+        errors.append(f"{SKILL_MD}: missing reference index guidance")
+
+    for path in sorted((SKILL_DIR / "references").glob("*")):
+        if not path.is_file() or path.name == "index.md":
+            continue
+        if f"`{path.name}`" not in text:
+            errors.append(f"{REFERENCE_INDEX_MD}: missing reference entry: {path.name}")
+
+    required_terms = {
+        "Fast Lookup": "fast lookup section",
+        "Workflow References": "workflow section",
+        "Platform References": "platform section",
+        "MCP `suggest_selectors`": "MCP selector guidance",
+        "`desktopState.clear`": "desktop state reset guidance",
+    }
+    for term, label in required_terms.items():
+        if term not in text:
+            errors.append(f"{REFERENCE_INDEX_MD}: missing {label}")
     return errors
 
 
@@ -1931,6 +1958,7 @@ def main() -> int:
     errors.extend(validate_csv_alias_quality(HEADERS_CSV, "field"))
     errors.extend(validate_headers_catalog())
     errors.extend(validate_reference_navigation())
+    errors.extend(validate_reference_index())
     errors.extend(validate_agents_metadata())
     errors.extend(validate_helper_script_reference())
     errors.extend(validate_helper_script_behavior())
