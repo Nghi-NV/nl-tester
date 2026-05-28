@@ -1,4 +1,4 @@
 interface:
   display_name: "Lumi Tester Agent"
-  short_description: "Write, run, and debug Lumi YAML tests"
-  default_prompt: "Use $lumi-tester-agent to validate, run, and debug this Lumi Tester YAML flow."
+  short_description: "Design, run, and debug Lumi YAML tests"
+  default_prompt: "Use $lumi-tester-agent to design testcase coverage, validate, run, and debug Lumi Tester YAML flows."

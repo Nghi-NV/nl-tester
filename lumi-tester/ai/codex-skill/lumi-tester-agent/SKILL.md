@@ -1,6 +1,6 @@
 ---
 name: lumi-tester-agent
-description: Write, validate, run, and debug Lumi Tester YAML automation flows for Android, iOS, Android Auto, and Web. Use when Codex is asked to create or fix Lumi YAML tests, run Lumi Tester from a repo or installed binary, inspect validate/list/doctor/schema JSON output, debug failed commands using run.json/events.jsonl/test-results.json/screenshots/UI XML/logs, or rerun a failing command by command index.
+description: Design testcase coverage, write, validate, run, and debug Lumi Tester YAML automation flows for Android, iOS, Android Auto, and Web. Use when Codex is asked to create test cases from requirements, generate grouped test folders, create or fix Lumi YAML tests, run Lumi Tester from a repo or installed binary, inspect validate/list/doctor/schema JSON output, debug failed commands using run.json/events.jsonl/test-results.json/screenshots/UI XML/logs, or rerun a failing command by command index.
 ---
 
 # Lumi Tester Agent
@@ -88,20 +88,22 @@ The helper prints stdout/stderr and exits with the Lumi command exit code.
    command fields from memory.
 5. Read `references/command-catalog.md` when examples or command intent are
    still unclear.
-6. Read `references/patterns.md` when the request matches a common workflow
+6. Read `references/testcase-design.md` before generating a suite from product
+   requirements, user stories, screenshots, API specs, or exploratory findings.
+7. Read `references/patterns.md` when the request matches a common workflow
    such as login, onboarding, search, settings, permission, GPS, or web form.
-7. For device-backed requests, confirm the target device and app before writing
+8. For device-backed requests, confirm the target device and app before writing
    or running a flow. If the user says "current app", inspect current focus
    instead of assuming an appId from an existing YAML file.
-8. Discover the app identity before launch: Android package, iOS bundle id, or
+9. Discover the app identity before launch: Android package, iOS bundle id, or
    Web URL/browser target.
-9. After `launchApp`, wait for a stable screen element with `waitUntilVisible`
+10. After `launchApp`, wait for a stable screen element with `waitUntilVisible`
    or `waitSee`; do not use a fixed delay as launch readiness.
-10. Write YAML in canonical `header --- commands` format.
-11. Run validation before any device/browser execution.
-12. Use `list --json` to discover command indexes.
-13. Run with reports, snapshots, and event JSONL for debug-friendly artifacts.
-14. On failure, inspect artifacts and rerun the smallest failing command index.
+11. Write YAML in canonical `header --- commands` format.
+12. Run validation before any device/browser execution.
+13. Use `list --json` to discover command indexes.
+14. Run with reports, snapshots, and event JSONL for debug-friendly artifacts.
+15. On failure, inspect artifacts and rerun the smallest failing command index.
 
 Canonical commands:
 
@@ -303,6 +305,8 @@ Treat these as runtime/debug bugs:
 - Read or search `references/cli.csv` for fast Lumi CLI lookup by purpose,
   platform, options, output, and when an AI agent should use it.
 - Read `references/command-catalog.md` before writing unfamiliar commands.
+- Read `references/testcase-design.md` before turning requirements or
+  exploratory findings into a folder of generated tests.
 - Read or search `references/commands.csv` for fast command lookup by alias,
   category, parameter shape, selector support, platform, and example.
 - Read or search `references/selectors.csv` for selector priority, platform

@@ -3,5 +3,5 @@ appId: com.example.example
 
 - launchApp
 - assertVisible: 'Form Test'
-- killApp
+- stopApp
 - assertNotVisible: 'Form Test'

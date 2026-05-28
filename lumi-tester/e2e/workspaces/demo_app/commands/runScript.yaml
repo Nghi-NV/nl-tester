@@ -11,13 +11,14 @@ appId: com.example.example
 - evalScript: ${output.something = 'baz'}
 
 - runScript:
-    file: runScript.js
+    command: runScript.js
 - assertTrue: ${output.something == 'bar'}
 
 - evalScript: ${output.something = 'baz'}
+- setVar:
+    name: THIS_THING
+    value: "six"
 
 - runScript:
-    env:
-      THIS_THING: "six"
-    file: runScript.js
+    command: runScript.js
 - assertTrue: ${output.something == 'foo'}
