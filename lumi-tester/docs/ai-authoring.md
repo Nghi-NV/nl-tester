@@ -165,6 +165,31 @@ After executor finalization:
 - Failed commands may include `screenshotPath`, `uiHierarchyPath`, and `logPath`
   when `--snapshot` or `--report` is enabled.
 
+## Failure Debug Loop
+
+When a run fails:
+
+1. Read the first failed command from `output/run.json` or
+   `output/test-results.json`.
+2. Use `list --json` to confirm the command index; do not count YAML commands
+   by hand.
+3. Inspect linked `screenshotPath`, `uiHierarchyPath`, and `logPath` before
+   editing selectors or waits.
+4. Patch the smallest YAML/setup issue.
+5. Rerun only the failed command:
+
+```bash
+lumi-tester run ./test.yaml --platform <platform> --command-index <index> --report --snapshot --events-jsonl --output ./output
+```
+
+6. After the targeted rerun passes, rerun the whole flow with the same
+   `--report --snapshot --events-jsonl` artifact flags.
+
+For ambiguous failures, read
+`ai/codex-skill/lumi-tester-agent/references/debug-artifacts.md` and classify
+the issue as wrong target, setup/state, app/runtime, or selector before editing
+YAML.
+
 ## Schema
 
 Retrieve the bundled schema with:
