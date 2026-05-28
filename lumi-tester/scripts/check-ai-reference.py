@@ -10,6 +10,7 @@ import io
 import json
 import re
 import sys
+import tempfile
 from pathlib import Path, PurePosixPath
 
 
@@ -406,6 +407,7 @@ def validate_helper_script_reference() -> list[str]:
             "--snapshot",
             "--events-jsonl",
             "--output",
+            "--summary-json",
             "PASSED",
             "FAILED",
             "PASS",
@@ -526,6 +528,7 @@ def validate_helper_script_behavior() -> list[str]:
         or agent_check.run
     ):
         errors.append(f"{HELPER_SCRIPT}: agent-check should parse authoring gates")
+    summary_target = Path(tempfile.mkdtemp()) / "agent-check.json"
     agent_check_run = helper.parse_agent_check(
         [
             "tests/generated/login",
@@ -536,15 +539,30 @@ def validate_helper_script_behavior() -> list[str]:
             "--run",
             "--output",
             "./output/login",
+            "--summary-json",
+            str(summary_target),
             "--debug",
         ]
     )
     if (
         not agent_check_run.run
         or agent_check_run.device != "emulator-5554"
+        or agent_check_run.summary_json != str(summary_target)
         or agent_check_run.extra != ["--debug"]
     ):
         errors.append(f"{HELPER_SCRIPT}: agent-check should preserve runtime args")
+    helper.write_agent_check_summary(
+        agent_check_run,
+        [{"name": "validate", "passed": True, "exitCode": 0}],
+        "passed",
+        0,
+    )
+    if not summary_target.exists():
+        errors.append(f"{HELPER_SCRIPT}: agent-check should write summary JSON")
+    else:
+        summary = json.loads(summary_target.read_text(encoding="utf-8"))
+        if summary.get("status") != "passed" or summary.get("steps", [{}])[0].get("name") != "validate":
+            errors.append(f"{HELPER_SCRIPT}: agent-check summary JSON shape changed")
     with contextlib.redirect_stderr(io.StringIO()):
         try:
             helper.parse_agent_check(["tests/generated/login", "--run"])
@@ -626,6 +644,7 @@ def validate_agent_self_test_contract() -> list[str]:
         "agent-check <file-or-folder>": "agent-check authoring shortcut",
         "agent-check <file-or-folder> --platform <platform> --run --output <dir>": "agent-check runtime shortcut",
         "== lumi agent-check: pass ==": "agent-check summary marker",
+        "--summary-json <file>": "agent-check machine-readable summary",
         "validate --json": "validation evidence",
         "list --json": "collection/index evidence",
         "setup/teardown": "group setup evidence",

@@ -85,6 +85,7 @@ You can use the bundled helper without loading it:
 
 ```bash
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-check path/to/test.yaml
+python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-check path/to/test.yaml --summary-json ./output/agent-check.json
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-check path/to/test.yaml --platform android --device <serial> --run --output ./output
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-validate path/to/test.yaml
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-list path/to/test.yaml
@@ -396,7 +397,8 @@ that can run in the current environment:
 1. Prefer `agent-check <file-or-folder>` for authoring-only evidence, or
    `agent-check <file-or-folder> --platform <platform> --run --output <dir>`
    when runtime execution is available. Treat `== lumi agent-check: PASS ==`
-   as the concise self-test summary.
+   as the concise self-test summary. Use
+   `--summary-json <file>` when a machine-readable evidence file is useful.
 2. Always run `validate --json` on the file or folder you changed.
 3. Always run `list --json` on the same file or folder to prove grouping,
    setup/teardown, skipped subflows, and command indexes.

@@ -152,6 +152,10 @@ def parse_agent_check(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--device", help="Android serial, iOS UDID, or browser/device target")
     parser.add_argument("--output", default="./output/lumi-agent")
     parser.add_argument(
+        "--summary-json",
+        help="Write a compact JSON summary for AI final-answer evidence",
+    )
+    parser.add_argument(
         "--run",
         action="store_true",
         help="Run the test after validate/list and doctor pass",
@@ -163,28 +167,58 @@ def parse_agent_check(argv: list[str]) -> argparse.Namespace:
     return parsed
 
 
+def write_agent_check_summary(
+    parsed: argparse.Namespace,
+    steps: list[dict[str, object]],
+    status: str,
+    exit_code: int,
+) -> None:
+    if not parsed.summary_json:
+        return
+    summary_path = Path(parsed.summary_json)
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary = {
+        "status": status,
+        "exitCode": exit_code,
+        "path": parsed.path,
+        "platform": parsed.platform,
+        "device": parsed.device,
+        "runRequested": parsed.run,
+        "output": parsed.output if parsed.run else None,
+        "steps": steps,
+    }
+    summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+
+
 def run_agent_check(argv: list[str]) -> int:
     parsed = parse_agent_check(argv)
+    steps: list[dict[str, object]] = []
 
     print("== lumi agent-check: validate --json ==", file=sys.stderr)
     code = run_lumi("validate", [parsed.path, "--json"])
+    steps.append({"name": "validate", "passed": code == 0, "exitCode": code})
     if code != 0:
         print("== lumi agent-check: validate FAILED ==", file=sys.stderr)
+        write_agent_check_summary(parsed, steps, "failed", code)
         return code
     print("== lumi agent-check: validate PASSED ==", file=sys.stderr)
 
     print("== lumi agent-check: list --json ==", file=sys.stderr)
     code = run_lumi("list", [parsed.path, "--json"])
+    steps.append({"name": "list", "passed": code == 0, "exitCode": code})
     if code != 0:
         print("== lumi agent-check: list FAILED ==", file=sys.stderr)
+        write_agent_check_summary(parsed, steps, "failed", code)
         return code
     print("== lumi agent-check: list PASSED ==", file=sys.stderr)
 
     if parsed.platform:
         print("== lumi agent-check: doctor --json ==", file=sys.stderr)
         code = run_lumi("doctor", ["--platform", parsed.platform, "--json"])
+        steps.append({"name": "doctor", "passed": code == 0, "exitCode": code})
         if code != 0:
             print("== lumi agent-check: doctor FAILED ==", file=sys.stderr)
+            write_agent_check_summary(parsed, steps, "failed", code)
             return code
         print("== lumi agent-check: doctor PASSED ==", file=sys.stderr)
 
@@ -204,12 +238,15 @@ def run_agent_check(argv: list[str]) -> int:
                 ]
             ),
         )
+        steps.append({"name": "run", "passed": code == 0, "exitCode": code})
         if code != 0:
             print("== lumi agent-check: run FAILED ==", file=sys.stderr)
+            write_agent_check_summary(parsed, steps, "failed", code)
             return code
         print("== lumi agent-check: run PASSED ==", file=sys.stderr)
 
     print("== lumi agent-check: PASS ==", file=sys.stderr)
+    write_agent_check_summary(parsed, steps, "passed", 0)
     return 0
 
 
