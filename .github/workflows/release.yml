@@ -74,7 +74,7 @@ jobs:
             target: aarch64-unknown-linux-gnu
             asset_name: lumi-tester-aarch64-unknown-linux-gnu
             mcp_asset_name: lumi-tester-mcp-aarch64-unknown-linux-gnu.tgz
-          - os: macos-13
+          - os: macos-latest
             target: x86_64-apple-darwin
             asset_name: lumi-tester-x86_64-apple-darwin
             mcp_asset_name: lumi-tester-mcp-x86_64-apple-darwin.tgz
