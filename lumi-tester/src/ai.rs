@@ -65,6 +65,10 @@ pub async fn install(options: AiInstallOptions) -> Result<()> {
     println!("Restart Codex so it reloads the skill and MCP server.");
     println!("Quick checks:");
     println!("  lumi-tester doctor --platform android --json");
+    println!("  lumi-tester doctor --platform ios --json  # macOS + idb");
+    println!("  lumi-tester doctor --platform web --json");
+    println!("  lumi-tester doctor --platform macos --json");
+    println!("  lumi-tester doctor --platform windows --json");
     println!("  node \"{}\"", snippets.server.display());
 
     Ok(())

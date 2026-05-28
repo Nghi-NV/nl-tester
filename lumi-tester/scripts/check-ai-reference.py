@@ -54,6 +54,8 @@ HELPER_SCRIPT = SKILL_DIR / "scripts" / "lumi_agent.py"
 AI_RS = ROOT / "lumi-tester" / "src" / "ai.rs"
 INSTALL_AI_SH = ROOT / "lumi-tester" / "scripts" / "install-ai.sh"
 INSTALL_AI_PS1 = ROOT / "lumi-tester" / "scripts" / "install-ai.ps1"
+MCP_SERVER_JS = ROOT / "lumi-tester-mcp" / "src" / "server.js"
+MCP_README = ROOT / "lumi-tester-mcp" / "README.md"
 REQUIRED_AGENT_PLATFORMS = {"android", "ios", "web", "macos", "windows"}
 
 
@@ -446,6 +448,42 @@ def validate_skill_preflight() -> list[str]:
     for term, label in required_terms.items():
         if term not in section:
             errors.append(f"{SKILL_MD}: preflight missing {label}")
+    return errors
+
+
+def mcp_tool_names() -> set[str]:
+    text = MCP_SERVER_JS.read_text(encoding="utf-8")
+    return set(re.findall(r"server\.registerTool\(\s*\n\s*\"([^\"]+)\"", text))
+
+
+def mcp_tool_block(text: str, tool: str) -> str:
+    pattern = rf"server\.registerTool\(\s*\n\s*\"{re.escape(tool)}\"(.*?)(?=\nserver\.registerTool\(|\nconst transport =)"
+    match = re.search(pattern, text, flags=re.DOTALL)
+    return match.group(1) if match else ""
+
+
+def validate_mcp_tool_references() -> list[str]:
+    errors: list[str] = []
+    tools = mcp_tool_names()
+    skill_text = SKILL_MD.read_text(encoding="utf-8")
+    readme_text = MCP_README.read_text(encoding="utf-8")
+    for tool in sorted(tools):
+        if f"`{tool}`" not in skill_text:
+            errors.append(f"{SKILL_MD}: missing MCP tool reference: {tool}")
+        if f"`{tool}`" not in readme_text:
+            errors.append(f"{MCP_README}: missing MCP tool reference: {tool}")
+
+    server_text = MCP_SERVER_JS.read_text(encoding="utf-8")
+    for tool in ("doctor", "run_test"):
+        block = mcp_tool_block(server_text, tool)
+        if not block:
+            errors.append(f"{MCP_SERVER_JS}: missing MCP tool block: {tool}")
+            continue
+        for platform in ("macos", "windows"):
+            if f'"{platform}"' not in block:
+                errors.append(
+                    f"{MCP_SERVER_JS}: MCP tool {tool} should accept platform: {platform}"
+                )
     return errors
 
 
@@ -1286,6 +1324,7 @@ def main() -> int:
     errors.extend(validate_helper_script_reference())
     errors.extend(validate_helper_script_behavior())
     errors.extend(validate_skill_preflight())
+    errors.extend(validate_mcp_tool_references())
     errors.extend(validate_testcase_design_reference())
     errors.extend(validate_debug_artifacts_reference())
     errors.extend(validate_patterns_reference())

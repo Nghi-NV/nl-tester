@@ -214,6 +214,8 @@ main() {
   say "  lumi-tester doctor --platform android --json"
   say "  lumi-tester doctor --platform ios --json  # macOS + idb"
   say "  lumi-tester doctor --platform web --json"
+  say "  lumi-tester doctor --platform macos --json"
+  say "  lumi-tester doctor --platform windows --json"
   say "  node \"$AI_HOME/mcp/node_modules/lumi-tester-mcp/src/server.js\""
 }
 

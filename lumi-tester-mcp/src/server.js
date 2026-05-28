@@ -97,7 +97,9 @@ server.registerTool(
     description: "Check local Lumi Tester dependencies for one platform.",
     inputSchema: {
       ...workspaceSchema,
-      platform: z.enum(["android", "android_auto", "ios", "web", "all"]).default("android"),
+      platform: z
+        .enum(["android", "android_auto", "ios", "web", "macos", "windows", "all"])
+        .default("android"),
     },
   },
   async ({ workspace, platform }) => {
@@ -138,7 +140,9 @@ server.registerTool(
     inputSchema: {
       ...workspaceSchema,
       path: z.string().describe("YAML test file or directory."),
-      platform: z.enum(["android", "android_auto", "ios", "web"]).default("android"),
+      platform: z
+        .enum(["android", "android_auto", "ios", "web", "macos", "windows"])
+        .default("android"),
       output: z.string().default("./output"),
       device: z.string().optional(),
       commandIndex: z.number().int().nonnegative().optional(),

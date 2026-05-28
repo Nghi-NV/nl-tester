@@ -38,9 +38,11 @@ tools in this order:
 1. `doctor`
 2. `validate_yaml`
 3. `list_tests`
-4. `run_test`
-5. `read_report`, `read_events`, `read_artifact`
-6. `suggest_selectors` when a UI XML artifact is available
+4. `schema` when command/header shape is unclear
+5. `run_test`
+6. `read_report`, `read_events`, `read_artifact`
+7. `inspector_get` when a Lumi Inspector server is running
+8. `suggest_selectors` when a UI XML artifact is available
 
 If MCP tools are not available, use the CLI flow below.
 
