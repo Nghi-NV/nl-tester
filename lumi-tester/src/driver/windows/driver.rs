@@ -146,10 +146,18 @@ Add-Type -AssemblyName System.Windows.Forms
             .active_window_handle
             .lock()
             .map_err(|_| anyhow::anyhow!("Windows active window handle lock poisoned"))?;
-        Ok(Self::powershell(&windows_uia_dump_script(handle))?
-            .lines()
-            .filter_map(parse_windows_ui_element_line)
-            .collect())
+
+        let mut elements: Vec<WindowsUiElement> =
+            Self::powershell(&windows_window_element_script(handle))?
+                .lines()
+                .filter_map(parse_windows_ui_element_line)
+                .collect();
+        elements.extend(
+            Self::powershell(&windows_uia_dump_script(handle))?
+                .lines()
+                .filter_map(parse_windows_ui_element_line),
+        );
+        Ok(elements)
     }
 
     fn find_element(&self, selector: &Selector) -> Result<Option<WindowsUiElement>> {
@@ -756,6 +764,72 @@ fn windows_uia_dump_script(handle: Option<isize>) -> String {
     WINDOWS_UIA_DUMP_SCRIPT.replace("__LUMI_HANDLE__", &handle.unwrap_or(0).to_string())
 }
 
+fn windows_window_element_script(handle: Option<isize>) -> String {
+    WINDOWS_WINDOW_ELEMENT_SCRIPT.replace("__LUMI_HANDLE__", &handle.unwrap_or(0).to_string())
+}
+
+const WINDOWS_WINDOW_ELEMENT_SCRIPT: &str = r#"
+Add-Type -TypeDefinition @"
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public class LumiWindowInfo {
+  [StructLayout(LayoutKind.Sequential)]
+  public struct RECT {
+    public int Left;
+    public int Top;
+    public int Right;
+    public int Bottom;
+  }
+
+  [DllImport("user32.dll")]
+  public static extern IntPtr GetForegroundWindow();
+
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+  public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+
+  [DllImport("user32.dll")]
+  public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+
+  [DllImport("user32.dll")]
+  public static extern bool IsWindowVisible(IntPtr hWnd);
+}
+"@
+
+$handle = [IntPtr]__LUMI_HANDLE__
+if ($handle -eq [IntPtr]::Zero) {
+  $handle = [LumiWindowInfo]::GetForegroundWindow()
+}
+if ($handle -eq [IntPtr]::Zero) {
+  exit 0
+}
+
+$rect = New-Object LumiWindowInfo+RECT
+if (-not [LumiWindowInfo]::GetWindowRect($handle, [ref]$rect)) {
+  exit 0
+}
+
+$titleBuilder = New-Object System.Text.StringBuilder 1024
+[void][LumiWindowInfo]::GetWindowText($handle, $titleBuilder, $titleBuilder.Capacity)
+$title = $titleBuilder.ToString().Replace("\", "\\").Replace("`t", "\t").Replace("`r", "").Replace("`n", "\n")
+$visible = [LumiWindowInfo]::IsWindowVisible($handle)
+$offscreen = if ($visible) { "false" } else { "true" }
+$width = $rect.Right - $rect.Left
+$height = $rect.Bottom - $rect.Top
+@(
+  "Window",
+  $title,
+  "",
+  "",
+  "",
+  $offscreen,
+  [string]$rect.Left,
+  [string]$rect.Top,
+  [string]$width,
+  [string]$height
+) -join "`t"
+"#;
+
 const WINDOWS_UIA_DUMP_SCRIPT: &str = r#"
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -974,6 +1048,13 @@ mod tests {
     fn windows_uia_dump_script_injects_handle() {
         let script = windows_uia_dump_script(Some(12345));
         assert!(script.contains("$lumiHandleOverride = [IntPtr]12345"));
+        assert!(!script.contains("__LUMI_HANDLE__"));
+    }
+
+    #[test]
+    fn windows_window_element_script_injects_handle() {
+        let script = windows_window_element_script(Some(12345));
+        assert!(script.contains("$handle = [IntPtr]12345"));
         assert!(!script.contains("__LUMI_HANDLE__"));
     }
 }
