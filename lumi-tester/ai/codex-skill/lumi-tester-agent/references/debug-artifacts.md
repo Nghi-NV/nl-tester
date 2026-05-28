@@ -34,6 +34,21 @@ lumi-tester run ./test.yaml --platform android --command-index <index> --report 
 
 ## Common Failure Diagnosis
 
+Wrong app or package mismatch:
+
+- Compare the expected `appId` with the package shown in current focus, failure
+  UI XML, screenshot, and logs.
+- If the failure UI XML package differs from the expected app, stop tuning
+  selectors. First diagnose wrong device selection, stale YAML `appId`, launch
+  failure, crash, or a system dialog overlay.
+- For "current app" requests, rediscover foreground package/activity instead of
+  reusing an unrelated YAML file:
+
+```bash
+adb -s <serial> shell dumpsys window | rg -i 'mCurrentFocus|mFocusedApp|topResumed'
+adb -s <serial> exec-out uiautomator dump /dev/tty
+```
+
 Element not found:
 
 - Prefer replacing `point` with `id`, `desc`, or exact `text`.
@@ -57,3 +72,21 @@ Runtime dependency failure:
 - For Android, check `adb`.
 - For iOS, check `idb`.
 - For Web/video capture, check `ffmpeg`.
+
+App launch/crash/abort:
+
+- Treat `appCrashed`, `FATAL EXCEPTION`, `Force finishing`, `START_ABORTED`,
+  `am_crash`, tombstone output, or a missing app process as app/runtime
+  failures, not selector failures.
+- Check the event stream, reports, current focus, process state, and recent logs:
+
+```bash
+rg -n 'appCrashed|START_ABORTED|FATAL EXCEPTION|Force finishing|am_crash|tombstone' ./output
+adb -s <serial> shell dumpsys window | rg -i 'mCurrentFocus|mFocusedApp|topResumed'
+adb -s <serial> shell pidof <appId>
+adb -s <serial> logcat -d -v time | rg -i '<appId>|FATAL EXCEPTION|START_ABORTED|am_crash|tombstone'
+```
+
+- If `clearState` causes launch aborts or data-dependent crashes, rerun once
+  without `clearState` to separate first-run app failures from test authoring
+  mistakes.

@@ -3,6 +3,52 @@
 Use these patterns as starting points. Always replace selectors with discovered
 stable selectors from `selectors.csv` and validate before running.
 
+## Current Android App Smoke
+
+Use when the user asks to test the app currently open on a connected Android
+device, especially when multiple devices are attached.
+
+Discover the target first:
+
+```bash
+adb devices -l
+adb -s <serial> shell dumpsys window | rg -i 'mCurrentFocus|mFocusedApp|topResumed'
+adb -s <serial> exec-out uiautomator dump /dev/tty
+```
+
+Then write the flow with the discovered package and semantic selectors:
+
+```yaml
+platform: android
+appId: com.example.current
+tags:
+  - smoke
+  - current-app
+defaultTimeout: 10000
+---
+- launchApp:
+    appId: com.example.current
+    permissions:
+      all: allow
+- waitUntilVisible:
+    accessibilityId: "Screen title"
+- waitUntilVisible:
+    accessibilityId: "Primary action"
+- tap:
+    accessibilityId: "Primary action"
+- waitForAnimationToEnd
+- screenshot: "current_app_smoke.png"
+```
+
+Adaptation rules:
+
+- Use current focus as the source of truth for `appId`; do not reuse a nearby
+  YAML file unless it targets the same package.
+- When UI XML exposes `content-desc`, use `accessibilityId` or `desc`.
+- Avoid `point` selectors unless the hierarchy and OCR expose no stable target.
+- If the failure XML package is not the expected `appId`, debug launch/crash or
+  wrong target before changing selectors.
+
 ## Login
 
 Use when the user asks for sign in, authentication, or account smoke tests.
