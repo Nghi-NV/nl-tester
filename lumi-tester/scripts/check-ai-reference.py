@@ -576,6 +576,16 @@ def validate_debug_artifacts_reference() -> list[str]:
             "console": r"console (?:errors?|logs?)|pageerror",
             "network": r"(?:failed )?network requests?|http failures?|4\[0-9\]\{2\}|5\[0-9\]\{2\}",
         },
+        "macos": {
+            "frontmost": r"frontmost app|frontmost is true|applescript",
+            "permissions": r"accessibility|screen recording",
+            "logs": r"unified logs?|\blog show\b",
+        },
+        "windows": {
+            "foreground": r"foreground window|mainwindowtitle|interactive desktop",
+            "hierarchy": r"ui automation hierarchy",
+            "powershell": r"powershell errors?|powershell",
+        },
     }
     for platform, patterns in platform_patterns.items():
         for label, pattern in patterns.items():
@@ -1088,12 +1098,17 @@ def validate_selector_quality() -> list[str]:
     discovery = (SKILL_DIR / "references" / "selector-discovery.md").read_text(
         encoding="utf-8"
     ).lower()
+    normalized_discovery = re.sub(r"\s+", " ", discovery)
     for phrase in (
         "coordinates are allowed only",
         "do not immediately replace it with `point`",
         "do not start with `point`",
+        "macos `.app` path",
+        "windows executable path",
+        "desktop selector examples",
+        "accessibility/ui automation selectors",
     ):
-        if phrase not in discovery:
+        if phrase not in normalized_discovery:
             errors.append(f"selector-discovery.md: missing coordinate guard: {phrase}")
     return errors
 

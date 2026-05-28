@@ -92,6 +92,14 @@ Platform-specific target checks:
   screenshot, DOM/hierarchy artifact, console errors, failed network requests,
   and storage/session state. If the page is still loading, blocked by auth, or
   redirected, fix navigation/setup before tuning selectors.
+- macOS: compare `appId` with the frontmost app from AppleScript, Accessibility
+  hierarchy, screenshot, and recent unified logs. If Accessibility or Screen
+  Recording permission blocks hierarchy/screenshot capture, fix permissions
+  before changing selectors.
+- Windows: compare the executable `appId` with the foreground window title,
+  UI Automation hierarchy, process state, screenshot, and PowerShell errors. If
+  the target app runs elevated or outside the interactive desktop session, fix
+  host/session permissions before changing selectors.
 
 Use platform-specific evidence to classify the failure before editing YAML:
 
@@ -118,6 +126,9 @@ adb -s <serial> shell pidof <appId>
 adb -s <serial> logcat -d -v time | rg -i '<appId>|FATAL EXCEPTION|START_ABORTED|am_crash|tombstone'
 xcrun simctl listapps booted | rg '<bundleId>'
 xcrun simctl spawn booted log show --last 5m --style compact | rg -i '<bundleId>|crash|exception|abort'
+osascript -e 'tell application "System Events" to get name of first application process whose frontmost is true'
+log show --last 5m --style compact | rg -i '<bundle-id-or-app-name>|crash|exception|abort'
+powershell -NoProfile -Command "Get-Process | Where-Object MainWindowTitle | Select-Object ProcessName,Id,MainWindowTitle"
 rg -n 'console|network|pageerror|crash|ERR_|4[0-9]{2}|5[0-9]{2}' ./output
 ```
 

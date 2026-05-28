@@ -14,6 +14,7 @@ the smallest run.
 - Android selector examples
 - iOS selector examples
 - Web selector examples
+- Desktop selector examples
 - Relative selector pattern
 - OCR and image fallback
 - Selector debug checklist
@@ -23,8 +24,9 @@ the smallest run.
 
 1. Run `doctor` for the platform.
 2. Confirm the target device and app identity. Use Android package name, iOS
-   bundle id, or Web URL/browser. If the user asks for the current Android app,
-   read `mCurrentFocus`/`mFocusedApp` from that device before choosing `appId`.
+   bundle id, Web URL/browser, macOS `.app` path/bundle id, or Windows
+   executable path. If the user asks for the current Android app, read
+   `mCurrentFocus`/`mFocusedApp` from that device before choosing `appId`.
 3. Start from a skeleton flow with `launchApp`.
 4. Add a selector-based launch readiness wait for a stable screen element.
 5. Use Inspector if interactive discovery is possible.
@@ -149,6 +151,21 @@ idb list-apps --udid <udid>
 For Web, use the actual target URL. If the app is local, start the dev server
 first and wait for a stable DOM selector after `launchApp`.
 
+For macOS app identity and frontmost app discovery:
+
+```bash
+mdls -name kMDItemCFBundleIdentifier /Applications/MyApp.app
+osascript -e 'tell application "System Events" to get name of first application process whose frontmost is true'
+lumi-tester doctor --platform macos --json
+```
+
+For Windows executable and foreground window discovery:
+
+```powershell
+powershell -NoProfile -Command "Get-Process | Where-Object MainWindowTitle | Select-Object ProcessName,Id,MainWindowTitle"
+lumi-tester doctor --platform windows --json
+```
+
 ## Android Selector Examples
 
 Resource id:
@@ -235,6 +252,41 @@ Placeholder:
 ```yaml
 - tap:
     placeholder: "Email"
+```
+
+## Desktop Selector Examples
+
+Prefer Accessibility/UI Automation selectors over coordinates on native desktop
+apps.
+
+macOS and Windows text:
+
+```yaml
+- tap:
+    text: "Preferences"
+    exact: true
+```
+
+Role/type with index when labels repeat:
+
+```yaml
+- tap:
+    role: "button"
+    text: "OK"
+```
+
+```yaml
+- tap:
+    type: "Button"
+    index: 1
+```
+
+Use OCR or image matching only when the desktop hierarchy cannot expose the
+target:
+
+```yaml
+- tap:
+    ocr: "Continue"
 ```
 
 ## Relative Selector Pattern
