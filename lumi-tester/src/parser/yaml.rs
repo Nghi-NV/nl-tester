@@ -1189,6 +1189,23 @@ appId: C:\Program Files\Example\Example.exe
     }
 
     #[test]
+    fn parses_and_serializes_android_auto_platform_header() {
+        let yaml = r#"
+platform: android_auto
+appId: com.example.auto
+---
+- launchApp
+"#;
+
+        let flow = parse_yaml_content(yaml, Path::new("android-auto.yaml")).unwrap();
+        assert_eq!(flow.platform, Some(Platform::AndroidAuto));
+        assert_eq!(
+            serde_json::to_value(flow.platform).unwrap(),
+            serde_json::Value::String("android_auto".to_string())
+        );
+    }
+
+    #[test]
     fn parses_desktop_state_clear_header() {
         let yaml = r#"
 platform: macos
@@ -1235,6 +1252,7 @@ desktopState:
 
         assert!(platforms.contains(&serde_json::Value::String("macos".to_string())));
         assert!(platforms.contains(&serde_json::Value::String("windows".to_string())));
+        assert!(platforms.contains(&serde_json::Value::String("android_auto".to_string())));
     }
 
     #[test]

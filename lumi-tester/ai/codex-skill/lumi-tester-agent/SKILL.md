@@ -11,13 +11,15 @@ itself. For framework development, use the `lumi-tester` development skill.
 
 ## Platform Coverage
 
-Support Android, iOS, Web, macOS, and Windows workflows. Do not specialize the
-skill, helper, or flow patterns for only one platform unless the user's target
-is explicitly platform-specific. Always set or infer the target platform before
-selecting commands, selectors, devices, and debug artifacts:
+Support Android, Android Auto, iOS, Web, macOS, and Windows workflows. Do not
+specialize the skill, helper, or flow patterns for only one platform unless the
+user's target is explicitly platform-specific. Always set or infer the target
+platform before selecting commands, selectors, devices, and debug artifacts:
 
 - Android: app package `appId`, Android device serial, UIAutomator XML,
   `id`/`resourceId`, `accessibilityId`/`contentDesc`, `text`, OCR fallback.
+- Android Auto: `platform: android_auto`, Android device serial, DHU runtime,
+  point-only tap, dpad/key commands, screenshot/log artifacts, no UI hierarchy.
 - iOS: bundle id `appId`, simulator/device UDID, accessibility tree,
   `accessibilityId`/`label`, `text`, OCR fallback.
 - Web: `url`/browser, DOM selectors such as `css`, `role`, `placeholder`,
@@ -86,6 +88,7 @@ python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-validate p
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-list path/to/test.yaml
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-doctor --platform android
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-run path/to/test.yaml --platform android --device <serial> --output ./output
+python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-run path/to/auto.yaml --platform android_auto --device <serial> --output ./output
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-debug path/to/test.yaml --platform android --device <serial> --command-index 3 --output ./output
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-run path/to/desktop.yaml --platform macos --output ./output
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-run path/to/desktop.yaml --platform windows --output ./output
@@ -113,21 +116,24 @@ stdout/stderr and exits with the Lumi command exit code.
    requirements, user stories, screenshots, API specs, or exploratory findings.
 7. Read `references/patterns.md` when the request matches a common workflow
    such as login, onboarding, search, settings, permission, GPS, or web form.
-8. Read `references/desktop.md` for native macOS or Windows desktop app tests.
-9. For device-backed or desktop-backed requests, confirm the target device/app,
+8. Read `references/android-auto.md` for Android Auto DHU tests.
+9. Read `references/desktop.md` for native macOS or Windows desktop app tests.
+10. For device-backed or desktop-backed requests, confirm the target device/app,
    local desktop host/app, or browser before writing or running a flow. If the
    user says "current app", inspect current focus/frontmost app instead of
    assuming an appId from an existing YAML file.
-10. Discover the app identity before launch: Android package, iOS bundle id,
+11. Discover the app identity before launch: Android package, iOS bundle id,
    Web URL/browser target, macOS `.app` path/bundle id, or Windows executable
    path.
-11. After `launchApp`, wait for a stable screen element with `waitUntilVisible`
-   or `waitSee`; do not use a fixed delay as launch readiness.
-12. Write YAML in canonical `header --- commands` format.
-13. Run validation before any device/browser/desktop execution.
-14. Use `list --json` to discover command indexes.
-15. Run with reports, snapshots, and event JSONL for debug-friendly artifacts.
-16. On failure, inspect artifacts and rerun the smallest failing command index.
+12. After `launchApp`, wait for a stable screen element with `waitUntilVisible`
+   or `waitSee`; do not use a fixed delay as launch readiness. Android Auto is
+   the exception because DHU has no UI hierarchy; use bounded `wait` plus
+   screenshot/log assertions there.
+13. Write YAML in canonical `header --- commands` format.
+14. Run validation before any device/browser/desktop execution.
+15. Use `list --json` to discover command indexes.
+16. Run with reports, snapshots, and event JSONL for debug-friendly artifacts.
+17. On failure, inspect artifacts and rerun the smallest failing command index.
 
 ## Preflight Before Running
 
@@ -149,6 +155,7 @@ Canonical commands:
 cargo run -- validate ./test.yaml --json
 cargo run -- list ./test.yaml --json
 cargo run -- doctor --platform android --json
+cargo run -- doctor --platform android_auto --json
 cargo run -- devices --platform android
 cargo run -- schema --json
 cargo run -- run ./test.yaml --platform android --report --snapshot --events-jsonl --output ./output
@@ -167,6 +174,13 @@ For iOS:
 ```bash
 cargo run -- doctor --platform ios --json
 cargo run -- run ./test.yaml --platform ios --report --snapshot --events-jsonl --output ./output
+```
+
+For Android Auto:
+
+```bash
+cargo run -- doctor --platform android_auto --json
+cargo run -- run ./auto.yaml --platform android_auto --device <serial> --report --snapshot --events-jsonl --output ./output
 ```
 
 For desktop:
@@ -382,5 +396,7 @@ Treat these as runtime/debug bugs:
   adaptation rules.
 - Read `references/selector-discovery.md` when the app/page is unfamiliar,
   selectors are unknown, or a selector fails.
+- Read `references/android-auto.md` for DHU setup, point-only interaction, and
+  Android Auto command limits.
 - Read `references/debug-artifacts.md` only when interpreting runtime files or
   building an agentic debug report.

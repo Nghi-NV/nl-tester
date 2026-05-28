@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 const SKILL_FILES: &[&str] = &[
     "SKILL.md",
+    "references/android-auto.md",
     "references/cli.csv",
     "references/command-catalog.md",
     "references/commands.csv",
@@ -65,6 +66,7 @@ pub async fn install(options: AiInstallOptions) -> Result<()> {
     println!("Restart Codex so it reloads the skill and MCP server.");
     println!("Quick checks:");
     println!("  lumi-tester doctor --platform android --json");
+    println!("  lumi-tester doctor --platform android_auto --json");
     println!("  lumi-tester doctor --platform ios --json  # macOS + idb");
     println!("  lumi-tester doctor --platform web --json");
     println!("  lumi-tester doctor --platform macos --json");

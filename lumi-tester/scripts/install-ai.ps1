@@ -115,6 +115,7 @@ function Install-CodexSkill {
     $base = "$(Get-RawBaseUrl)/lumi-tester/ai/codex-skill/lumi-tester-agent"
     $files = @(
         "SKILL.md",
+        "references/android-auto.md",
         "references/cli.csv",
         "references/command-catalog.md",
         "references/commands.csv",

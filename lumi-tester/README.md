@@ -11,13 +11,14 @@
 
 ### Support Platforms
 - **Android**: ADB, UiAutomator (full control)
+- **Android Auto**: Android device plus Desktop Head Unit (DHU)
 - **iOS**: IDB (simulators & devices), XCUITest
 - **Web**: Playwright (Chrome/Firefox/WebKit)
 - **macOS**: native desktop automation through Accessibility, Apple Events, screenshots, and clipboard tooling
 - **Windows**: native desktop automation through PowerShell and UI Automation
 
 ### Key Features
-- **Cross-platform DSL**: Write once, run everywhere (Android, iOS, Web, macOS, Windows).
+- **Cross-platform DSL**: Write once, run everywhere (Android, Android Auto, iOS, Web, macOS, Windows).
 - **Smart Selectors**: Support for `text`, `id`, `css`, `xpath`, `regex` (including advanced patterns like `\d+`, `[...]`, `(...)`), and `point`.
 - **Control Flow**: Advanced logic with `repeat`, `conditional`, `runFlow`, and `variables`.
 - **Media Support**: Integrated screenshots and video recording (video currently Android only).
@@ -72,6 +73,7 @@ Quick checks:
 ```bash
 lumi-tester --version
 lumi-tester doctor --platform android --json
+lumi-tester doctor --platform android_auto --json
 lumi-tester doctor --platform ios --json  # macOS + idb
 lumi-tester doctor --platform web --json
 lumi-tester doctor --platform macos --json

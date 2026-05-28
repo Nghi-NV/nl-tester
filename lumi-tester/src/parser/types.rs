@@ -84,7 +84,7 @@ pub enum DesktopClearMode {
 pub enum Platform {
     #[default]
     Android,
-    #[serde(alias = "android_auto")]
+    #[serde(rename = "android_auto", alias = "androidauto")]
     AndroidAuto,
     #[serde(alias = "iOS")]
     Ios,

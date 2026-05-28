@@ -32,7 +32,7 @@ AGENT_COMMANDS = [
     "agent-validate",
 ]
 
-PLATFORMS = ["android", "ios", "web", "macos", "windows"]
+PLATFORMS = ["android", "android_auto", "ios", "web", "macos", "windows"]
 
 
 def find_repo_root(start: Path) -> Path | None:

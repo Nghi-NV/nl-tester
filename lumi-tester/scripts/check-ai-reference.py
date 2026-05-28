@@ -49,6 +49,7 @@ TESTCASE_DESIGN_MD = SKILL_DIR / "references" / "testcase-design.md"
 DEBUG_ARTIFACTS_MD = SKILL_DIR / "references" / "debug-artifacts.md"
 PATTERNS_MD = SKILL_DIR / "references" / "patterns.md"
 DESKTOP_MD = SKILL_DIR / "references" / "desktop.md"
+ANDROID_AUTO_MD = SKILL_DIR / "references" / "android-auto.md"
 SCHEMA_JSON = ROOT / "lumi-tester" / "schema" / "lumi-test.schema.json"
 HELPER_SCRIPT = SKILL_DIR / "scripts" / "lumi_agent.py"
 AI_RS = ROOT / "lumi-tester" / "src" / "ai.rs"
@@ -59,7 +60,7 @@ MCP_README = ROOT / "lumi-tester-mcp" / "README.md"
 README_MD = ROOT / "lumi-tester" / "README.md"
 DISTRIBUTION_MD = ROOT / "lumi-tester" / "docs" / "distribution.md"
 PACKAGE_MANIFEST_SCRIPT = ROOT / "lumi-tester" / "scripts" / "generate-package-manifests.sh"
-REQUIRED_AGENT_PLATFORMS = {"android", "ios", "web", "macos", "windows"}
+REQUIRED_AGENT_PLATFORMS = {"android", "android_auto", "ios", "web", "macos", "windows"}
 
 
 def parser_commands() -> set[str]:
@@ -420,6 +421,17 @@ def validate_helper_script_behavior() -> list[str]:
         "--json",
     ]:
         errors.append(f"{HELPER_SCRIPT}: agent-doctor should accept windows")
+    if helper.parse_agent_doctor(["--platform", "android_auto"]) != [
+        "--platform",
+        "android_auto",
+        "--json",
+    ]:
+        errors.append(f"{HELPER_SCRIPT}: agent-doctor should accept android_auto")
+    auto_run = helper.parse_agent_run(
+        ["auto.yaml", "--platform", "android_auto", "--device", "emulator-5554"]
+    )
+    if "--platform" not in auto_run or "android_auto" not in auto_run:
+        errors.append(f"{HELPER_SCRIPT}: agent-run should accept android_auto")
     desktop_run = helper.parse_agent_run(["desktop.yaml", "--platform", "macos"])
     if "--platform" not in desktop_run or "macos" not in desktop_run:
         errors.append(f"{HELPER_SCRIPT}: agent-run should accept macos")
@@ -501,6 +513,7 @@ def validate_user_install_docs() -> list[str]:
         "install-ai.sh": "Unix AI one-line installer",
         "install-ai.ps1": "Windows AI one-line installer",
         "doctor --platform android --json": "Android quick check",
+        "doctor --platform android_auto --json": "Android Auto quick check",
         "doctor --platform ios --json": "iOS quick check",
         "doctor --platform web --json": "Web quick check",
         "doctor --platform macos --json": "macOS quick check",
@@ -514,7 +527,7 @@ def validate_user_install_docs() -> list[str]:
                 errors.append(f"{path}: missing {label}")
 
     readme = docs[README_MD]
-    for platform in ("android", "ios", "web", "macos", "windows"):
+    for platform in ("android", "android auto", "ios", "web", "macos", "windows"):
         if platform not in readme:
             errors.append(f"{README_MD}: missing platform mention: {platform}")
     return errors
@@ -874,6 +887,81 @@ def validate_desktop_reference() -> list[str]:
     for term, label in required_terms.items():
         if term not in text:
             errors.append(f"{DESKTOP_MD}: missing {label}")
+    return errors
+
+
+def validate_android_auto_reference() -> list[str]:
+    errors: list[str] = []
+    text = ANDROID_AUTO_MD.read_text(encoding="utf-8").lower()
+    skill_text = SKILL_MD.read_text(encoding="utf-8").lower()
+    if "references/android-auto.md" not in skill_text:
+        errors.append(f"{SKILL_MD}: missing Android Auto reference")
+    required_terms = {
+        "platform: android_auto": "Android Auto platform header",
+        "desktop head unit": "DHU explanation",
+        "point-only": "point-only interaction guidance",
+        "no ui hierarchy": "UI hierarchy limitation",
+        "waituntilvisible": "selector wait warning",
+        "doctor --platform android_auto --json": "Android Auto doctor command",
+        "devices --platform android": "Android device discovery",
+        "--device <serial>": "device serial guidance",
+        "press: navigation": "DHU key example",
+        "notsee": "unsupported assertion warning",
+    }
+    for term, label in required_terms.items():
+        if term not in text:
+            errors.append(f"{ANDROID_AUTO_MD}: missing {label}")
+
+    for term in ("android auto", "android_auto"):
+        if term not in skill_text:
+            errors.append(f"{SKILL_MD}: platform coverage should mention {term}")
+
+    with CLI_CSV.open(newline="", encoding="utf-8") as fh:
+        cli_rows = {row["command"].strip(): row for row in csv.DictReader(fh)}
+    for command in ("doctor", "devices", "run", "system"):
+        platforms = split_field_names(cli_rows[command]["platforms"])
+        if "android_auto" not in platforms:
+            errors.append(f"{CLI_CSV}: command {command} is missing android_auto")
+
+    command_rows = command_catalog_rows()
+    supported = {
+        "launchApp",
+        "stopApp",
+        "back",
+        "pressHome",
+        "hideKeyboard",
+        "openLink",
+        "tapOn",
+        "doubleTapOn",
+        "swipeLeft",
+        "swipeRight",
+        "swipeUp",
+        "swipeDown",
+        "swipe",
+        "press",
+        "selectDisplay",
+    }
+    for command in supported:
+        platforms = split_field_names(command_rows[command]["platforms"])
+        if "android_auto" not in platforms:
+            errors.append(f"{COMMANDS_CSV}: command {command} is missing android_auto")
+
+    unsupported = {
+        "waitUntilVisible",
+        "waitUntilNotVisible",
+        "assertVisible",
+        "assertNotVisible",
+        "inputText",
+        "longPressOn",
+        "rightClick",
+        "scrollUntilVisible",
+    }
+    for command in unsupported:
+        platforms = split_field_names(command_rows[command]["platforms"])
+        if "android_auto" in platforms:
+            errors.append(
+                f"{COMMANDS_CSV}: command {command} should not list android_auto"
+            )
     return errors
 
 
@@ -1441,6 +1529,7 @@ def main() -> int:
     errors.extend(validate_testcase_design_reference())
     errors.extend(validate_debug_artifacts_reference())
     errors.extend(validate_patterns_reference())
+    errors.extend(validate_android_auto_reference())
     errors.extend(validate_desktop_reference())
     errors.extend(validate_desktop_platform_catalog())
     errors.extend(validate_reference_examples())

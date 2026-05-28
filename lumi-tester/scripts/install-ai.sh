@@ -127,6 +127,7 @@ install_codex_skill() {
   base="$(raw_base_url)/lumi-tester/ai/codex-skill/lumi-tester-agent"
   files=(
     "SKILL.md"
+    "references/android-auto.md"
     "references/cli.csv"
     "references/command-catalog.md"
     "references/commands.csv"

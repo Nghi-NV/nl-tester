@@ -55,13 +55,14 @@ Requirements:
 
 - `node` and `npm`.
 - Restart the AI client after install.
-- Android/iOS/Web/macOS/Windows device, browser, or desktop dependencies as
+- Android/Android Auto/iOS/Web/macOS/Windows device, browser, or desktop dependencies as
   needed.
 
 Quick checks after AI pack install:
 
 ```bash
 lumi-tester doctor --platform android --json
+lumi-tester doctor --platform android_auto --json
 lumi-tester doctor --platform ios --json  # macOS + idb
 lumi-tester doctor --platform web --json
 lumi-tester doctor --platform macos --json
