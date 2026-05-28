@@ -39,6 +39,8 @@ Requirements:
 - Terminal or `lumi-tester` must be allowed under macOS Privacy & Security permissions for Accessibility when using input automation or Accessibility selectors. If permission is missing, the driver opens the Accessibility settings pane and fails with a clear message.
 - Screen Recording permission may be required for screenshots on newer macOS versions.
 - `open`, `osascript`, `swift`, `screencapture`, and `log` must be available.
+- `clearState: true` is supported through `desktopState.clear`; macOS clears
+  app-scoped Library paths and optional Keychain services.
 
 ## Windows
 
@@ -73,6 +75,49 @@ Requirements:
 - Windows PowerShell and .NET UI Automation assemblies (`UIAutomationClient`, `UIAutomationTypes`) must be available.
 - `lumi-tester doctor --platform windows` checks both `powershell` and the UI Automation assemblies.
 - Some desktop automation may require running the terminal with sufficient permissions, especially when automating elevated apps.
+- `clearState: true` is supported through `desktopState.clear`; Windows clears
+  app-scoped `%APPDATA%`/`%LOCALAPPDATA%` paths and optional current-user
+  registry keys.
+
+## Desktop State Reset
+
+Use `desktopState.clear` in the YAML header when a desktop test needs first-run
+state:
+
+```yaml
+platform: macos
+appId: /Applications/MyApp.app
+desktopState:
+  clear:
+    mode: autoSafe
+    paths:
+      - "~/Library/Application Support/MyApp"
+    keychainServices:
+      - "com.example.MyApp"
+---
+- launchApp:
+    clearState: true
+```
+
+```yaml
+platform: windows
+appId: C:\Program Files\Example\Example.exe
+desktopState:
+  clear:
+    mode: autoSafe
+    paths:
+      - "%APPDATA%\\Example"
+    registryKeys:
+      - "HKCU:\\Software\\Example"
+---
+- launchApp:
+    clearState: true
+```
+
+`mode: autoSafe` adds app-scoped defaults. `mode: manual` only uses explicit
+paths/keys. macOS rejects broad home/Library roots. Windows rejects paths
+outside `%APPDATA%`/`%LOCALAPPDATA%` and rejects machine-wide registry hives
+such as `HKLM`.
 
 ## Selector Support
 

@@ -145,6 +145,10 @@ State and data:
 - Fresh install, existing user data, migrated data, cache present, cache cleared.
 - Use `clearState: true` only for first-run/reset cases. It may log out users,
   remove seeded data, trigger onboarding, or expose app launch crashes.
+- For macOS and Windows, pair `clearState: true` with a header-level
+  `desktopState.clear` plan. Use `mode: autoSafe` for app-scoped defaults and
+  `mode: manual` only when explicit paths, Keychain services, or HKCU registry
+  keys are known.
 - For authenticated or data-dependent suites, prefer explicit setup/login flows
   and seeded data over `clearState` in every file.
 

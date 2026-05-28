@@ -1,5 +1,5 @@
 command,aliases,category,purpose,param_shape,required_fields,common_fields,selector_supported,platforms,example,notes
-launchApp,open,app_lifecycle,Launch app or open configured web URL/string app path,string|object,,appId|url|clearState|permissions|label,no,android|ios|web|macos|windows,"- launchApp","Use at start of most flows; desktop MVP does not support clearState"
+launchApp,open,app_lifecycle,Launch app or open configured web URL/string app path,string|object,,appId|url|clearState|permissions|label,no,android|ios|web|macos|windows,"- launchApp","Use at start of most flows; desktop clearState uses desktopState.clear planning"
 stopApp,stop,app_lifecycle,Stop app under test,none,,,,android|ios|macos|windows,"- stopApp",""
 installApp,,app_lifecycle,Install app package/string app path,string,path,,,android|ios|macos|windows,"- installApp: ./app.apk","macOS accepts .app paths; Windows starts the executable path"
 uninstallApp,,app_lifecycle,Uninstall app by package id,string,packageId,,,android|ios,"- uninstallApp: com.example.app",""

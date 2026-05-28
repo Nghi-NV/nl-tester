@@ -1,4 +1,4 @@
-use crate::parser::types::{Orientation, SpeedMode};
+use crate::parser::types::{DesktopState, Orientation, SpeedMode};
 use anyhow::Result;
 use async_trait::async_trait;
 use std::path::Path;
@@ -98,6 +98,11 @@ pub trait PlatformDriver: Send + Sync {
 
     /// Get the device serial or ID
     fn device_serial(&self) -> Option<String>;
+
+    /// Configure desktop state clearing for the current flow.
+    fn set_desktop_state(&self, _state: Option<DesktopState>, _base_dir: &Path) -> Result<()> {
+        Ok(())
+    }
 
     /// Launch an application
     ///

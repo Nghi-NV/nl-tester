@@ -43,6 +43,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
                 speed: None,
                 browser: None,
                 close_when_finish: None,
+                desktop_state: None,
             }
         };
         // Parse commands
@@ -64,6 +65,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
             speed: None,
             browser: None,
             close_when_finish: None,
+            desktop_state: None,
         });
     }
 
@@ -94,6 +96,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
             speed: None,
             browser: None,
             close_when_finish: None,
+            desktop_state: None,
         };
 
         if let Some(val) = map.get(&serde_yaml::Value::String("data".to_string())) {
@@ -142,6 +145,10 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
 
         if let Some(val) = map.get(&serde_yaml::Value::String("closeWhenFinish".to_string())) {
             flow.close_when_finish = val.as_bool();
+        }
+
+        if let Some(val) = map.get(&serde_yaml::Value::String("desktopState".to_string())) {
+            flow.desktop_state = Some(serde_yaml::from_value(val.clone())?);
         }
 
         let env_val = map
@@ -206,6 +213,8 @@ fn parse_header(header: &str, base_path: &Path) -> Result<TestFlow> {
         browser: Option<String>,
         #[serde(default)]
         close_when_finish: Option<bool>,
+        #[serde(default)]
+        desktop_state: Option<crate::parser::types::DesktopState>,
     }
 
     let parsed: Header = serde_yaml::from_str(header).context("Failed to parse YAML header")?;
@@ -277,6 +286,7 @@ fn parse_header(header: &str, base_path: &Path) -> Result<TestFlow> {
         speed: parsed.speed,
         browser: parsed.browser,
         close_when_finish: parsed.close_when_finish,
+        desktop_state: parsed.desktop_state,
     })
 }
 
@@ -1176,6 +1186,43 @@ appId: C:\Program Files\Example\Example.exe
 
         assert_eq!(macos_flow.platform, Some(Platform::Macos));
         assert_eq!(windows_flow.platform, Some(Platform::Windows));
+    }
+
+    #[test]
+    fn parses_desktop_state_clear_header() {
+        let yaml = r#"
+platform: macos
+appId: /Applications/MyApp.app
+desktopState:
+  clear:
+    mode: autoSafe
+    paths:
+      - "~/Library/Application Support/MyApp"
+    keychainServices:
+      - "com.example.MyApp"
+---
+- launchApp:
+    clearState: true
+"#;
+
+        let flow = parse_yaml_content(yaml, Path::new("macos.yaml")).unwrap();
+        let desktop_state = flow.desktop_state.expect("desktopState should parse");
+        let clear = desktop_state
+            .clear
+            .expect("desktopState.clear should parse");
+
+        assert_eq!(
+            clear.mode,
+            Some(crate::parser::types::DesktopClearMode::AutoSafe)
+        );
+        assert_eq!(
+            clear.paths,
+            vec!["~/Library/Application Support/MyApp".to_string()]
+        );
+        assert_eq!(
+            clear.keychain_services,
+            vec!["com.example.MyApp".to_string()]
+        );
     }
 
     #[test]

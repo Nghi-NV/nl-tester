@@ -160,6 +160,8 @@ impl TestExecutor {
 
         // Update context from flow header
         self.context.update_from_flow(&flow);
+        self.driver
+            .set_desktop_state(flow.desktop_state.clone(), &self.context.base_dir)?;
 
         // Note: Web driver config (closeWhenFinish, browser type) is now pre-parsed and applied
         // in run_on_device before executor is created, so no re-init needed here.

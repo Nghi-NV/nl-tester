@@ -8,6 +8,7 @@ Use this reference for native desktop flows using `platform: macos` or
 - Platform model
 - macOS flow
 - Windows flow
+- Desktop state reset
 - Selector guidance
 - Commands
 
@@ -50,7 +51,7 @@ macOS requirements:
   process before using input automation or Accessibility selectors.
 - Grant Screen Recording permission when screenshots are blocked.
 - `open`, `osascript`, `swift`, `screencapture`, and `log` should be available.
-- `clearState` is not supported by the macOS MVP driver.
+- `clearState: true` is supported through the desktop state reset planner below.
 
 ## Windows Flow
 
@@ -75,7 +76,59 @@ Windows requirements:
 - PowerShell and .NET UI Automation assemblies must be available.
 - `lumi-tester doctor --platform windows` checks the basic host prerequisites.
 - Elevated apps may require running the terminal with sufficient permissions.
-- `clearState` is not supported by the Windows MVP driver.
+- `clearState: true` is supported through the desktop state reset planner below.
+
+## Desktop State Reset
+
+Use `desktopState.clear` when a desktop flow needs a first-run app state. Put
+the state plan in the YAML header, then use `launchApp: { clearState: true }`.
+Do not use mobile-only state commands such as `clearAppData` for desktop apps.
+
+macOS auto-safe reset derives app state paths from the bundle id or `.app` name:
+
+```yaml
+platform: macos
+appId: /Applications/MyApp.app
+desktopState:
+  clear:
+    mode: autoSafe
+    paths:
+      - "~/Library/Application Support/MyApp"
+    keychainServices:
+      - "com.example.MyApp"
+---
+- launchApp:
+    clearState: true
+```
+
+Windows auto-safe reset derives `%APPDATA%\<app>` and
+`%LOCALAPPDATA%\<app>` from the executable name:
+
+```yaml
+platform: windows
+appId: C:\Program Files\Example\Example.exe
+desktopState:
+  clear:
+    mode: autoSafe
+    paths:
+      - "%APPDATA%\\Example"
+    registryKeys:
+      - "HKCU:\\Software\\Example"
+---
+- launchApp:
+    clearState: true
+```
+
+Safety rules:
+
+- `mode: autoSafe` adds common app-scoped state paths. `mode: manual` uses only
+  the explicit paths/keys you provide.
+- macOS manual paths must stay under the current user's home directory and
+  cannot target broad roots such as `~/Library`, `~/Library/Application Support`,
+  `~/Library/Caches`, `~/Library/Preferences`, or `~/Library/Containers`.
+- Windows manual paths must stay under `%APPDATA%` or `%LOCALAPPDATA%`.
+- Windows registry clearing only allows current-user software keys such as
+  `HKCU:\Software\Vendor\App`; machine-wide hives such as `HKLM` are rejected.
 
 ## Selector Guidance
 

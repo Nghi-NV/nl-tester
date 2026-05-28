@@ -3,15 +3,30 @@ use async_trait::async_trait;
 use image::GenericImageView;
 use regex::Regex;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use crate::driver::traits::{PlatformDriver, Selector, SwipeDirection};
+use crate::parser::types::{DesktopClearMode, DesktopState};
 
 /// Native macOS driver MVP backed by built-in command line tools.
 pub struct MacosDriver {
     device_name: Option<String>,
+    desktop_state: Mutex<Option<DesktopStateRuntime>>,
+}
+
+#[derive(Debug, Clone)]
+struct DesktopStateRuntime {
+    state: Option<DesktopState>,
+    base_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, Default)]
+struct MacosDesktopClearPlan {
+    paths: Vec<PathBuf>,
+    keychain_services: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -31,11 +46,15 @@ impl MacosDriver {
     pub fn new() -> Self {
         Self {
             device_name: hostname(),
+            desktop_state: Mutex::new(None),
         }
     }
 
     pub fn with_device_name(device_name: Option<String>) -> Self {
-        Self { device_name }
+        Self {
+            device_name,
+            desktop_state: Mutex::new(None),
+        }
     }
 
     fn run(program: &str, args: &[&str]) -> Result<String> {
@@ -261,6 +280,50 @@ Grant permission to your terminal app or lumi-tester in System Settings > Privac
         let index = selector_index(selector).unwrap_or(0);
         Ok(matched.into_iter().nth(index))
     }
+
+    fn current_desktop_state(&self) -> Result<Option<DesktopStateRuntime>> {
+        Ok(self
+            .desktop_state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("macOS desktop state lock poisoned"))?
+            .clone())
+    }
+
+    fn clear_desktop_state(&self, app_id: &str) -> Result<()> {
+        let runtime = self
+            .current_desktop_state()?
+            .unwrap_or_else(|| DesktopStateRuntime {
+                state: None,
+                base_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            });
+        let home = std::env::var("HOME")
+            .map(PathBuf::from)
+            .context("HOME is required for macOS desktop state clearing")?;
+        let plan = plan_macos_desktop_state_clear(
+            app_id,
+            runtime.state.as_ref(),
+            &runtime.base_dir,
+            &home,
+        )?;
+
+        for path in plan.paths {
+            if path.exists() {
+                if path.is_dir() {
+                    std::fs::remove_dir_all(&path)
+                        .with_context(|| format!("failed to clear {}", path.display()))?;
+                } else {
+                    std::fs::remove_file(&path)
+                        .with_context(|| format!("failed to clear {}", path.display()))?;
+                }
+            }
+        }
+
+        for service in plan.keychain_services {
+            let _ = Self::run("security", &["delete-generic-password", "-s", &service]);
+        }
+
+        Ok(())
+    }
 }
 
 impl Default for MacosDriver {
@@ -279,9 +342,22 @@ impl PlatformDriver for MacosDriver {
         self.device_name.clone()
     }
 
+    fn set_desktop_state(&self, state: Option<DesktopState>, base_dir: &Path) -> Result<()> {
+        *self
+            .desktop_state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("macOS desktop state lock poisoned"))? =
+            Some(DesktopStateRuntime {
+                state,
+                base_dir: base_dir.to_path_buf(),
+            });
+        Ok(())
+    }
+
     async fn launch_app(&self, app_id: &str, clear_state: bool) -> Result<()> {
         if clear_state {
-            anyhow::bail!("clear_state is not supported by the macOS MVP driver");
+            self.stop_app(app_id).await.ok();
+            self.clear_desktop_state(app_id)?;
         }
 
         let args = if Path::new(app_id).exists() {
@@ -315,6 +391,11 @@ impl PlatformDriver for MacosDriver {
             Self::osascript(&format!("tell application id {} to quit", escaped))?;
         }
         Ok(())
+    }
+
+    async fn clear_app_data(&self, app_id: &str) -> Result<()> {
+        self.stop_app(app_id).await.ok();
+        self.clear_desktop_state(app_id)
     }
 
     async fn tap(&self, selector: &Selector) -> Result<()> {
@@ -808,6 +889,130 @@ fn app_name_from_path(value: &str) -> Option<String> {
         .filter(|stem| !stem.is_empty())
 }
 
+fn plan_macos_desktop_state_clear(
+    app_id: &str,
+    state: Option<&DesktopState>,
+    base_dir: &Path,
+    home: &Path,
+) -> Result<MacosDesktopClearPlan> {
+    let clear = state.and_then(|state| state.clear.as_ref());
+    let mode = clear
+        .and_then(|clear| clear.mode.clone())
+        .unwrap_or(DesktopClearMode::AutoSafe);
+
+    let mut plan = MacosDesktopClearPlan::default();
+
+    if mode == DesktopClearMode::AutoSafe {
+        let identifier = macos_state_identifier(app_id);
+        plan.paths.push(
+            home.join("Library")
+                .join("Application Support")
+                .join(&identifier),
+        );
+        plan.paths
+            .push(home.join("Library").join("Caches").join(&identifier));
+        plan.paths.push(
+            home.join("Library")
+                .join("Preferences")
+                .join(format!("{identifier}.plist")),
+        );
+        plan.paths
+            .push(home.join("Library").join("Containers").join(&identifier));
+    }
+
+    if let Some(clear) = clear {
+        for path in &clear.paths {
+            let resolved = resolve_desktop_path(path, base_dir, home);
+            validate_macos_clear_path(&resolved, home)?;
+            if !plan.paths.contains(&resolved) {
+                plan.paths.push(resolved);
+            }
+        }
+        plan.keychain_services.extend(
+            clear
+                .keychain_services
+                .iter()
+                .filter(|s| !s.is_empty())
+                .cloned(),
+        );
+    }
+
+    Ok(plan)
+}
+
+fn macos_state_identifier(app_id: &str) -> String {
+    let path = Path::new(app_id);
+    if path.extension().and_then(|ext| ext.to_str()) == Some("app") {
+        if let Some(bundle_id) = read_bundle_identifier(path) {
+            return bundle_id;
+        }
+        if let Some(name) = path.file_stem().and_then(|stem| stem.to_str()) {
+            return name.to_string();
+        }
+    }
+
+    app_id.to_string()
+}
+
+fn read_bundle_identifier(app_path: &Path) -> Option<String> {
+    let plist = app_path.join("Contents").join("Info.plist");
+    let content = std::fs::read_to_string(plist).ok()?;
+    let key_pos = content.find("CFBundleIdentifier")?;
+    let rest = &content[key_pos..];
+    let string_start = rest.find("<string>")? + "<string>".len();
+    let string_rest = &rest[string_start..];
+    let string_end = string_rest.find("</string>")?;
+    let value = string_rest[..string_end].trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
+fn resolve_desktop_path(path: &str, base_dir: &Path, home: &Path) -> PathBuf {
+    if path == "~" {
+        return home.to_path_buf();
+    }
+    if let Some(rest) = path.strip_prefix("~/") {
+        return home.join(rest);
+    }
+    let raw = Path::new(path);
+    if raw.is_absolute() {
+        raw.to_path_buf()
+    } else {
+        base_dir.join(raw)
+    }
+}
+
+fn validate_macos_clear_path(path: &Path, home: &Path) -> Result<()> {
+    let unsafe_paths = [
+        PathBuf::from("/"),
+        home.to_path_buf(),
+        home.join("Library"),
+        home.join("Library/Application Support"),
+        home.join("Library/Caches"),
+        home.join("Library/Preferences"),
+        home.join("Library/Containers"),
+    ];
+
+    if unsafe_paths.iter().any(|unsafe_path| path == unsafe_path) {
+        anyhow::bail!(
+            "refusing to clear unsafe desktop state path: {}",
+            path.display()
+        );
+    }
+
+    if !path.starts_with(home) {
+        anyhow::bail!(
+            "refusing to clear desktop state path outside user home: {}",
+            path.display()
+        );
+    }
+
+    Ok(())
+}
+
 fn is_macos_accessibility_error(stderr: &str) -> bool {
     let normalized = stderr.to_ascii_lowercase();
     normalized.contains("not allowed to send keystrokes")
@@ -1043,5 +1248,53 @@ mod tests {
             element_matches_selector(&element, &Selector::Description("digit".to_string(), 0))
                 .unwrap()
         );
+    }
+
+    #[test]
+    fn macos_desktop_state_auto_safe_plans_bundle_paths() {
+        let config = crate::parser::types::DesktopState {
+            clear: Some(crate::parser::types::DesktopClearConfig {
+                mode: Some(crate::parser::types::DesktopClearMode::AutoSafe),
+                ..Default::default()
+            }),
+        };
+        let home = std::path::Path::new("/Users/tester");
+        let base_dir = std::path::Path::new("/tmp/tests");
+
+        let plan =
+            plan_macos_desktop_state_clear("com.example.MyApp", Some(&config), base_dir, home)
+                .unwrap();
+
+        assert!(plan
+            .paths
+            .contains(&home.join("Library/Application Support/com.example.MyApp")));
+        assert!(plan
+            .paths
+            .contains(&home.join("Library/Caches/com.example.MyApp")));
+        assert!(plan
+            .paths
+            .contains(&home.join("Library/Preferences/com.example.MyApp.plist")));
+        assert!(plan.keychain_services.is_empty());
+    }
+
+    #[test]
+    fn macos_desktop_state_rejects_dangerous_manual_paths() {
+        let config = crate::parser::types::DesktopState {
+            clear: Some(crate::parser::types::DesktopClearConfig {
+                paths: vec!["~/Library".to_string()],
+                ..Default::default()
+            }),
+        };
+
+        let error = plan_macos_desktop_state_clear(
+            "com.example.MyApp",
+            Some(&config),
+            std::path::Path::new("/tmp/tests"),
+            std::path::Path::new("/Users/tester"),
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(error.contains("refusing to clear unsafe desktop state path"));
     }
 }

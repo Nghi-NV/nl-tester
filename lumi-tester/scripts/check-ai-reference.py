@@ -683,7 +683,13 @@ def validate_desktop_reference() -> list[str]:
         "screen recording": "macOS Screen Recording permission guidance",
         "interactive foreground desktop session": "Windows interactive desktop guidance",
         "ui automation": "Windows UI Automation guidance",
-        "clearstate` is not supported": "desktop clearState limitation",
+        "desktopstate": "desktop state reset guidance",
+        "clearstate: true": "desktop clearState example",
+        "mode: autosafe": "desktop autoSafe clear mode",
+        "mode: manual": "desktop manual clear mode",
+        "keychainservices": "macOS Keychain clearing guidance",
+        "registrykeys": "Windows registry clearing guidance",
+        "hklm": "Windows unsafe registry warning",
         "doctor --platform macos": "macOS doctor command",
         "doctor --platform windows": "Windows doctor command",
         "events-jsonl": "debug artifact flag",
@@ -704,6 +710,19 @@ def validate_desktop_platform_catalog() -> list[str]:
     for platform in ("macos", "windows"):
         if platform not in schema_platforms:
             errors.append(f"{SCHEMA_JSON}: missing desktop platform: {platform}")
+    if "desktopState" not in schema["properties"]:
+        errors.append(f"{SCHEMA_JSON}: missing desktopState header property")
+    desktop_state = schema["$defs"].get("desktopState", {})
+    desktop_clear = schema["$defs"].get("desktopClear", {})
+    if "clear" not in desktop_state.get("properties", {}):
+        errors.append(f"{SCHEMA_JSON}: desktopState should define clear")
+    clear_properties = desktop_clear.get("properties", {})
+    for field in ("mode", "paths", "keychainServices", "registryKeys"):
+        if field not in clear_properties:
+            errors.append(f"{SCHEMA_JSON}: desktopClear should define {field}")
+    modes = set(clear_properties.get("mode", {}).get("enum", []))
+    if {"autoSafe", "manual"}.difference(modes):
+        errors.append(f"{SCHEMA_JSON}: desktopClear.mode should allow autoSafe and manual")
 
     required_cli = {
         "validate",

@@ -3,18 +3,32 @@ use async_trait::async_trait;
 use image::GenericImageView;
 use regex::Regex;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use crate::driver::traits::{PlatformDriver, Selector, SwipeDirection};
+use crate::parser::types::{DesktopClearMode, DesktopState};
 
 /// Native Windows driver MVP backed by PowerShell and built-in Win32/.NET APIs.
 pub struct WindowsDriver {
     device_name: Option<String>,
     launched_pids: Mutex<HashMap<String, u32>>,
     active_window_handle: Mutex<Option<isize>>,
+    desktop_state: Mutex<Option<DesktopStateRuntime>>,
+}
+
+#[derive(Debug, Clone)]
+struct DesktopStateRuntime {
+    state: Option<DesktopState>,
+    base_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, Default)]
+struct WindowsDesktopClearPlan {
+    paths: Vec<PathBuf>,
+    registry_keys: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -37,6 +51,7 @@ impl WindowsDriver {
             device_name: std::env::var("COMPUTERNAME").ok(),
             launched_pids: Mutex::new(HashMap::new()),
             active_window_handle: Mutex::new(None),
+            desktop_state: Mutex::new(None),
         }
     }
 
@@ -171,6 +186,57 @@ Add-Type -AssemblyName System.Windows.Forms
         let index = selector_index(selector).unwrap_or(0);
         Ok(matched.into_iter().nth(index))
     }
+
+    fn current_desktop_state(&self) -> Result<Option<DesktopStateRuntime>> {
+        Ok(self
+            .desktop_state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Windows desktop state lock poisoned"))?
+            .clone())
+    }
+
+    fn clear_desktop_state(&self, app_id: &str) -> Result<()> {
+        let runtime = self
+            .current_desktop_state()?
+            .unwrap_or_else(|| DesktopStateRuntime {
+                state: None,
+                base_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            });
+        let roaming = std::env::var("APPDATA")
+            .map(PathBuf::from)
+            .context("APPDATA is required for Windows desktop state clearing")?;
+        let local = std::env::var("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .context("LOCALAPPDATA is required for Windows desktop state clearing")?;
+        let plan = plan_windows_desktop_state_clear(
+            app_id,
+            runtime.state.as_ref(),
+            &runtime.base_dir,
+            &roaming,
+            &local,
+        )?;
+
+        for path in plan.paths {
+            if path.exists() {
+                if path.is_dir() {
+                    std::fs::remove_dir_all(&path)
+                        .with_context(|| format!("failed to clear {}", path.display()))?;
+                } else {
+                    std::fs::remove_file(&path)
+                        .with_context(|| format!("failed to clear {}", path.display()))?;
+                }
+            }
+        }
+
+        for key in plan.registry_keys {
+            Self::powershell(&format!(
+                "Remove-Item -LiteralPath {} -Recurse -Force -ErrorAction SilentlyContinue",
+                ps_string(&key)
+            ))?;
+        }
+
+        Ok(())
+    }
 }
 
 impl Default for WindowsDriver {
@@ -189,9 +255,22 @@ impl PlatformDriver for WindowsDriver {
         self.device_name.clone()
     }
 
+    fn set_desktop_state(&self, state: Option<DesktopState>, base_dir: &Path) -> Result<()> {
+        *self
+            .desktop_state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Windows desktop state lock poisoned"))? =
+            Some(DesktopStateRuntime {
+                state,
+                base_dir: base_dir.to_path_buf(),
+            });
+        Ok(())
+    }
+
     async fn launch_app(&self, app_id: &str, clear_state: bool) -> Result<()> {
         if clear_state {
-            anyhow::bail!("clear_state is not supported by the Windows MVP driver");
+            self.stop_app(app_id).await.ok();
+            self.clear_desktop_state(app_id)?;
         }
         *self
             .active_window_handle
@@ -280,6 +359,11 @@ foreach ($process in $processes) {{
                 app_id
             )
         }
+    }
+
+    async fn clear_app_data(&self, app_id: &str) -> Result<()> {
+        self.stop_app(app_id).await.ok();
+        self.clear_desktop_state(app_id)
     }
 
     async fn tap(&self, selector: &Selector) -> Result<()> {
@@ -655,6 +739,130 @@ $bitmap.Dispose()
 
 fn ps_string(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
+}
+
+fn plan_windows_desktop_state_clear(
+    app_id: &str,
+    state: Option<&DesktopState>,
+    base_dir: &Path,
+    roaming_app_data: &Path,
+    local_app_data: &Path,
+) -> Result<WindowsDesktopClearPlan> {
+    let clear = state.and_then(|state| state.clear.as_ref());
+    let mode = clear
+        .and_then(|clear| clear.mode.clone())
+        .unwrap_or(DesktopClearMode::AutoSafe);
+
+    let mut plan = WindowsDesktopClearPlan::default();
+
+    if mode == DesktopClearMode::AutoSafe {
+        let app_name = windows_state_app_name(app_id);
+        plan.paths.push(roaming_app_data.join(&app_name));
+        plan.paths.push(local_app_data.join(&app_name));
+    }
+
+    if let Some(clear) = clear {
+        for path in &clear.paths {
+            let resolved =
+                resolve_windows_desktop_path(path, base_dir, roaming_app_data, local_app_data);
+            validate_windows_clear_path(&resolved, roaming_app_data, local_app_data)?;
+            if !plan.paths.contains(&resolved) {
+                plan.paths.push(resolved);
+            }
+        }
+
+        for key in &clear.registry_keys {
+            validate_windows_registry_key(key)?;
+            plan.registry_keys.push(key.clone());
+        }
+    }
+
+    Ok(plan)
+}
+
+fn windows_state_app_name(app_id: &str) -> String {
+    let file_name = app_id
+        .rsplit(['\\', '/'])
+        .next()
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or(app_id);
+    file_name
+        .strip_suffix(".exe")
+        .or_else(|| file_name.strip_suffix(".EXE"))
+        .unwrap_or(file_name)
+        .to_string()
+}
+
+fn resolve_windows_desktop_path(
+    path: &str,
+    base_dir: &Path,
+    roaming_app_data: &Path,
+    local_app_data: &Path,
+) -> PathBuf {
+    let expanded = path
+        .replace("%APPDATA%", &roaming_app_data.to_string_lossy())
+        .replace("%LOCALAPPDATA%", &local_app_data.to_string_lossy());
+    let raw = Path::new(&expanded);
+    if raw.is_absolute() {
+        raw.to_path_buf()
+    } else {
+        base_dir.join(raw)
+    }
+}
+
+fn validate_windows_clear_path(
+    path: &Path,
+    roaming_app_data: &Path,
+    local_app_data: &Path,
+) -> Result<()> {
+    let unsafe_paths = [
+        roaming_app_data.to_path_buf(),
+        local_app_data.to_path_buf(),
+        roaming_app_data
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| roaming_app_data.to_path_buf()),
+        local_app_data
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| local_app_data.to_path_buf()),
+    ];
+
+    if unsafe_paths.iter().any(|unsafe_path| path == unsafe_path) {
+        anyhow::bail!(
+            "refusing to clear unsafe desktop state path: {}",
+            path.display()
+        );
+    }
+
+    if !path.starts_with(roaming_app_data) && !path.starts_with(local_app_data) {
+        anyhow::bail!(
+            "refusing to clear desktop state path outside AppData: {}",
+            path.display()
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_windows_registry_key(key: &str) -> Result<()> {
+    let normalized = key.replace('/', "\\");
+    let lower = normalized.to_ascii_lowercase();
+    if !lower.starts_with("hkcu:\\software\\")
+        && !lower.starts_with("hkey_current_user\\software\\")
+    {
+        anyhow::bail!("refusing to clear unsafe desktop registry key: {}", key);
+    }
+
+    let tail = lower
+        .trim_start_matches("hkcu:\\software\\")
+        .trim_start_matches("hkey_current_user\\software\\")
+        .trim_matches('\\');
+    if tail.is_empty() {
+        anyhow::bail!("refusing to clear unsafe desktop registry key: {}", key);
+    }
+
+    Ok(())
 }
 
 fn selector_index(selector: &Selector) -> Option<usize> {
@@ -1056,5 +1264,54 @@ mod tests {
         let script = windows_window_element_script(Some(12345));
         assert!(script.contains("$handle = [IntPtr]12345"));
         assert!(!script.contains("__LUMI_HANDLE__"));
+    }
+
+    #[test]
+    fn windows_desktop_state_auto_safe_plans_appdata_paths() {
+        let config = crate::parser::types::DesktopState {
+            clear: Some(crate::parser::types::DesktopClearConfig {
+                mode: Some(crate::parser::types::DesktopClearMode::AutoSafe),
+                ..Default::default()
+            }),
+        };
+
+        let plan = plan_windows_desktop_state_clear(
+            r"C:\Program Files\Example App\Example.exe",
+            Some(&config),
+            std::path::Path::new(r"C:\tests"),
+            std::path::Path::new(r"C:\Users\tester\AppData\Roaming"),
+            std::path::Path::new(r"C:\Users\tester\AppData\Local"),
+        )
+        .unwrap();
+
+        assert!(plan.paths.contains(
+            &std::path::PathBuf::from(r"C:\Users\tester\AppData\Roaming").join("Example")
+        ));
+        assert!(plan
+            .paths
+            .contains(&std::path::PathBuf::from(r"C:\Users\tester\AppData\Local").join("Example")));
+        assert!(plan.registry_keys.is_empty());
+    }
+
+    #[test]
+    fn windows_desktop_state_rejects_dangerous_registry_keys() {
+        let config = crate::parser::types::DesktopState {
+            clear: Some(crate::parser::types::DesktopClearConfig {
+                registry_keys: vec![r"HKLM:\Software\Example".to_string()],
+                ..Default::default()
+            }),
+        };
+
+        let error = plan_windows_desktop_state_clear(
+            r"C:\Program Files\Example App\Example.exe",
+            Some(&config),
+            std::path::Path::new(r"C:\tests"),
+            std::path::Path::new(r"C:\Users\tester\AppData\Roaming"),
+            std::path::Path::new(r"C:\Users\tester\AppData\Local"),
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(error.contains("refusing to clear unsafe desktop registry key"));
     }
 }

@@ -42,6 +42,40 @@ pub struct TestFlow {
     /// Whether to close browser when test finishes (default: true)
     #[serde(default)]
     pub close_when_finish: Option<bool>,
+
+    /// Desktop app state clearing configuration for macOS and Windows.
+    #[serde(default)]
+    pub desktop_state: Option<DesktopState>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopState {
+    #[serde(default)]
+    pub clear: Option<DesktopClearConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopClearConfig {
+    #[serde(default)]
+    pub mode: Option<DesktopClearMode>,
+
+    #[serde(default)]
+    pub paths: Vec<String>,
+
+    #[serde(default, alias = "keychainServices")]
+    pub keychain_services: Vec<String>,
+
+    #[serde(default, alias = "registryKeys")]
+    pub registry_keys: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DesktopClearMode {
+    AutoSafe,
+    Manual,
 }
 
 /// Target platform for testing

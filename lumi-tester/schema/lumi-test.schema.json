@@ -29,6 +29,7 @@
       "enum": ["Chrome", "Firefox", "Webkit", "chrome", "firefox", "webkit", "chromium"]
     },
     "closeWhenFinish": { "type": "boolean" },
+    "desktopState": { "$ref": "#/$defs/desktopState" },
     "env": { "$ref": "#/$defs/env" },
     "vars": { "$ref": "#/$defs/envMap" },
     "var": { "$ref": "#/$defs/envMap" },
@@ -63,6 +64,35 @@
     "envMap": {
       "type": "object",
       "additionalProperties": { "type": ["string", "number", "boolean"] }
+    },
+    "desktopState": {
+      "type": "object",
+      "properties": {
+        "clear": { "$ref": "#/$defs/desktopClear" }
+      },
+      "additionalProperties": true
+    },
+    "desktopClear": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["autoSafe", "manual"]
+        },
+        "paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "keychainServices": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "registryKeys": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
     },
     "commandName": {
       "type": "string",
