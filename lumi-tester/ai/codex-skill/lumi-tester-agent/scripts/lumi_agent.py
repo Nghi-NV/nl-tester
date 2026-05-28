@@ -27,6 +27,7 @@ LUMI_COMMANDS = [
 ]
 
 AGENT_COMMANDS = [
+    "agent-check",
     "agent-debug",
     "agent-doctor",
     "agent-list",
@@ -142,9 +143,70 @@ def parse_agent_doctor(argv: list[str]) -> list[str]:
     return ["--platform", parsed.platform, "--json"]
 
 
+def parse_agent_check(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run Lumi authoring gates and optional runtime execution"
+    )
+    parser.add_argument("path", help="YAML file or test directory")
+    parser.add_argument("--platform", choices=PLATFORMS)
+    parser.add_argument("--device", help="Android serial, iOS UDID, or browser/device target")
+    parser.add_argument("--output", default="./output/lumi-agent")
+    parser.add_argument(
+        "--run",
+        action="store_true",
+        help="Run the test after validate/list and doctor pass",
+    )
+    parsed, unknown = parser.parse_known_args(argv)
+    parsed.extra = unknown
+    if parsed.run and not parsed.platform:
+        parser.error("--run requires --platform")
+    return parsed
+
+
+def run_agent_check(argv: list[str]) -> int:
+    parsed = parse_agent_check(argv)
+
+    print("== lumi agent-check: validate --json ==", file=sys.stderr)
+    code = run_lumi("validate", [parsed.path, "--json"])
+    if code != 0:
+        return code
+
+    print("== lumi agent-check: list --json ==", file=sys.stderr)
+    code = run_lumi("list", [parsed.path, "--json"])
+    if code != 0:
+        return code
+
+    if parsed.platform:
+        print("== lumi agent-check: doctor --json ==", file=sys.stderr)
+        code = run_lumi("doctor", ["--platform", parsed.platform, "--json"])
+        if code != 0:
+            return code
+
+    if parsed.run:
+        print("== lumi agent-check: run with artifacts ==", file=sys.stderr)
+        return run_lumi(
+            "run",
+            parse_agent_run(
+                [
+                    parsed.path,
+                    "--platform",
+                    parsed.platform,
+                    "--output",
+                    parsed.output,
+                    *(["--device", parsed.device] if parsed.device else []),
+                    *parsed.extra,
+                ]
+            ),
+        )
+
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     command, extra = parse_passthrough(sys.argv[1:] if argv is None else argv)
 
+    if command == "agent-check":
+        return run_agent_check(extra)
     if command == "agent-run":
         return run_lumi("run", parse_agent_run(extra))
     if command == "agent-debug":

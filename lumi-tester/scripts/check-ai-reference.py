@@ -396,6 +396,7 @@ def validate_helper_script_reference() -> list[str]:
         if f'"{platform}"' not in helper_text:
             errors.append(f"{HELPER_SCRIPT}: helper should accept platform: {platform}")
     required_agent_commands = {
+        "agent-check": {"validate", "list", "doctor", "run", "--json", "--report", "--snapshot", "--events-jsonl", "--output"},
         "agent-validate": {"validate", "--json"},
         "agent-list": {"list", "--json"},
         "agent-schema": {"schema", "--json"},
@@ -505,6 +506,39 @@ def validate_helper_script_behavior() -> list[str]:
         errors.append(f"{HELPER_SCRIPT}: agent-validate should append --json")
     if helper.parse_agent_doctor(["--platform", "web"]) != ["--platform", "web", "--json"]:
         errors.append(f"{HELPER_SCRIPT}: agent-doctor should append --json")
+    agent_check = helper.parse_agent_check(["tests/generated/login", "--platform", "android"])
+    if (
+        agent_check.path != "tests/generated/login"
+        or agent_check.platform != "android"
+        or agent_check.run
+    ):
+        errors.append(f"{HELPER_SCRIPT}: agent-check should parse authoring gates")
+    agent_check_run = helper.parse_agent_check(
+        [
+            "tests/generated/login",
+            "--platform",
+            "android",
+            "--device",
+            "emulator-5554",
+            "--run",
+            "--output",
+            "./output/login",
+            "--debug",
+        ]
+    )
+    if (
+        not agent_check_run.run
+        or agent_check_run.device != "emulator-5554"
+        or agent_check_run.extra != ["--debug"]
+    ):
+        errors.append(f"{HELPER_SCRIPT}: agent-check should preserve runtime args")
+    with contextlib.redirect_stderr(io.StringIO()):
+        try:
+            helper.parse_agent_check(["tests/generated/login", "--run"])
+        except SystemExit:
+            pass
+        else:
+            errors.append(f"{HELPER_SCRIPT}: agent-check --run should require --platform")
     command, extra = helper.parse_passthrough(["agent-schema"])
     if command != "agent-schema" or extra != []:
         errors.append(f"{HELPER_SCRIPT}: agent-schema should parse without extra args")
@@ -576,6 +610,8 @@ def validate_agent_self_test_contract() -> list[str]:
     if not section:
         return [f"{SKILL_MD}: missing section: Agent Self-Test Contract"]
     required_terms = {
+        "agent-check <file-or-folder>": "agent-check authoring shortcut",
+        "agent-check <file-or-folder> --platform <platform> --run --output <dir>": "agent-check runtime shortcut",
         "validate --json": "validation evidence",
         "list --json": "collection/index evidence",
         "setup/teardown": "group setup evidence",
