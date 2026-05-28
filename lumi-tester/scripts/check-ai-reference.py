@@ -569,6 +569,30 @@ def validate_skill_preflight() -> list[str]:
     return errors
 
 
+def validate_agent_self_test_contract() -> list[str]:
+    errors: list[str] = []
+    raw_text = SKILL_MD.read_text(encoding="utf-8")
+    section = markdown_section(raw_text, "Agent Self-Test Contract").lower()
+    if not section:
+        return [f"{SKILL_MD}: missing section: Agent Self-Test Contract"]
+    required_terms = {
+        "validate --json": "validation evidence",
+        "list --json": "collection/index evidence",
+        "setup/teardown": "group setup evidence",
+        "--report --snapshot --events-jsonl --output": "runtime artifact flags",
+        "doctor --platform <platform>": "blocked runtime doctor evidence",
+        "--json": "machine-readable blocked runtime evidence",
+        "do not claim": "no false runtime pass rule",
+        "runtime pass": "runtime pass wording",
+        "--command-index": "targeted rerun evidence",
+        "exact validation/list/run commands": "final evidence reporting",
+    }
+    for term, label in required_terms.items():
+        if term not in section:
+            errors.append(f"{SKILL_MD}: self-test contract missing {label}")
+    return errors
+
+
 def validate_skill_app_identity_guidance() -> list[str]:
     errors: list[str] = []
     text = SKILL_MD.read_text(encoding="utf-8")
@@ -1963,6 +1987,7 @@ def main() -> int:
     errors.extend(validate_helper_script_reference())
     errors.extend(validate_helper_script_behavior())
     errors.extend(validate_skill_preflight())
+    errors.extend(validate_agent_self_test_contract())
     errors.extend(validate_skill_app_identity_guidance())
     errors.extend(validate_mcp_tool_references())
     errors.extend(validate_user_install_docs())

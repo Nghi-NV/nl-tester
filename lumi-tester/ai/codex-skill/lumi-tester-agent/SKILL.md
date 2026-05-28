@@ -386,6 +386,24 @@ Debug process:
 
 Do not count command indexes by hand; use `list --json`.
 
+## Agent Self-Test Contract
+
+Before reporting a Lumi test as ready, produce evidence from the strongest gate
+that can run in the current environment:
+
+1. Always run `validate --json` on the file or folder you changed.
+2. Always run `list --json` on the same file or folder to prove grouping,
+   setup/teardown, skipped subflows, and command indexes.
+3. When the target device, browser, desktop host, or app is available, run the
+   test with `--report --snapshot --events-jsonl --output <dir>`.
+4. When runtime execution is blocked, still run `doctor --platform <platform>
+   --json`, record the exact missing dependency/device/app, and do not claim
+   runtime pass.
+5. After fixing a runtime failure, rerun the smallest failing command with
+   `--command-index`, then rerun the full file or folder.
+6. In the final answer, mention the exact validation/list/run commands and
+   whether each passed, failed, or was blocked.
+
 ## Validation Rules
 
 Treat these as authoring bugs:
