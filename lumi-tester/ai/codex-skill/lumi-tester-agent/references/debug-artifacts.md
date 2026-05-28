@@ -5,6 +5,7 @@ Use this reference when a run fails and the user wants a diagnosis or a patch.
 ## Contents
 
 - Artifact priority
+- Extract failure data
 - Event JSONL
 - Common failure diagnosis
 
@@ -18,6 +19,28 @@ Use this reference when a run fails and the user wants a diagnosis or a patch.
 4. `fail_*_cmdN_*.png`: screenshot at failure.
 5. `fail_*_cmdN_*.xml`: UI hierarchy at failure.
 6. `fail_*_cmdN_*.log`: recent device/browser logs.
+
+## Extract Failure Data
+
+Use machine-readable files before guessing from screenshots. Start with the
+first failed command, then inspect only its linked artifacts:
+
+```bash
+jq '.commandResults[]? | select(.status=="failed") | {index, commandName, error: .error, screenshotPath, uiHierarchyPath, logPath}' ./output/run.json
+jq '.results[]? | select(.status=="failed") | {index, name, error, screenshotPath, uiHierarchyPath, logPath}' ./output/test-results.json
+jq -r '.commandResults[]? | select(.status=="failed") | .index' ./output/run.json | head -1
+```
+
+If JSON shape differs between versions, search the output directory for the same
+signals:
+
+```bash
+rg -n '"status": ?"failed"|"commandFailed"|screenshotPath|uiHierarchyPath|logPath|error' ./output
+find ./output -maxdepth 1 -type f \( -name 'fail_*_cmd*.png' -o -name 'fail_*_cmd*.xml' -o -name 'fail_*_cmd*.log' \) -print
+```
+
+Only rerun the failed command after identifying its index with `list --json` or
+`commandFailed.index`; do not infer indexes from the YAML by hand.
 
 ## Event JSONL
 
