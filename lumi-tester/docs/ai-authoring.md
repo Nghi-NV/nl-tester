@@ -159,6 +159,22 @@ Aliases may parse, but agents should avoid mixing aliases in generated files.
 
 ## Selector Rules
 
+Before choosing a selector, search
+`ai/codex-skill/lumi-tester-agent/references/selectors.csv` for platform
+support, rank, and anti-patterns. For unfamiliar screens or selector failures,
+read `ai/codex-skill/lumi-tester-agent/references/selector-discovery.md`.
+
+Fast selector discovery loop:
+
+1. Use Inspector when available: `inspect`, then `inspector_get /api/hierarchy`
+   or `inspector_get /api/element-at?x=<x>&y=<y>`.
+2. If Inspector is not available, run with `--snapshot` and inspect
+   `uiHierarchyPath`/UI XML plus the linked screenshot.
+3. If MCP has a UI XML artifact, call `suggest_selectors` before manually
+   reading a large hierarchy.
+4. If the UI XML package or foreground app is not the expected app identity,
+   debug launch/crash/wrong target before tuning selectors.
+
 Prefer stable selectors:
 
 ```yaml
