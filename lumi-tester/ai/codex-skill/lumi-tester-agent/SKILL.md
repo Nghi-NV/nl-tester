@@ -149,6 +149,15 @@ Before any real device/browser/desktop execution, do this checklist:
 5. Run with `--report --snapshot --events-jsonl --output <dir>` so debug
    artifacts are available.
 
+State reset rules:
+
+- Use `launchApp: { clearState: true }` only for first-run/reset cases.
+- Android/iOS clear state uses the app identity directly.
+- macOS/Windows clear state requires header-level `desktopState.clear`; do not
+  use Android-only `clearAppData` for desktop apps.
+- For desktop, prefer `mode: autoSafe`; use `mode: manual` only when explicit
+  app-scoped paths, Keychain services, or HKCU registry keys are known.
+
 Canonical commands:
 
 ```bash
@@ -400,6 +409,8 @@ Treat these as runtime/debug bugs:
   support, examples, and anti-patterns.
 - Read `references/patterns.md` for common end-to-end flow templates and
   adaptation rules.
+- Read `references/desktop.md` for macOS/Windows app identity, permissions,
+  selectors, and `desktopState.clear` examples.
 - Read `references/selector-discovery.md` when the app/page is unfamiliar,
   selectors are unknown, or a selector fails.
 - Read `references/android-auto.md` for DHU setup, point-only interaction, and

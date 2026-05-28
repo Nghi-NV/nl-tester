@@ -198,7 +198,7 @@ tap:
 ---
 
 ### `clearAppData`
-**Mô tả**: Xóa dữ liệu và cache của ứng dụng (Reset app).
+**Mô tả**: Xóa dữ liệu và cache của ứng dụng Android. Không dùng lệnh này cho macOS/Windows; desktop cần `desktopState.clear` trong header và `launchApp: { clearState: true }`.
 
 **Ví dụ**:
 ```yaml

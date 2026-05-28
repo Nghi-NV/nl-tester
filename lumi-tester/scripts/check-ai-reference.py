@@ -1104,6 +1104,11 @@ def validate_desktop_clear_state_docs() -> list[str]:
     errors: list[str] = []
     agent_command_catalog = SKILL_DIR / "references" / "command-catalog.md"
     required = {
+        SKILL_MD: [
+            "macOS/Windows clear state requires header-level `desktopState.clear`",
+            "do not\n  use Android-only `clearAppData` for desktop apps",
+            "Read `references/desktop.md` for macOS/Windows app identity",
+        ],
         WRITING_TESTS_MD: [
             "android_auto",
             "macos",
@@ -1116,6 +1121,7 @@ def validate_desktop_clear_state_docs() -> list[str]:
             ".app",
             ".exe",
             "desktopState.clear",
+            "Android. Không dùng lệnh này cho macOS/Windows",
         ],
         agent_command_catalog: [
             "macOS `.app` paths",
