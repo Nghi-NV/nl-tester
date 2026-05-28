@@ -108,6 +108,9 @@ def validate_reference_examples() -> list[str]:
         "mockLocation longitude field": r"mockLocation:\s*\n(?:[ \t]+[A-Za-z0-9_]+:.*\n)*[ \t]+longitude:",
         "conditional.when field": r"conditional:\s*\n(?:[ \t]+[A-Za-z0-9_]+:.*\n)*[ \t]+when:",
         "conditional.commands field": r"conditional:\s*\n(?:[ \t]+[A-Za-z0-9_]+:.*\n)*[ \t]+commands:",
+        "relative.anchor schema": r"relative:\s*\n[ \t]+anchor:",
+        "relative.direction schema": r"relative:\s*\n(?:[ \t]+[A-Za-z0-9_]+:.*\n)*[ \t]+direction:",
+        "relative.target schema": r"relative:\s*\n(?:[ \t]+[A-Za-z0-9_]+:.*\n)*[ \t]+target:",
     }
     errors: list[str] = []
     paths = [SKILL_MD, *sorted((SKILL_DIR / "references").glob("*"))]

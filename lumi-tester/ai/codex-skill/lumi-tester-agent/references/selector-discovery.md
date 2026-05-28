@@ -229,13 +229,10 @@ is a stable nearby label.
 
 ```yaml
 - tap:
-    relative:
-      anchor:
-        text: "Bedroom"
-        exact: true
-      direction: rightOf
-      target:
-        type: "android.widget.Switch"
+    type: "android.widget.Switch"
+    rightOf:
+      text: "Bedroom"
+      exact: true
 ```
 
 Prefer a relative selector over `type + index` when the screen is a list, table,
