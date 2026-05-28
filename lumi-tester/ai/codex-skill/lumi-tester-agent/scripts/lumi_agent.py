@@ -169,22 +169,28 @@ def run_agent_check(argv: list[str]) -> int:
     print("== lumi agent-check: validate --json ==", file=sys.stderr)
     code = run_lumi("validate", [parsed.path, "--json"])
     if code != 0:
+        print("== lumi agent-check: validate FAILED ==", file=sys.stderr)
         return code
+    print("== lumi agent-check: validate PASSED ==", file=sys.stderr)
 
     print("== lumi agent-check: list --json ==", file=sys.stderr)
     code = run_lumi("list", [parsed.path, "--json"])
     if code != 0:
+        print("== lumi agent-check: list FAILED ==", file=sys.stderr)
         return code
+    print("== lumi agent-check: list PASSED ==", file=sys.stderr)
 
     if parsed.platform:
         print("== lumi agent-check: doctor --json ==", file=sys.stderr)
         code = run_lumi("doctor", ["--platform", parsed.platform, "--json"])
         if code != 0:
+            print("== lumi agent-check: doctor FAILED ==", file=sys.stderr)
             return code
+        print("== lumi agent-check: doctor PASSED ==", file=sys.stderr)
 
     if parsed.run:
         print("== lumi agent-check: run with artifacts ==", file=sys.stderr)
-        return run_lumi(
+        code = run_lumi(
             "run",
             parse_agent_run(
                 [
@@ -198,7 +204,12 @@ def run_agent_check(argv: list[str]) -> int:
                 ]
             ),
         )
+        if code != 0:
+            print("== lumi agent-check: run FAILED ==", file=sys.stderr)
+            return code
+        print("== lumi agent-check: run PASSED ==", file=sys.stderr)
 
+    print("== lumi agent-check: PASS ==", file=sys.stderr)
     return 0
 
 

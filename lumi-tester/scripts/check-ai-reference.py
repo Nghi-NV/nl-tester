@@ -396,7 +396,20 @@ def validate_helper_script_reference() -> list[str]:
         if f'"{platform}"' not in helper_text:
             errors.append(f"{HELPER_SCRIPT}: helper should accept platform: {platform}")
     required_agent_commands = {
-        "agent-check": {"validate", "list", "doctor", "run", "--json", "--report", "--snapshot", "--events-jsonl", "--output"},
+        "agent-check": {
+            "validate",
+            "list",
+            "doctor",
+            "run",
+            "--json",
+            "--report",
+            "--snapshot",
+            "--events-jsonl",
+            "--output",
+            "PASSED",
+            "FAILED",
+            "PASS",
+        },
         "agent-validate": {"validate", "--json"},
         "agent-list": {"list", "--json"},
         "agent-schema": {"schema", "--json"},
@@ -612,6 +625,7 @@ def validate_agent_self_test_contract() -> list[str]:
     required_terms = {
         "agent-check <file-or-folder>": "agent-check authoring shortcut",
         "agent-check <file-or-folder> --platform <platform> --run --output <dir>": "agent-check runtime shortcut",
+        "== lumi agent-check: pass ==": "agent-check summary marker",
         "validate --json": "validation evidence",
         "list --json": "collection/index evidence",
         "setup/teardown": "group setup evidence",
