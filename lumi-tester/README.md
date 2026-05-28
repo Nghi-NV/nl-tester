@@ -24,30 +24,54 @@
 
 ## 📦 Installation
 
-The easiest way is to download the installer from the [Releases](https://github.com/Nghi-NV/nl-tester/releases) page:
+### One-line Install
 
-- **Windows**: Download `lumi-tester-setup.exe`.
-- **macOS (Native)**: Download `lumi-tester-apple-silicon.pkg` (for M1/M2/M3 chips) or `lumi-tester-intel.pkg`.
+macOS / Linux:
 
-Upon installation, the tool will automatically configure the necessary environment (ADB, Playwright) during its first run.
-
-### GitHub CLI Installation (Advanced)
-If you have the [GitHub CLI (gh)](https://cli.github.com/) installed, you can use the following scripts:
-
-#### macOS / Linux
 ```bash
-gh api repos/Nghi-NV/nl-tester/contents/lumi-tester/scripts/install.sh -H "Accept: application/vnd.github.v3.raw" | bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | bash
 ```
 
-#### Windows (PowerShell)
+Windows PowerShell:
+
 ```powershell
-gh api repos/Nghi-NV/nl-tester/contents/lumi-tester/scripts/install.ps1 -H "Accept: application/vnd.github.v3.raw" | powershell -
+iwr https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.ps1 -UseB | iex
 ```
 
-> [!IMPORTANT]
-> **Important Notes:**
-> 1. The `.exe` and `.pkg` installers automatically add the tool to your system PATH.
-> 2. If you encounter driver issues, run `lumi-tester system install --all` to repair the environment.
+The scripts detect OS/CPU, download the matching GitHub Release binary, add it to PATH, verify `SHA256SUMS` when available, and run `lumi-tester system install --all`.
+
+Install a specific version:
+
+```bash
+LUMI_TESTER_VERSION=v0.1.3 curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | bash
+```
+
+Skip driver/browser initialization:
+
+```bash
+LUMI_SKIP_SYSTEM_INSTALL=1 curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | bash
+```
+
+### Package Managers
+
+Planned distribution channels:
+
+```bash
+brew install nghi-nv/tap/lumi-tester
+```
+
+```powershell
+scoop install lumi-tester
+winget install NghiNV.LumiTester
+```
+
+### Manual Download
+
+Download native binaries from [Releases](https://github.com/Nghi-NV/nl-tester/releases):
+
+- **Windows**: `lumi-tester-x86_64-pc-windows-msvc.exe` or `lumi-tester-aarch64-pc-windows-msvc.exe`.
+- **macOS**: `lumi-tester-aarch64-apple-darwin` for Apple Silicon, or `lumi-tester-x86_64-apple-darwin` for Intel.
+- **Linux**: `lumi-tester-x86_64-unknown-linux-gnu` or `lumi-tester-aarch64-unknown-linux-gnu`.
 
 ## 🚀 Getting Started
 
@@ -102,4 +126,3 @@ appId: com.example.app
     color: "#4CAF50"
 - takeScreenshot: "completed.png"
 ```
-

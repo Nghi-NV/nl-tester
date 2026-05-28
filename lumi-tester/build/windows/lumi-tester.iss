@@ -1,5 +1,5 @@
 #define MyAppName "lumi-tester"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.1.3"
 #define MyAppPublisher "NL Team"
 #define MyAppURL "https://github.com/Nghi-NV/nl-tester"
 #define MyAppExeName "lumi-tester.exe"

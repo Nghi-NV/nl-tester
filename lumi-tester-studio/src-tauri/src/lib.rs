@@ -62,6 +62,12 @@ pub enum StudioTestEvent {
         reason: String,
         depth: usize,
     },
+    AppCrashed {
+        app_id: String,
+        flow_name: String,
+        command_index: usize,
+        depth: usize,
+    },
     Log {
         message: String,
         depth: usize,
@@ -181,6 +187,17 @@ impl From<TestEvent> for StudioTestEvent {
                 reason,
                 depth,
             },
+            TestEvent::AppCrashed {
+                app_id,
+                flow_name,
+                command_index,
+                depth,
+            } => StudioTestEvent::AppCrashed {
+                app_id,
+                flow_name,
+                command_index,
+                depth,
+            },
             TestEvent::Log { message, depth } => StudioTestEvent::Log { message, depth },
         }
     }
@@ -241,7 +258,8 @@ async fn run_test_flow(
     let output_dir = std::env::temp_dir().join("lumi-studio-output");
 
     // Correctly pass output_dir as 2nd argument
-    let mut executor = TestExecutor::new(driver, Some(&output_dir), false, false, None);
+    let mut executor =
+        TestExecutor::new(driver, Some(&output_dir), false, false, false, true, None);
     let mut rx = executor.subscribe();
     let window_handle = window.clone();
 

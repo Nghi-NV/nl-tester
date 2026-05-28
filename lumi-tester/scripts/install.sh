@@ -1,85 +1,149 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Detect OS
-OS="$(uname -s)"
-ARCH="$(uname -m)"
+REPO="${LUMI_TESTER_REPO:-Nghi-NV/nl-tester}"
+VERSION="${LUMI_TESTER_VERSION:-latest}"
+INSTALL_DIR="${LUMI_INSTALL_DIR:-}"
+SKIP_SYSTEM_INSTALL="${LUMI_SKIP_SYSTEM_INSTALL:-0}"
 
-echo "Detected OS: $OS"
-echo "Detected Arch: $ARCH"
+say() {
+  printf '%s\n' "$*"
+}
 
-GITHUB_REPO="Nghi-NV/nl-tester"
-LATEST_RELEASE_URL="https://api.github.com/repos/$GITHUB_REPO/releases/latest"
+fail() {
+  printf 'Error: %s\n' "$*" >&2
+  exit 1
+}
 
-# Determine asset name
-if [ "$OS" = "Darwin" ]; then
-    if [ "$ARCH" = "arm64" ]; then
-        ASSET_NAME="lumi-tester-aarch64-apple-darwin"
-    else
-        ASSET_NAME="lumi-tester-x86_64-apple-darwin"
-    fi
-elif [ "$OS" = "Linux" ]; then
-    echo "Linux support is experimental. Assuming x86_64."
-    ASSET_NAME="lumi-tester-x86_64-unknown-linux-gnu" # Matches hypothetical linux build
-else
-    echo "Unsupported OS: $OS"
-    exit 1
-fi
+need_cmd() {
+  command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
+}
 
-INSTALL_DIR="/usr/local/bin"
-# Fallback to ~/.local/bin if cannot write to /usr/local/bin
-if [ ! -w "$INSTALL_DIR" ]; then
-    INSTALL_DIR="$HOME/.local/bin"
-    mkdir -p "$INSTALL_DIR"
-    # Check if in PATH
-    if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-        echo "Warning: $INSTALL_DIR is not in your PATH."
-        echo "Add it with: export PATH=\"\$PATH:$INSTALL_DIR\""
-    fi
-fi
+detect_asset() {
+  local os arch
+  os="$(uname -s)"
+  arch="$(uname -m)"
 
-echo "Installing to $INSTALL_DIR..."
+  case "$os:$arch" in
+    Darwin:arm64) echo "lumi-tester-aarch64-apple-darwin" ;;
+    Darwin:x86_64) echo "lumi-tester-x86_64-apple-darwin" ;;
+    Linux:x86_64|Linux:amd64) echo "lumi-tester-x86_64-unknown-linux-gnu" ;;
+    Linux:aarch64|Linux:arm64) echo "lumi-tester-aarch64-unknown-linux-gnu" ;;
+    *) fail "Unsupported platform: $os $arch" ;;
+  esac
+}
 
-DOWNLOAD_URL="https://github.com/$GITHUB_REPO/releases/latest/download/$ASSET_NAME"
-INSTALL_PATH="$INSTALL_DIR/lumi-tester"
+release_base_url() {
+  if [ "$VERSION" = "latest" ]; then
+    echo "https://github.com/$REPO/releases/latest/download"
+  else
+    echo "https://github.com/$REPO/releases/download/$VERSION"
+  fi
+}
 
-# Try downloading with gh if available (best for private repos)
-if command -v gh &> /dev/null && gh auth status &> /dev/null; then
-    echo "Detected GitHub CLI. Using 'gh release download' for secure access..."
-    if ! gh release download -R "$GITHUB_REPO" --pattern "$ASSET_NAME" --dir "/tmp" --clobber; then
-        echo "Error: 'gh release download' failed. Ensure you have access to the repository."
-        exit 1
-    fi
-    mv "/tmp/$ASSET_NAME" "$INSTALL_PATH"
-else
-    echo "Downloading $ASSET_NAME from $DOWNLOAD_URL..."
-    # Use -f to fail on HTTP errors
-    if ! curl -L -f -o "$INSTALL_PATH" "$DOWNLOAD_URL"; then
-        echo "Error: Download failed. Check your internet connection or repository access."
-        if [ "$GITHUB_REPO" = "Nghi-NV/nl-tester" ]; then
-             echo "If this is a private repo, please ensure you have repository access."
-        fi
-        exit 1
-    fi
-fi
+default_install_dir() {
+  if [ -n "$INSTALL_DIR" ]; then
+    echo "$INSTALL_DIR"
+    return
+  fi
 
-# Verify the file size (binary should be large, error messages are small)
-FILE_SIZE=$(wc -c < "$INSTALL_PATH")
-if [ "$FILE_SIZE" -lt 10000 ]; then
-    if grep -q "<!DOCTYPE html>" "$INSTALL_PATH" 2>/dev/null || grep -q "Not Found" "$INSTALL_PATH" 2>/dev/null; then
-        echo "Error: Downloaded file appears to be an error page or 'Not Found' message."
-        echo "This usually happens with private repositories when using curl."
-        echo "Recommendation: Install GitHub CLI ('gh'), run 'gh auth login', and try again."
-        rm "$INSTALL_PATH"
-        exit 1
-    fi
-fi
+  if [ -d "/usr/local/bin" ] && [ -w "/usr/local/bin" ]; then
+    echo "/usr/local/bin"
+  else
+    echo "$HOME/.local/bin"
+  fi
+}
 
-chmod +x "$INSTALL_PATH"
+download() {
+  local url="$1"
+  local output="$2"
 
-echo "lumi-tester installed successfully!"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$url" -o "$output"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q "$url" -O "$output"
+  else
+    fail "Missing curl or wget"
+  fi
+}
 
-echo "Initializing system components (ADB, Playwright)..."
-"$INSTALL_PATH" system install --all
+verify_checksum() {
+  local checksums="$1"
+  local asset="$2"
+  local file="$3"
 
-echo "Done! You can now use 'lumi-tester' command."
+  [ -s "$checksums" ] || return 0
+  command -v shasum >/dev/null 2>&1 || command -v sha256sum >/dev/null 2>&1 || return 0
+
+  local expected
+  expected="$(grep -E "[[:space:]]${asset}$" "$checksums" | awk '{print $1}' | head -n1 || true)"
+  [ -n "$expected" ] || return 0
+
+  local actual
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual="$(sha256sum "$file" | awk '{print $1}')"
+  else
+    actual="$(shasum -a 256 "$file" | awk '{print $1}')"
+  fi
+
+  [ "$expected" = "$actual" ] || fail "Checksum mismatch for $asset"
+  say "Checksum verified."
+}
+
+main() {
+  need_cmd uname
+  need_cmd mktemp
+
+  local asset base_url install_dir tmp_dir tmp_asset tmp_checksums install_path
+  asset="$(detect_asset)"
+  base_url="$(release_base_url)"
+  install_dir="$(default_install_dir)"
+  tmp_dir="$(mktemp -d)"
+  tmp_asset="$tmp_dir/$asset"
+  tmp_checksums="$tmp_dir/SHA256SUMS"
+  install_path="$install_dir/lumi-tester"
+
+  trap 'rm -rf "$tmp_dir"' EXIT
+
+  say "Installing lumi-tester"
+  say "  Repository: $REPO"
+  say "  Version: $VERSION"
+  say "  Asset: $asset"
+  say "  Install dir: $install_dir"
+
+  mkdir -p "$install_dir"
+
+  say "Downloading $base_url/$asset"
+  download "$base_url/$asset" "$tmp_asset"
+
+  if download "$base_url/SHA256SUMS" "$tmp_checksums" >/dev/null 2>&1; then
+    verify_checksum "$tmp_checksums" "$asset" "$tmp_asset"
+  else
+    say "Checksum file not found; skipping checksum verification."
+  fi
+
+  if [ ! -s "$tmp_asset" ]; then
+    fail "Downloaded file is empty"
+  fi
+
+  install -m 0755 "$tmp_asset" "$install_path"
+
+  if ! command -v lumi-tester >/dev/null 2>&1 && [[ ":$PATH:" != *":$install_dir:"* ]]; then
+    say "Warning: $install_dir is not in PATH."
+    say "Add it with: export PATH=\"\$PATH:$install_dir\""
+  fi
+
+  say "Installed: $install_path"
+  "$install_path" --version || true
+
+  if [ "$SKIP_SYSTEM_INSTALL" != "1" ]; then
+    say "Initializing drivers and browser dependencies..."
+    "$install_path" system install --all
+  else
+    say "Skipping system install because LUMI_SKIP_SYSTEM_INSTALL=1"
+  fi
+
+  say "Done. Run: lumi-tester --help"
+}
+
+main "$@"

@@ -1,74 +1,106 @@
 $ErrorActionPreference = "Stop"
 
-$Repo = "Nghi-NV/nl-tester"
-$AssetName = "lumi-tester-x86_64-pc-windows-msvc.exe"
-$DownloadUrl = "https://github.com/$Repo/releases/latest/download/$AssetName"
-$InstallDir = "$env:USERPROFILE\.lumi-tester\bin"
+$Repo = if ($env:LUMI_TESTER_REPO) { $env:LUMI_TESTER_REPO } else { "Nghi-NV/nl-tester" }
+$Version = if ($env:LUMI_TESTER_VERSION) { $env:LUMI_TESTER_VERSION } else { "latest" }
+$InstallDir = if ($env:LUMI_INSTALL_DIR) { $env:LUMI_INSTALL_DIR } else { Join-Path $env:USERPROFILE ".lumi-tester\bin" }
+$SkipSystemInstall = $env:LUMI_SKIP_SYSTEM_INSTALL -eq "1"
 
-Write-Host "Installing lumi-tester to $InstallDir..."
-if (!(Test-Path -Path $InstallDir)) {
+function Fail($Message) {
+    Write-Error $Message
+    exit 1
+}
+
+function Get-AssetName {
+    switch ($env:PROCESSOR_ARCHITECTURE) {
+        "ARM64" { return "lumi-tester-aarch64-pc-windows-msvc.exe" }
+        "AMD64" { return "lumi-tester-x86_64-pc-windows-msvc.exe" }
+        default { Fail "Unsupported Windows architecture: $env:PROCESSOR_ARCHITECTURE" }
+    }
+}
+
+function Get-ReleaseBaseUrl {
+    if ($Version -eq "latest") {
+        return "https://github.com/$Repo/releases/latest/download"
+    }
+    return "https://github.com/$Repo/releases/download/$Version"
+}
+
+function Download-File($Url, $Output) {
+    Invoke-WebRequest -Uri $Url -OutFile $Output -UseBasicParsing
+}
+
+function Verify-Checksum($ChecksumsFile, $AssetName, $FilePath) {
+    if (!(Test-Path $ChecksumsFile)) {
+        return
+    }
+
+    $line = Get-Content $ChecksumsFile | Where-Object { $_ -match "\s$([regex]::Escape($AssetName))$" } | Select-Object -First 1
+    if (!$line) {
+        return
+    }
+
+    $expected = ($line -split "\s+")[0].ToLowerInvariant()
+    $actual = (Get-FileHash -Algorithm SHA256 $FilePath).Hash.ToLowerInvariant()
+    if ($expected -ne $actual) {
+        Fail "Checksum mismatch for $AssetName"
+    }
+    Write-Host "Checksum verified."
+}
+
+$AssetName = Get-AssetName
+$BaseUrl = Get-ReleaseBaseUrl
+$TempDir = Join-Path $env:TEMP ("lumi-tester-install-" + [Guid]::NewGuid().ToString("N"))
+$TempFile = Join-Path $TempDir $AssetName
+$ChecksumsFile = Join-Path $TempDir "SHA256SUMS"
+$OutputFile = Join-Path $InstallDir "lumi-tester.exe"
+
+try {
+    New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-}
 
-$OutputFile = "$InstallDir\lumi-tester.exe"
+    Write-Host "Installing lumi-tester"
+    Write-Host "  Repository: $Repo"
+    Write-Host "  Version: $Version"
+    Write-Host "  Asset: $AssetName"
+    Write-Host "  Install dir: $InstallDir"
 
-# Try downloading with gh if available (best for private repos)
-$ghInstalled = Get-Command gh -ErrorAction SilentlyContinue
-$ghAuthenticated = $false
-if ($ghInstalled) {
+    Write-Host "Downloading $BaseUrl/$AssetName"
+    Download-File "$BaseUrl/$AssetName" $TempFile
+
     try {
-        gh auth status | Out-Null
-        $ghAuthenticated = $true
-    } catch { }
-}
-
-if ($ghAuthenticated) {
-    Write-Host "Detected GitHub CLI. Using 'gh release download' for secure access..."
-    try {
-        gh release download -R $Repo --pattern $AssetName --dir $env:TEMP --clobber
-        Move-Item -Path "$env:TEMP\$AssetName" -Destination $OutputFile -Force
+        Download-File "$BaseUrl/SHA256SUMS" $ChecksumsFile
+        Verify-Checksum $ChecksumsFile $AssetName $TempFile
     } catch {
-        Write-Error "Error: 'gh release download' failed. Ensure you have access to the repository."
-        exit 1
+        Write-Host "Checksum file not found; skipping checksum verification."
     }
-} else {
-    Write-Host "Downloading from $DownloadUrl..."
-    try {
-        Invoke-WebRequest -Uri $DownloadUrl -OutFile $OutputFile
-    } catch {
-        Write-Error "Error: Download failed. Check your internet connection or repository access."
-        if ($Repo -eq "Nghi-NV/nl-tester") {
-            Write-Host "If this is a private repo, please ensure you have repository access."
-        }
-        exit 1
+
+    if ((Get-Item $TempFile).Length -eq 0) {
+        Fail "Downloaded file is empty"
+    }
+
+    Move-Item -Path $TempFile -Destination $OutputFile -Force
+
+    $UserPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
+    if ($UserPath -notlike "*$InstallDir*") {
+        Write-Host "Adding $InstallDir to PATH..."
+        [Environment]::SetEnvironmentVariable("Path", "$UserPath;$InstallDir", [EnvironmentVariableTarget]::User)
+        $env:Path += ";$InstallDir"
+        Write-Host "PATH updated. Restart your terminal if lumi-tester is not found."
+    }
+
+    Write-Host "Installed: $OutputFile"
+    & "$OutputFile" --version
+
+    if (!$SkipSystemInstall) {
+        Write-Host "Initializing drivers and browser dependencies..."
+        & "$OutputFile" system install --all
+    } else {
+        Write-Host "Skipping system install because LUMI_SKIP_SYSTEM_INSTALL=1"
+    }
+
+    Write-Host "Done. Run: lumi-tester --help"
+} finally {
+    if (Test-Path $TempDir) {
+        Remove-Item -Recurse -Force $TempDir
     }
 }
-
-# Verify the file size (binary should be large, error messages are small)
-$fileSize = (Get-Item $OutputFile).Length
-if ($fileSize -lt 10000) {
-    $content = Get-Content $OutputFile -Raw -TotalCount 500
-    if ($content -like "*<!DOCTYPE html>*" -or $content -like "*Not Found*") {
-        Write-Error "Error: Downloaded file appears to be an error page or 'Not Found' message."
-        Write-Host "This usually happens with private repositories when using standard download methods."
-        Write-Host "Recommendation: Install GitHub CLI ('gh'), run 'gh auth login', and try again."
-        Remove-Item $OutputFile
-        exit 1
-    }
-}
-
-# Add to PATH if not present
-$UserPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
-if ($UserPath -notlike "*$InstallDir*") {
-    Write-Host "Adding $InstallDir to PATH..."
-    [Environment]::SetEnvironmentVariable("Path", "$UserPath;$InstallDir", [EnvironmentVariableTarget]::User)
-    $env:Path += ";$InstallDir"
-    Write-Host "PATH updated. You may need to restart your terminal."
-}
-
-Write-Host "lumi-tester installed successfully!"
-
-Write-Host "Initializing system components (ADB, Playwright)..."
-& "$OutputFile" system install --all
-
-Write-Host "Done! You can now use 'lumi-tester' command."

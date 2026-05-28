@@ -1,8 +1,11 @@
 use super::state::{FlowStatus, TestSummary};
+use serde::Serialize;
+use std::path::Path;
 use tokio::sync::broadcast;
 
 /// Test execution events for real-time updates
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum TestEvent {
     // Session events
     SessionStarted {
@@ -99,6 +102,31 @@ impl Default for EventEmitter {
     fn default() -> Self {
         let (sender, _) = broadcast::channel(100);
         Self { sender }
+    }
+}
+
+pub struct JsonlEventListener;
+
+impl JsonlEventListener {
+    pub async fn listen(
+        mut receiver: broadcast::Receiver<TestEvent>,
+        path: impl AsRef<Path>,
+    ) -> anyhow::Result<()> {
+        use tokio::io::AsyncWriteExt;
+
+        if let Some(parent) = path.as_ref().parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+
+        let mut file = tokio::fs::File::create(path).await?;
+        while let Ok(event) = receiver.recv().await {
+            let line = serde_json::to_string(&event)?;
+            file.write_all(line.as_bytes()).await?;
+            file.write_all(b"\n").await?;
+            file.flush().await?;
+        }
+
+        Ok(())
     }
 }
 

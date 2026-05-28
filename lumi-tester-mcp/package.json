@@ -1,0 +1,24 @@
+{
+  "name": "lumi-tester-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "lumi-tester-mcp": "./src/server.js"
+  },
+  "scripts": {
+    "test": "node --test",
+    "start": "node ./src/server.js",
+    "stage-binary": "node ./scripts/stage-binary.js"
+  },
+  "files": [
+    "src/",
+    "scripts/",
+    "binaries/",
+    "package.json"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.76"
+  }
+}

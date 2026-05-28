@@ -23,6 +23,7 @@ pub async fn run_tests(
     record: bool,
     snapshot: bool,
     report: bool,
+    events_jsonl: bool,
     tags: Option<Vec<String>>,
     command_index: Option<usize>,
     command_name: Option<String>,
@@ -138,6 +139,7 @@ pub async fn run_tests(
                     record,
                     snapshot,
                     report,
+                    events_jsonl,
                     tags_chunk,
                     cmd_idx,
                     cmd_name,
@@ -166,6 +168,7 @@ pub async fn run_tests(
             record,
             snapshot,
             report,
+            events_jsonl,
             tags,
             command_index,
             command_name,
@@ -185,6 +188,7 @@ async fn run_on_device(
     record: bool,
     snapshot: bool,
     report: bool,
+    events_jsonl: bool,
     tags: Option<Vec<String>>,
     command_index: Option<usize>,
     command_name: Option<String>,
@@ -236,7 +240,7 @@ async fn run_on_device(
         _ => anyhow::bail!("Unknown platform: {}", platform_clean),
     };
 
-    let mut executor = executor::TestExecutor::new(
+    let mut executor = executor::TestExecutor::new_with_events(
         driver,
         output,
         continue_on_failure,
@@ -244,6 +248,7 @@ async fn run_on_device(
         snapshot,
         report,
         tags,
+        events_jsonl,
     );
     let base_dir = if base_path.is_dir() {
         base_path
@@ -255,27 +260,33 @@ async fn run_on_device(
     for f in ["setup.yaml", "setup.yml"] {
         let p = base_dir.join(f);
         if p.exists() {
-            executor
-                .run_file(&p, None, None) // Don't filter setup/teardown
-                .await?;
+            if let Err(e) = executor.run_file(&p, None, None).await {
+                let _ = executor.finish().await;
+                return Err(e);
+            }
             break;
         }
     }
 
     // 2. Run Main files
     for file in files {
-        executor
+        if let Err(e) = executor
             .run_file(file, command_index, command_name.as_deref())
-            .await?;
+            .await
+        {
+            let _ = executor.finish().await;
+            return Err(e);
+        }
     }
 
     // 3. Run Teardown hook
     for f in ["teardown.yaml", "teardown.yml"] {
         let p = base_dir.join(f);
         if p.exists() {
-            executor
-                .run_file(&p, None, None) // Don't filter setup/teardown
-                .await?;
+            if let Err(e) = executor.run_file(&p, None, None).await {
+                let _ = executor.finish().await;
+                return Err(e);
+            }
             break;
         }
     }

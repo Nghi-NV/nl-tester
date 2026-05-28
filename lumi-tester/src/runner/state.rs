@@ -33,6 +33,8 @@ pub struct CommandState {
     pub finished_at: Option<Instant>,
     pub duration_ms: Option<u64>,
     pub screenshot_path: Option<String>,
+    pub ui_hierarchy_path: Option<String>,
+    pub log_path: Option<String>,
     pub retry_count: u32,
 }
 
@@ -47,6 +49,8 @@ impl CommandState {
             finished_at: None,
             duration_ms: None,
             screenshot_path: None,
+            ui_hierarchy_path: None,
+            log_path: None,
             retry_count: 0,
         }
     }
@@ -93,6 +97,8 @@ impl CommandState {
             status: self.status.clone(),
             duration_ms: self.duration_ms,
             screenshot_path: self.screenshot_path.clone(),
+            ui_hierarchy_path: self.ui_hierarchy_path.clone(),
+            log_path: self.log_path.clone(),
             retry_count: self.retry_count,
         }
     }
@@ -107,6 +113,8 @@ pub struct CommandStateReport {
     pub status: CommandStatus,
     pub duration_ms: Option<u64>,
     pub screenshot_path: Option<String>,
+    pub ui_hierarchy_path: Option<String>,
+    pub log_path: Option<String>,
     pub retry_count: u32,
 }
 

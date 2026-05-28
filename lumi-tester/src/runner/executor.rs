@@ -4,7 +4,7 @@ use std::path::Path;
 use uuid::Uuid;
 
 use super::context::TestContext;
-use super::events::{ConsoleEventListener, EventEmitter, TestEvent};
+use super::events::{ConsoleEventListener, EventEmitter, JsonlEventListener, TestEvent};
 use super::state::{CommandState, FlowState, TestSessionState};
 use crate::driver::traits::PlatformDriver;
 use crate::parser::types::TestCommand;
@@ -37,6 +37,13 @@ pub struct TestExecutor {
     report_enabled: bool,
 }
 
+#[derive(Debug, Clone, Default)]
+struct FailureArtifacts {
+    screenshot_path: Option<String>,
+    ui_hierarchy_path: Option<String>,
+    log_path: Option<String>,
+}
+
 impl TestExecutor {
     pub fn new(
         driver: Box<dyn PlatformDriver>,
@@ -47,6 +54,28 @@ impl TestExecutor {
         report: bool,
         target_tags: Option<Vec<String>>,
     ) -> Self {
+        Self::new_with_events(
+            driver,
+            output_dir,
+            continue_on_failure,
+            record,
+            snapshot,
+            report,
+            target_tags,
+            false,
+        )
+    }
+
+    pub fn new_with_events(
+        driver: Box<dyn PlatformDriver>,
+        output_dir: Option<&Path>,
+        continue_on_failure: bool,
+        record: bool,
+        snapshot: bool,
+        report: bool,
+        target_tags: Option<Vec<String>>,
+        events_jsonl: bool,
+    ) -> Self {
         let (emitter, receiver) = EventEmitter::new();
         let device_id = driver.device_serial();
 
@@ -55,10 +84,25 @@ impl TestExecutor {
         // Start console listener in background
         tokio::spawn(ConsoleEventListener::listen(receiver));
 
+        if events_jsonl {
+            let events_receiver = emitter.subscribe();
+            let events_path = context.output_path("events.jsonl");
+            tokio::spawn(async move {
+                if let Err(e) = JsonlEventListener::listen(events_receiver, events_path).await {
+                    eprintln!("Failed to write events JSONL: {}", e);
+                }
+            });
+        }
+
+        let session_id = Uuid::new_v4().to_string();
+        let mut session = TestSessionState::new(&session_id);
+        session.start();
+        emitter.emit(TestEvent::SessionStarted { session_id });
+
         Self {
             driver,
             context,
-            session: TestSessionState::new(&Uuid::new_v4().to_string()),
+            session,
             emitter,
             continue_on_failure,
             depth: 0,
@@ -312,9 +356,12 @@ impl TestExecutor {
                         let error_msg = e.to_string();
 
                         // Capture debug info
-                        self.handle_failure(flow_name, i, &error_msg).await;
+                        let artifacts = self.handle_failure(flow_name, i, &error_msg).await;
 
                         cmd_state.fail(error_msg.clone());
+                        cmd_state.screenshot_path = artifacts.screenshot_path;
+                        cmd_state.ui_hierarchy_path = artifacts.ui_hierarchy_path;
+                        cmd_state.log_path = artifacts.log_path;
                         let duration = cmd_state.duration_ms.unwrap_or(0);
 
                         self.emitter.emit(TestEvent::CommandFailed {
@@ -3324,18 +3371,21 @@ impl TestExecutor {
         }
     }
 
-    /// Handle command failure by dumping UI and taking screenshot
-    /// Returns true if app crashed
-    async fn handle_failure(&self, flow_name: &str, index: usize, _error: &str) -> bool {
+    /// Handle command failure by dumping UI, screenshot, and recent logs.
+    async fn handle_failure(
+        &self,
+        flow_name: &str,
+        index: usize,
+        _error: &str,
+    ) -> FailureArtifacts {
         let safe_flow_name = flow_name.replace("/", "_").replace("\\", "_");
-        let mut app_crashed = false;
+        let mut artifacts = FailureArtifacts::default();
 
         // Check for app crash (do this first to include in logs)
         // Only detects real crashes (FATAL EXCEPTION in logcat), not intentional stops
         if let Some(ref app_id) = self.context.app_id {
             match self.driver.detect_app_crash(app_id).await {
                 Ok(crashed) if crashed => {
-                    app_crashed = true;
                     self.emitter.emit(TestEvent::AppCrashed {
                         app_id: app_id.clone(),
                         flow_name: flow_name.to_string(),
@@ -3347,8 +3397,8 @@ impl TestExecutor {
             }
         }
 
-        if !self.report_enabled {
-            return app_crashed;
+        if !self.report_enabled && !self.snapshot_enabled {
+            return artifacts;
         }
 
         self.emitter.emit(TestEvent::Log {
@@ -3372,6 +3422,7 @@ impl TestExecutor {
                 let path = self.context.output_path(&filename);
                 if let Ok(_) = std::fs::write(&path, xml) {
                     println!("  {} Saved UI Hierarchy: {}", "📄".green(), path.display());
+                    artifacts.ui_hierarchy_path = Some(path.display().to_string());
                 }
             }
             Err(e) => println!("  {} Failed to dump UI: {}", "⚠".yellow(), e),
@@ -3389,7 +3440,10 @@ impl TestExecutor {
         let path_str = path.to_string_lossy().to_string();
 
         match self.driver.take_screenshot(&path_str).await {
-            Ok(_) => println!("  {} Saved Screenshot: {}", "📸".green(), path.display()),
+            Ok(_) => {
+                println!("  {} Saved Screenshot: {}", "📸".green(), path.display());
+                artifacts.screenshot_path = Some(path.display().to_string());
+            }
             Err(e) => println!("  {} Failed to take screenshot: {}", "⚠".yellow(), e),
         }
 
@@ -3406,12 +3460,13 @@ impl TestExecutor {
                 let path = self.context.output_path(&filename);
                 if let Ok(_) = std::fs::write(&path, logs) {
                     println!("  {} Saved Recent Logs: {}", "📋".green(), path.display());
+                    artifacts.log_path = Some(path.display().to_string());
                 }
             }
             Err(e) => println!("  {} Failed to dump logs: {}", "⚠".yellow(), e),
         }
 
-        app_crashed
+        artifacts
     }
 
     /// Crop image by percentage region
@@ -3473,6 +3528,17 @@ impl TestExecutor {
     pub async fn finish(&mut self) -> Result<()> {
         self.session.finish();
 
+        let summary = self.session.summary();
+        self.emitter.emit(TestEvent::SessionFinished {
+            summary: summary.clone(),
+        });
+
+        // Persist a lightweight run manifest for agents even when full reports are disabled.
+        let report_data = self.session.to_report();
+        let manifest_path = self.context.output_path("run.json");
+        let manifest_json = serde_json::to_string_pretty(&report_data)?;
+        std::fs::write(&manifest_path, manifest_json)?;
+
         if !self.report_enabled {
             // Wait for ConsoleEventListener to process remaining events before exiting
             // This is needed because the listener runs in tokio::spawn and needs time to print output
@@ -3480,17 +3546,10 @@ impl TestExecutor {
             return Ok(());
         }
 
-        let summary = self.session.summary();
-
-        self.emitter.emit(TestEvent::SessionFinished {
-            summary: summary.clone(),
-        });
-
         // Small delay to ensure SessionFinished event is processed before printing reports
         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
         // Save JSON report
-        let report_data = self.session.to_report();
         let report_path = self.context.output_path("test-results.json");
         let json = serde_json::to_string_pretty(&report_data)?;
         std::fs::write(&report_path, json)?;

@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use serde::Serialize;
 use std::path::PathBuf;
 
 use lumi_tester::{driver, recorder, report, runner, utils};
@@ -7,7 +8,7 @@ use lumi_tester::{driver, recorder, report, runner, utils};
 #[derive(Parser)]
 #[command(name = "lumi-tester")]
 #[command(author = "NL Team")]
-#[command(version = "0.1.0")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "Multi-platform automation testing CLI", long_about = None)]
 struct Cli {
     #[command(subcommand)]
@@ -54,6 +55,10 @@ enum Commands {
         #[arg(long, default_value = "false")]
         report: bool,
 
+        /// Write machine-readable execution events to output/events.jsonl
+        #[arg(long, default_value = "false")]
+        events_jsonl: bool,
+
         /// Filter tests by tags (comma-separated)
         #[arg(short, long, value_delimiter = ',')]
         tags: Option<Vec<String>>,
@@ -86,6 +91,44 @@ enum Commands {
         /// Output file path
         #[arg(short, long)]
         output: Option<PathBuf>,
+    },
+
+    /// Validate YAML test file(s) without launching a device or browser
+    Validate {
+        /// Path to test file or directory
+        path: PathBuf,
+
+        /// Print machine-readable JSON
+        #[arg(long, default_value = "false")]
+        json: bool,
+    },
+
+    /// List discovered test files and command indexes without running tests
+    List {
+        /// Path to test file or directory
+        path: PathBuf,
+
+        /// Print machine-readable JSON
+        #[arg(long, default_value = "false")]
+        json: bool,
+    },
+
+    /// Check local automation dependencies
+    Doctor {
+        /// Target platform to check (android, ios, web, all)
+        #[arg(short, long, default_value = "android")]
+        platform: String,
+
+        /// Print machine-readable JSON
+        #[arg(long, default_value = "false")]
+        json: bool,
+    },
+
+    /// Print the bundled Lumi YAML JSON Schema
+    Schema {
+        /// Print machine-readable JSON
+        #[arg(long, default_value = "true")]
+        json: bool,
     },
 
     Shell {
@@ -177,6 +220,7 @@ async fn main() -> anyhow::Result<()> {
             record,
             snapshot,
             report,
+            events_jsonl,
             tags,
             command_index,
             command_name,
@@ -212,6 +256,9 @@ async fn main() -> anyhow::Result<()> {
             if report {
                 println!("  Reports: {}", "Enabled".green());
             }
+            if events_jsonl {
+                println!("  Events JSONL: {}", "Enabled".green());
+            }
             if let Some(idx) = command_index {
                 println!("  Command Index: {}", idx.to_string().yellow());
             }
@@ -233,6 +280,7 @@ async fn main() -> anyhow::Result<()> {
                 record,
                 snapshot,
                 report,
+                events_jsonl,
                 tags,
                 command_index,
                 command_name,
@@ -261,6 +309,31 @@ async fn main() -> anyhow::Result<()> {
                 results.display()
             );
             report::generate_report(&results, &format, output.as_deref()).await?;
+        }
+
+        Commands::Validate { path, json } => {
+            let result = validate_test_files(&path);
+            print_validation_result(&result, json)?;
+            if !result.valid {
+                anyhow::bail!("validation failed");
+            }
+        }
+
+        Commands::List { path, json } => {
+            let result = list_test_files(&path)?;
+            print_list_result(&result, json)?;
+        }
+
+        Commands::Doctor { platform, json } => {
+            let result = doctor_report(&platform);
+            print_doctor_result(&result, json)?;
+            if !result.ok {
+                anyhow::bail!("doctor found missing dependencies");
+            }
+        }
+
+        Commands::Schema { json: _ } => {
+            println!("{}", include_str!("../schema/lumi-test.schema.json"));
         }
 
         Commands::Shell { platform, device } => {
@@ -481,6 +554,309 @@ fn detect_platform(path: &std::path::Path) -> Option<String> {
         }
     }
     None
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ValidationReport {
+    valid: bool,
+    files: Vec<ListedFlow>,
+    errors: Vec<ValidationError>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ValidationError {
+    path: String,
+    error: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ListReport {
+    files: Vec<ListedFlow>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ListedFlow {
+    path: String,
+    app_id: Option<String>,
+    url: Option<String>,
+    platform: Option<lumi_tester::parser::types::Platform>,
+    tags: Vec<String>,
+    command_count: usize,
+    commands: Vec<ListedCommand>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ListedCommand {
+    index: usize,
+    name: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DoctorReport {
+    ok: bool,
+    checks: Vec<DoctorCheck>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DoctorCheck {
+    name: String,
+    ok: bool,
+    path: Option<String>,
+    error: Option<String>,
+}
+
+fn validate_test_files(path: &std::path::Path) -> ValidationReport {
+    let mut files = Vec::new();
+    let mut errors = Vec::new();
+
+    match collect_test_files(path) {
+        Ok(paths) => {
+            for file in paths {
+                match parse_listed_flow(&file) {
+                    Ok(flow) => files.push(flow),
+                    Err(error) => errors.push(ValidationError {
+                        path: file.display().to_string(),
+                        error: error.to_string(),
+                    }),
+                }
+            }
+        }
+        Err(error) => errors.push(ValidationError {
+            path: path.display().to_string(),
+            error: error.to_string(),
+        }),
+    }
+
+    ValidationReport {
+        valid: errors.is_empty(),
+        files,
+        errors,
+    }
+}
+
+fn list_test_files(path: &std::path::Path) -> anyhow::Result<ListReport> {
+    let files = collect_test_files(path)?
+        .into_iter()
+        .map(|file| parse_listed_flow(&file))
+        .collect::<anyhow::Result<Vec<_>>>()?;
+
+    Ok(ListReport { files })
+}
+
+fn collect_test_files(path: &std::path::Path) -> anyhow::Result<Vec<PathBuf>> {
+    if !path.exists() {
+        anyhow::bail!("Path does not exist: {}", path.display());
+    }
+
+    if path.is_file() {
+        return Ok(vec![path.to_path_buf()]);
+    }
+
+    let mut files = Vec::new();
+    for entry in walkdir::WalkDir::new(path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            let path = e.path();
+            let is_yaml = path
+                .extension()
+                .map_or(false, |ext| ext == "yaml" || ext == "yml");
+            let name = e.file_name().to_string_lossy();
+            let path_str = path.to_string_lossy();
+            let in_subflows = path_str.contains("/subflows/") || path_str.contains("\\subflows\\");
+
+            is_yaml
+                && !in_subflows
+                && name != "setup.yaml"
+                && name != "setup.yml"
+                && name != "teardown.yaml"
+                && name != "teardown.yml"
+        })
+    {
+        files.push(entry.path().to_path_buf());
+    }
+
+    files.sort();
+    Ok(files)
+}
+
+fn parse_listed_flow(path: &std::path::Path) -> anyhow::Result<ListedFlow> {
+    let flow = lumi_tester::parser::yaml::parse_test_file(path)?;
+    let commands = flow
+        .commands
+        .iter()
+        .enumerate()
+        .map(|(index, command)| ListedCommand {
+            index,
+            name: command.display_name(),
+        })
+        .collect::<Vec<_>>();
+
+    Ok(ListedFlow {
+        path: path.display().to_string(),
+        app_id: flow.app_id,
+        url: flow.url,
+        platform: flow.platform,
+        tags: flow.tags,
+        command_count: commands.len(),
+        commands,
+    })
+}
+
+fn print_validation_result(report: &ValidationReport, json: bool) -> anyhow::Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(report)?);
+        return Ok(());
+    }
+
+    if report.valid {
+        println!(
+            "{} Validated {} file(s)",
+            "✓".green(),
+            report.files.len().to_string().cyan()
+        );
+    } else {
+        println!(
+            "{} Validation failed with {} error(s)",
+            "✗".red(),
+            report.errors.len().to_string().red()
+        );
+        for error in &report.errors {
+            println!("  {}: {}", error.path.cyan(), error.error);
+        }
+    }
+
+    Ok(())
+}
+
+fn print_list_result(report: &ListReport, json: bool) -> anyhow::Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(report)?);
+        return Ok(());
+    }
+
+    for file in &report.files {
+        println!(
+            "{} {} ({} command(s))",
+            "•".blue(),
+            file.path.cyan(),
+            file.command_count
+        );
+        for command in &file.commands {
+            println!("  [{}] {}", command.index, command.name);
+        }
+    }
+
+    Ok(())
+}
+
+fn doctor_report(platform: &str) -> DoctorReport {
+    let mut checks = Vec::new();
+
+    match platform {
+        "android" | "android_auto" => {
+            checks.push(binary_check(
+                "adb",
+                lumi_tester::utils::binary_resolver::find_adb(),
+            ));
+            checks.push(binary_check(
+                "ffmpeg",
+                lumi_tester::utils::binary_resolver::find_ffmpeg(),
+            ));
+        }
+        "ios" => {
+            checks.push(binary_check(
+                "idb",
+                lumi_tester::utils::binary_resolver::find_idb(),
+            ));
+            checks.push(binary_check(
+                "ffmpeg",
+                lumi_tester::utils::binary_resolver::find_ffmpeg(),
+            ));
+        }
+        "web" => {
+            checks.push(binary_check(
+                "ffmpeg",
+                lumi_tester::utils::binary_resolver::find_ffmpeg(),
+            ));
+        }
+        "all" => {
+            checks.push(binary_check(
+                "adb",
+                lumi_tester::utils::binary_resolver::find_adb(),
+            ));
+            checks.push(binary_check(
+                "idb",
+                lumi_tester::utils::binary_resolver::find_idb(),
+            ));
+            checks.push(binary_check(
+                "ffmpeg",
+                lumi_tester::utils::binary_resolver::find_ffmpeg(),
+            ));
+        }
+        other => checks.push(DoctorCheck {
+            name: "platform".to_string(),
+            ok: false,
+            path: None,
+            error: Some(format!("Unknown platform: {}", other)),
+        }),
+    }
+
+    DoctorReport {
+        ok: checks.iter().all(|check| check.ok),
+        checks,
+    }
+}
+
+fn binary_check(name: &str, result: anyhow::Result<std::path::PathBuf>) -> DoctorCheck {
+    match result {
+        Ok(path) => DoctorCheck {
+            name: name.to_string(),
+            ok: true,
+            path: Some(path.display().to_string()),
+            error: None,
+        },
+        Err(error) => DoctorCheck {
+            name: name.to_string(),
+            ok: false,
+            path: None,
+            error: Some(error.to_string()),
+        },
+    }
+}
+
+fn print_doctor_result(report: &DoctorReport, json: bool) -> anyhow::Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(report)?);
+        return Ok(());
+    }
+
+    for check in &report.checks {
+        if check.ok {
+            println!(
+                "{} {}: {}",
+                "✓".green(),
+                check.name.cyan(),
+                check.path.as_deref().unwrap_or("").green()
+            );
+        } else {
+            println!(
+                "{} {}: {}",
+                "✗".red(),
+                check.name.cyan(),
+                check.error.as_deref().unwrap_or("missing").red()
+            );
+        }
+    }
+
+    Ok(())
 }
 
 /// Find the primary touch input device from getevent -pl output

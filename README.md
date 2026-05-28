@@ -60,8 +60,9 @@ Download the latest installers from the [Releases](https://github.com/Nghi-NV/nl
 
 Download from the [lumi-tester Releases](https://github.com/Nghi-NV/nl-tester/releases):
 
-- **Windows**: `lumi-tester-setup.exe`
-- **macOS**: `lumi-tester-apple-silicon.pkg` or `lumi-tester-intel.pkg`
+- **Windows**: `lumi-tester-x86_64-pc-windows-msvc.exe` or `lumi-tester-aarch64-pc-windows-msvc.exe`
+- **macOS**: `lumi-tester-aarch64-apple-darwin` for Apple Silicon, or `lumi-tester-x86_64-apple-darwin` for Intel
+- **Linux**: `lumi-tester-x86_64-unknown-linux-gnu` or `lumi-tester-aarch64-unknown-linux-gnu`
 
 ## 🛠️ Development
 
@@ -96,7 +97,8 @@ cargo build --release
 - [Lumi Tester Documentation](lumi-tester/docs/)
 - [CI/CD Integration Guide](lumi-tester-studio/docs/CICD_GUIDE.md)
 - [Writing Tests Guide](lumi-tester/docs/writing_tests.md)
-- [Commands Reference](lumi-tester/docs/commands.md)
+- [Commands Reference](lumi-tester/docs/api/commands.md)
+- [AI Authoring Contract](lumi-tester/docs/ai-authoring.md)
 
 ## 🔄 Release Workflow
 
@@ -127,6 +129,5 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 
 ---
 
-**Version**: 0.1.0  
+**Version**: 0.1.3
 **Repository**: [https://github.com/Nghi-NV/nl-tester](https://github.com/Nghi-NV/nl-tester)
-

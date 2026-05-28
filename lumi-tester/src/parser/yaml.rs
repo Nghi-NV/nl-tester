@@ -113,8 +113,42 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
                 flow.app_id = Some(s.to_string());
             }
         }
-        // ... extract other fields ... env, etc.
-        if let Some(val) = map.get(&serde_yaml::Value::String("env".to_string())) {
+
+        if let Some(val) = map.get(&serde_yaml::Value::String("url".to_string())) {
+            if let Some(s) = val.as_str() {
+                flow.url = Some(s.to_string());
+            }
+        }
+
+        if let Some(val) = map.get(&serde_yaml::Value::String("platform".to_string())) {
+            flow.platform = Some(serde_yaml::from_value(val.clone())?);
+        }
+
+        if let Some(val) = map.get(&serde_yaml::Value::String("speed".to_string())) {
+            if let Some(s) = val.as_str() {
+                flow.speed = Some(s.to_string());
+            }
+        }
+
+        if let Some(val) = map.get(&serde_yaml::Value::String("browser".to_string())) {
+            if let Some(s) = val.as_str() {
+                flow.browser = Some(s.to_string());
+            }
+        }
+
+        if let Some(val) = map.get(&serde_yaml::Value::String("defaultTimeout".to_string())) {
+            flow.default_timeout_ms = val.as_u64();
+        }
+
+        if let Some(val) = map.get(&serde_yaml::Value::String("closeWhenFinish".to_string())) {
+            flow.close_when_finish = val.as_bool();
+        }
+
+        let env_val = map
+            .get(&serde_yaml::Value::String("env".to_string()))
+            .or_else(|| map.get(&serde_yaml::Value::String("vars".to_string())))
+            .or_else(|| map.get(&serde_yaml::Value::String("var".to_string())));
+        if let Some(val) = env_val {
             flow.env = serde_yaml::from_value(val.clone()).ok();
         }
 
@@ -294,7 +328,9 @@ pub fn parse_commands_from_value(value: &serde_yaml::Value) -> Result<Vec<TestCo
 pub fn parse_command_value(value: &serde_yaml::Value) -> Result<Option<TestCommand>> {
     match value {
         // Simple string command like "- stopApp" or "- hideKeyboard"
-        serde_yaml::Value::String(s) => parse_simple_command(s),
+        serde_yaml::Value::String(s) => parse_simple_command(s)?
+            .map(Some)
+            .ok_or_else(|| anyhow::anyhow!("Unknown command: {}", s)),
 
         // Command with parameters like "- tapOn:\n    text: 'Login'"
         serde_yaml::Value::Mapping(map) => {
@@ -315,7 +351,9 @@ pub fn parse_command_value(value: &serde_yaml::Value) -> Result<Option<TestComma
                 }
             }
 
-            parse_command_with_params(cmd_name, params)
+            parse_command_with_params(cmd_name, params)?
+                .map(Some)
+                .ok_or_else(|| anyhow::anyhow!("Unknown command: {}", cmd_name))
         }
 
         _ => {
@@ -1027,5 +1065,44 @@ appId: com.example.app
         let flow = parse_yaml_content(yaml, Path::new("test.yaml")).unwrap();
         assert_eq!(flow.app_id, Some("com.example.app".to_string()));
         assert_eq!(flow.commands.len(), 4);
+    }
+
+    #[test]
+    fn unknown_parameterized_command_is_rejected() {
+        let yaml = r#"
+appId: com.example.app
+---
+- tappp:
+    text: "Login"
+"#;
+
+        let err = parse_yaml_content(yaml, Path::new("test.yaml")).unwrap_err();
+        assert!(err.to_string().contains("Unknown command"));
+        assert!(err.to_string().contains("tappp"));
+    }
+
+    #[test]
+    fn map_format_preserves_supported_header_fields() {
+        let yaml = r#"
+appId: com.example.app
+url: "https://example.com"
+platform: web
+browser: Firefox
+speed: fast
+defaultTimeout: 3000
+closeWhenFinish: false
+steps:
+  - see: "Welcome"
+"#;
+
+        let flow = parse_yaml_content(yaml, Path::new("test.yaml")).unwrap();
+        assert_eq!(flow.app_id, Some("com.example.app".to_string()));
+        assert_eq!(flow.url, Some("https://example.com".to_string()));
+        assert_eq!(flow.platform, Some(Platform::Web));
+        assert_eq!(flow.browser, Some("Firefox".to_string()));
+        assert_eq!(flow.speed, Some("fast".to_string()));
+        assert_eq!(flow.default_timeout_ms, Some(3000));
+        assert_eq!(flow.close_when_finish, Some(false));
+        assert_eq!(flow.commands.len(), 1);
     }
 }

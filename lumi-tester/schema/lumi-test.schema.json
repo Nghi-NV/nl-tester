@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nlt-corp.github.io/lumi-tester/schema/lumi-test.schema.json",
+  "title": "Lumi Tester Flow",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "appId": { "type": "string" },
+    "url": { "type": "string" },
+    "platform": {
+      "type": "string",
+      "enum": ["android", "android_auto", "ios", "iOS", "web"]
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "defaultTimeout": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "speed": {
+      "type": "string",
+      "enum": ["turbo", "fast", "normal", "safe"]
+    },
+    "browser": {
+      "type": "string",
+      "enum": ["Chrome", "Firefox", "Webkit", "chrome", "firefox", "webkit"]
+    },
+    "closeWhenFinish": { "type": "boolean" },
+    "env": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": { "type": ["string", "number", "boolean"] }
+        },
+        {
+          "type": "object",
+          "required": ["file"],
+          "properties": {
+            "file": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "vars": {
+      "type": "object",
+      "additionalProperties": { "type": ["string", "number", "boolean"] }
+    },
+    "steps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/command" }
+    },
+    "commands": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/command" }
+    }
+  },
+  "$defs": {
+    "selector": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "text": { "type": "string" },
+        "id": { "type": "string" },
+        "desc": { "type": "string" },
+        "contentDesc": { "type": "string" },
+        "accessibilityId": { "type": "string" },
+        "css": { "type": "string" },
+        "xpath": { "type": "string" },
+        "regex": { "type": "string" },
+        "point": { "type": "string" },
+        "ocr": {
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "object",
+              "required": ["text"],
+              "properties": {
+                "text": { "type": "string" },
+                "index": { "type": "integer", "minimum": 0 },
+                "region": { "type": "string" }
+              }
+            }
+          ]
+        },
+        "index": { "type": "integer", "minimum": 0 },
+        "type": { "type": "string" },
+        "exact": { "type": "boolean" },
+        "optional": { "type": "boolean" }
+      }
+    },
+    "command": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "launchApp",
+            "stopApp",
+            "hideKeyboard",
+            "back",
+            "pressHome",
+            "swipeLeft",
+            "swipeRight",
+            "swipeUp",
+            "swipeDown",
+            "stopRecording",
+            "stopMockLocation",
+            "pasteText",
+            "inputRandomEmail",
+            "inputRandomNumber",
+            "inputRandomPersonName",
+            "inputRandomText"
+          ]
+        },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1,
+          "properties": {
+            "launchApp": {},
+            "open": {},
+            "tap": { "$ref": "#/$defs/selector" },
+            "tapOn": { "$ref": "#/$defs/selector" },
+            "doubleTap": { "$ref": "#/$defs/selector" },
+            "longPress": { "$ref": "#/$defs/selector" },
+            "see": { "$ref": "#/$defs/selector" },
+            "notSee": { "$ref": "#/$defs/selector" },
+            "waitUntilVisible": { "$ref": "#/$defs/selector" },
+            "waitNotSee": { "$ref": "#/$defs/selector" },
+            "inputText": {
+              "oneOf": [
+                { "type": "string" },
+                {
+                  "type": "object",
+                  "properties": {
+                    "text": { "type": "string" }
+                  }
+                }
+              ]
+            },
+            "write": { "type": "string" },
+            "wait": {},
+            "await": {},
+            "scrollTo": {},
+            "runFlow": {},
+            "repeat": {},
+            "retry": {},
+            "takeScreenshot": {},
+            "assertScreenshot": {},
+            "assertColor": {},
+            "mockLocation": {},
+            "gps": {},
+            "openLink": { "type": "string" },
+            "deepLink": { "type": "string" },
+            "setVar": {},
+            "assertVar": {},
+            "runScript": {},
+            "httpRequest": {},
+            "conditional": {},
+            "navigate": {},
+            "click": {},
+            "type": {}
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

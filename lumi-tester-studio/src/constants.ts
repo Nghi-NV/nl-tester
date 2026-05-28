@@ -8,14 +8,14 @@ export const APP_CONFIG = {
 
 export const AI_CONFIG = {
   DEFAULT_MODEL: 'gemini-2.0-flash',
-  SYSTEM_INSTRUCTION: "You are an expert API Testing Assistant for 'Nexus API Tester'. You help users write YAML test flows, debug errors, and explain API concepts. The user might provide file contents using @mention. Always prefer YAML format for code output.",
-  MENTION_REGEX: /@(\\S+)/g,
-  INITIAL_MESSAGE: 'Hello! I am Nexus AI. I can help you write tests, explain flows, or debug issues.\\n\\nYou can mention files using **@filename** to verify or generate tests based on them.',
+  SYSTEM_INSTRUCTION: "You are an expert Lumi Tester assistant. You help users write, validate, run, and debug Lumi YAML flows for Android, iOS, Android Auto, and Web automation. The user might provide file contents using @mention. Prefer the canonical header/---/steps format, stable selectors before coordinates, and concise YAML patches or complete YAML files.",
+  MENTION_REGEX: /@(\S+)/g,
+  INITIAL_MESSAGE: 'Hello! I am Lumi AI. I can help you write tests, explain flows, or debug selector and runtime issues.\n\nYou can mention files using **@filename** to verify or generate tests based on them.',
   CLEARED_MESSAGE: 'Chat history cleared.',
 } as const;
 
 export const FILE_CONFIG = {
-  DEFAULT_FILE_CONTENT: 'name: New Test\\nsteps:\\n  - name: Example Step\\n    method: GET\\n    url: https://jsonplaceholder.typicode.com/posts/1',
+  DEFAULT_FILE_CONTENT: 'platform: android\nappId: com.example.app\n---\n- launchApp\n- tap:\n    text: "Login"\n- inputText: "test@example.com"\n- see:\n    text: "Welcome"',
   YAML_EXTENSION: '.yaml',
 } as const;
 

@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Test lumi-tester
+        run: cargo test --locked --manifest-path lumi-tester/Cargo.toml
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: lumi-tester-mcp/package-lock.json
+
+      - name: Test lumi-tester-mcp
+        working-directory: lumi-tester-mcp
+        run: |
+          npm ci
+          npm test
+
+      - name: Validate shell scripts
+        run: |
+          bash -n lumi-tester/scripts/install.sh
+          bash -n lumi-tester/scripts/generate-package-manifests.sh
+
+      - name: Validate Windows install script
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.PSParser]::Tokenize((Get-Content lumi-tester/scripts/install.ps1 -Raw), [ref]$errors) | Out-Null
+          if ($errors) {
+            $errors | Format-List | Out-String | Write-Error
+            exit 1
+          }
