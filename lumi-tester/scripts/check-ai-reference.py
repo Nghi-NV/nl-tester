@@ -941,7 +941,17 @@ def validate_android_auto_reference() -> list[str]:
 
     with CLI_CSV.open(newline="", encoding="utf-8") as fh:
         cli_rows = {row["command"].strip(): row for row in csv.DictReader(fh)}
-    for command in ("doctor", "devices", "run", "system"):
+    for command in (
+        "validate",
+        "list",
+        "schema",
+        "doctor",
+        "devices",
+        "run",
+        "report",
+        "ai",
+        "system",
+    ):
         platforms = split_field_names(cli_rows[command]["platforms"])
         if "android_auto" not in platforms:
             errors.append(f"{CLI_CSV}: command {command} is missing android_auto")
@@ -985,6 +995,32 @@ def validate_android_auto_reference() -> list[str]:
             errors.append(
                 f"{COMMANDS_CSV}: command {command} should not list android_auto"
             )
+    return errors
+
+
+def validate_cli_platform_catalog() -> list[str]:
+    errors: list[str] = []
+    with CLI_CSV.open(newline="", encoding="utf-8") as fh:
+        rows = {row["command"].strip(): row for row in csv.DictReader(fh)}
+
+    platform_agnostic_commands = {"validate", "list", "schema", "report", "ai"}
+    for command in platform_agnostic_commands:
+        platforms = split_field_names(rows[command]["platforms"])
+        missing = sorted(REQUIRED_AGENT_PLATFORMS.difference(platforms))
+        if missing:
+            errors.append(
+                f"{CLI_CSV}: command {command} should list every agent platform: "
+                + ", ".join(missing)
+            )
+
+    shell_platforms = split_field_names(rows["shell"]["platforms"])
+    for unsupported in ("android_auto", "web"):
+        if unsupported in shell_platforms:
+            errors.append(
+                f"{CLI_CSV}: shell lists unsupported platform: {unsupported}"
+            )
+    if "current CLI shell does not support web or android_auto" not in rows["shell"]["notes"]:
+        errors.append(f"{CLI_CSV}: shell notes should explain unsupported web/android_auto")
     return errors
 
 
@@ -1661,6 +1697,7 @@ def main() -> int:
     errors.extend(validate_debug_artifacts_reference())
     errors.extend(validate_patterns_reference())
     errors.extend(validate_android_auto_reference())
+    errors.extend(validate_cli_platform_catalog())
     errors.extend(validate_cli_help_platform_guidance())
     errors.extend(validate_desktop_reference())
     errors.extend(validate_desktop_platform_catalog())
