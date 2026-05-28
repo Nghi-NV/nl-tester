@@ -166,13 +166,16 @@ true.
 
 ```yaml
 - conditional:
-    when:
-      visible:
-        text: "Skip"
-    commands:
+    condition:
+      visible: "Skip"
+    then:
       - tap:
           text: "Skip"
 ```
+
+`condition.visible` and `condition.visibleRegex` check text. Do not use them
+for Android `content-desc` or iOS accessibility identifiers unless the local
+runner has been verified to support that selector form.
 
 ## Variables, Data, And Scripts
 

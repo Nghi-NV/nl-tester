@@ -30,6 +30,15 @@ SELECTORS_CSV = (
     / "references"
     / "selectors.csv"
 )
+CLI_CSV = (
+    ROOT
+    / "lumi-tester"
+    / "ai"
+    / "codex-skill"
+    / "lumi-tester-agent"
+    / "references"
+    / "cli.csv"
+)
 SCHEMA_JSON = ROOT / "lumi-tester" / "schema" / "lumi-test.schema.json"
 
 
@@ -106,6 +115,22 @@ def main() -> int:
                 "when_to_use",
                 "example",
                 "anti_patterns",
+            },
+        )
+    )
+    errors.extend(
+        validate_csv(
+            CLI_CSV,
+            {
+                "command",
+                "category",
+                "purpose",
+                "platforms",
+                "common_options",
+                "machine_readable",
+                "agent_use",
+                "example",
+                "notes",
             },
         )
     )

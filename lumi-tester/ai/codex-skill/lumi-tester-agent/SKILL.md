@@ -9,6 +9,20 @@ Use this skill to operate Lumi Tester as an AI test author and debugger. It is
 for writing and running tests, not for extending the Lumi Tester framework
 itself. For framework development, use the `lumi-tester` development skill.
 
+## Platform Coverage
+
+Support Android, iOS, and Web workflows. Do not specialize the skill, helper, or
+flow patterns for only one platform unless the user's target is explicitly
+platform-specific. Always set or infer the target platform before selecting
+commands, selectors, devices, and debug artifacts:
+
+- Android: app package `appId`, Android device serial, UIAutomator XML,
+  `id`/`resourceId`, `accessibilityId`/`contentDesc`, `text`, OCR fallback.
+- iOS: bundle id `appId`, simulator/device UDID, accessibility tree,
+  `accessibilityId`/`label`, `text`, OCR fallback.
+- Web: `url`/browser, DOM selectors such as `css`, `role`, `placeholder`,
+  `text`, and browser artifacts.
+
 ## Find Lumi Tester
 
 Prefer MCP tools when a `lumi-tester-mcp` server is configured. Use the MCP
@@ -67,20 +81,27 @@ The helper prints stdout/stderr and exits with the Lumi command exit code.
 
 ## Authoring Loop
 
-1. Search `references/commands.csv` first when choosing a command.
-2. Search `references/selectors.csv` first when choosing a selector.
-3. Read `references/command-catalog.md` when examples or command intent are
+1. Search `references/cli.csv` first when choosing a Lumi CLI command.
+2. Search `references/commands.csv` first when choosing a YAML command.
+3. Search `references/selectors.csv` first when choosing a selector.
+4. Run `schema --json` when the exact YAML shape is unclear; do not guess
+   command fields from memory.
+5. Read `references/command-catalog.md` when examples or command intent are
    still unclear.
-4. Read `references/patterns.md` when the request matches a common workflow
+6. Read `references/patterns.md` when the request matches a common workflow
    such as login, onboarding, search, settings, permission, GPS, or web form.
-5. For device-backed requests, confirm the target device and app before writing
+7. For device-backed requests, confirm the target device and app before writing
    or running a flow. If the user says "current app", inspect current focus
    instead of assuming an appId from an existing YAML file.
-6. Write YAML in canonical `header --- commands` format.
-7. Run validation before any device/browser execution.
-8. Use `list --json` to discover command indexes.
-9. Run with reports, snapshots, and event JSONL for debug-friendly artifacts.
-10. On failure, inspect artifacts and rerun the smallest failing command index.
+8. Discover the app identity before launch: Android package, iOS bundle id, or
+   Web URL/browser target.
+9. After `launchApp`, wait for a stable screen element with `waitUntilVisible`
+   or `waitSee`; do not use a fixed delay as launch readiness.
+10. Write YAML in canonical `header --- commands` format.
+11. Run validation before any device/browser execution.
+12. Use `list --json` to discover command indexes.
+13. Run with reports, snapshots, and event JSONL for debug-friendly artifacts.
+14. On failure, inspect artifacts and rerun the smallest failing command index.
 
 Canonical commands:
 
@@ -88,6 +109,8 @@ Canonical commands:
 cargo run -- validate ./test.yaml --json
 cargo run -- list ./test.yaml --json
 cargo run -- doctor --platform android --json
+cargo run -- devices --platform android
+cargo run -- schema --json
 cargo run -- run ./test.yaml --platform android --report --snapshot --events-jsonl --output ./output
 cargo run -- run ./test.yaml --platform android --command-index 3 --report --snapshot --events-jsonl --output ./output
 ```
@@ -118,6 +141,8 @@ tags:
 defaultTimeout: 10000
 ---
 - launchApp
+- waitUntilVisible:
+    id: "login_button"
 - tap:
     id: "login_button"
 - tap:
@@ -157,7 +182,15 @@ For text entry, focus first, then type:
 Do not put selector fields inside `inputText` unless the local parser explicitly
 supports that form.
 
-## Android Target Discovery
+## App Identity Discovery
+
+Find the app identity before writing `launchApp`:
+
+- Android uses package name in `appId`, for example `com.example.app`.
+- iOS uses bundle id in `appId`, for example `com.example.app`.
+- Web uses `url` plus optional `browser`.
+
+Android foreground package/activity:
 
 When the user references a connected device by exclusion, such as "not the LM
 device", list devices and choose by serial/model explicitly:
@@ -180,6 +213,51 @@ unrelated YAML file just because it exists in the workspace.
 Flutter/Compose screens often expose visible labels as Android `content-desc`
 instead of `text`; prefer `accessibilityId`/`desc` when the XML shows
 `content-desc="..."`.
+
+iOS bundle id discovery:
+
+```bash
+xcrun simctl list devices
+xcrun simctl listapps booted | rg -i 'CFBundleIdentifier|CFBundleDisplayName|CFBundleName'
+idb list-apps --udid <udid>
+```
+
+Web target discovery:
+
+- Use the requested URL as `url`.
+- If a local dev server is needed, start it first and use its localhost URL.
+- Use `browser: chromium`, `firefox`, or `webkit` only when the browser matters.
+
+## Launch Readiness
+
+Immediately after opening an app or page, wait for a stable element that proves
+the expected screen is ready:
+
+```yaml
+- launchApp:
+    appId: com.example.app
+- waitUntilVisible:
+    accessibilityId: "Home"
+    timeout: 15000
+```
+
+For Web:
+
+```yaml
+- launchApp
+- waitUntilVisible:
+    css: "[data-testid='home']"
+    timeout: 15000
+```
+
+Use fixed `wait` after launch only as a last resort after a selector-based wait
+cannot represent readiness. If launch restores a nested screen, inspect the UI
+first and navigate with a real command such as `back` or a semantic button tap;
+do not add coordinates.
+
+`conditional.condition.visible` and `visibleRegex` currently check text only.
+Do not use `conditional` to detect an Android `content-desc`/`accessibilityId`
+unless the local runner has been verified to support that selector form.
 
 ## Debugging Loop
 
@@ -222,6 +300,8 @@ Treat these as runtime/debug bugs:
 
 ## Extra Reference
 
+- Read or search `references/cli.csv` for fast Lumi CLI lookup by purpose,
+  platform, options, output, and when an AI agent should use it.
 - Read `references/command-catalog.md` before writing unfamiliar commands.
 - Read or search `references/commands.csv` for fast command lookup by alias,
   category, parameter shape, selector support, platform, and example.

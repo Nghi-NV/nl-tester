@@ -70,6 +70,8 @@ Quick checks:
 ```bash
 lumi-tester --version
 lumi-tester doctor --platform android --json
+lumi-tester doctor --platform ios --json  # macOS + idb
+lumi-tester doctor --platform web --json
 ```
 
 ### CLI One-line Install

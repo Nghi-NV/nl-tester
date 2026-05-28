@@ -70,7 +70,8 @@ Runtime dependency failure:
 
 - Run `doctor --platform <platform> --json`.
 - For Android, check `adb`.
-- For iOS, check `idb`.
+- For iOS, check `idb`; on macOS install it with
+  `brew tap facebook/fb && brew install idb-companion` when missing.
 - For Web/video capture, check `ffmpeg`.
 
 App launch/crash/abort:

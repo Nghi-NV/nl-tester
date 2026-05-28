@@ -22,7 +22,16 @@ def find_repo_root(start: Path) -> Path | None:
 def build_command(args: argparse.Namespace) -> tuple[list[str], Path | None]:
     repo = find_repo_root(Path.cwd())
     if repo is not None:
-        return ["cargo", "run", "--", args.command, *args.extra], repo / "lumi-tester"
+        manifest = repo / "lumi-tester" / "Cargo.toml"
+        return [
+            "cargo",
+            "run",
+            "--manifest-path",
+            str(manifest),
+            "--",
+            args.command,
+            *args.extra,
+        ], None
 
     binary = shutil.which("lumi-tester")
     if binary:
@@ -37,7 +46,18 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run Lumi Tester commands for agents")
     parser.add_argument(
         "command",
-        choices=["validate", "list", "doctor", "schema", "run"],
+        choices=[
+            "ai",
+            "devices",
+            "doctor",
+            "inspect",
+            "list",
+            "record",
+            "report",
+            "run",
+            "schema",
+            "validate",
+        ],
         help="Lumi Tester command to run",
     )
     parser.add_argument("extra", nargs=argparse.REMAINDER)
@@ -51,7 +71,7 @@ def main() -> int:
     if proc.stderr:
         print(proc.stderr, end="", file=sys.stderr)
 
-    if parsed.command in {"validate", "list", "doctor", "schema"} and proc.stdout.strip():
+    if parsed.command in {"devices", "doctor", "list", "schema", "validate"} and proc.stdout.strip():
         try:
             json.loads(proc.stdout)
         except json.JSONDecodeError:

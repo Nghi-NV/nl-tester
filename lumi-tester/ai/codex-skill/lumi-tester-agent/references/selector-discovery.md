@@ -7,14 +7,15 @@ the smallest run.
 ## Fast Path
 
 1. Run `doctor` for the platform.
-2. Confirm the target device and app. If the user asks for the current Android
-   app, read `mCurrentFocus`/`mFocusedApp` from that device before choosing
-   `appId`.
+2. Confirm the target device and app identity. Use Android package name, iOS
+   bundle id, or Web URL/browser. If the user asks for the current Android app,
+   read `mCurrentFocus`/`mFocusedApp` from that device before choosing `appId`.
 3. Start from a skeleton flow with `launchApp`.
-4. Use Inspector if interactive discovery is possible.
-5. If Inspector is not available, run with `--snapshot` and inspect UI XML.
-6. Convert the target element into the highest-priority stable selector.
-7. Validate YAML, list indexes, then rerun only the command being tested.
+4. Add a selector-based launch readiness wait for a stable screen element.
+5. Use Inspector if interactive discovery is possible.
+6. If Inspector is not available, run with `--snapshot` and inspect UI XML.
+7. Convert the target element into the highest-priority stable selector.
+8. Validate YAML, list indexes, then rerun only the command being tested.
 
 ## Selector Priority
 
@@ -114,6 +115,24 @@ adb -s <serial> exec-out uiautomator dump /dev/tty
 ```
 
 Use `content-desc` values from the dump as `accessibilityId`/`desc` selectors.
+
+For installed Android package discovery:
+
+```bash
+adb -s <serial> shell pm list packages | rg -i '<app-or-company-name>'
+adb -s <serial> shell cmd package resolve-activity --brief <package>
+```
+
+For iOS bundle id discovery:
+
+```bash
+xcrun simctl list devices
+xcrun simctl listapps booted | rg -i 'CFBundleIdentifier|CFBundleDisplayName|CFBundleName'
+idb list-apps --udid <udid>
+```
+
+For Web, use the actual target URL. If the app is local, start the dev server
+first and wait for a stable DOM selector after `launchApp`.
 
 ## Android Selector Examples
 

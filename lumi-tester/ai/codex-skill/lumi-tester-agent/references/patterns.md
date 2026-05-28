@@ -44,6 +44,11 @@ Adaptation rules:
 
 - Use current focus as the source of truth for `appId`; do not reuse a nearby
   YAML file unless it targets the same package.
+- If launch restores a nested screen, inspect the hierarchy first and navigate
+  back with a real command such as `back` or a semantic button tap. Do not use
+  coordinates.
+- `conditional.condition.visible` checks visible text, not Android
+  `content-desc`; do not use it for `accessibilityId` readiness.
 - When UI XML exposes `content-desc`, use `accessibilityId` or `desc`.
 - Avoid `point` selectors unless the hierarchy and OCR expose no stable target.
 - If the failure XML package is not the expected `appId`, debug launch/crash or
