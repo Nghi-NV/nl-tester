@@ -7,7 +7,7 @@ import csv
 import json
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -235,6 +235,36 @@ def csv_header_line(text: str) -> str:
     return match.group(1).strip().splitlines()[0].strip().lower()
 
 
+def normalize_posix_path(path: str) -> str:
+    parts: list[str] = []
+    for part in PurePosixPath(path).parts:
+        if part in {"", "."}:
+            continue
+        if part == "..":
+            if parts:
+                parts.pop()
+            continue
+        parts.append(part)
+    return "/".join(parts)
+
+
+def labeled_yaml_examples(section: str) -> list[tuple[str, str]]:
+    examples: list[tuple[str, str]] = []
+    pattern = re.compile(r"`([^`]+\.ya?ml)`:\s*\n\s*```ya?ml\n(.*?)```", re.DOTALL)
+    for match in pattern.finditer(section):
+        examples.append((match.group(1), match.group(2)))
+    return examples
+
+
+def run_flow_paths(body: str) -> list[str]:
+    paths: list[str] = []
+    for line in body.splitlines():
+        match = re.match(r"^\s*-\s+runFlow:\s*[\"']?([^\"'\s]+)[\"']?\s*$", line)
+        if match:
+            paths.append(match.group(1))
+    return paths
+
+
 def validate_testcase_design_reference() -> list[str]:
     errors: list[str] = []
     raw_text = TESTCASE_DESIGN_MD.read_text(encoding="utf-8")
@@ -302,6 +332,21 @@ def validate_testcase_design_reference() -> list[str]:
     for column in ("source", "entry_point"):
         if column not in {part.strip() for part in header.split(",")}:
             errors.append(f"{TESTCASE_DESIGN_MD}: cases.csv is missing {column} column")
+
+    suite_section = markdown_section(raw_text, "Generated Suite Example")
+    suite_examples = labeled_yaml_examples(suite_section)
+    declared_paths = {normalize_posix_path(path) for path, _ in suite_examples}
+    if len(suite_examples) < 3:
+        errors.append(f"{TESTCASE_DESIGN_MD}: generated suite should include at least 3 YAML files")
+    for file_path, body in suite_examples:
+        base_dir = PurePosixPath(file_path).parent
+        for run_flow in run_flow_paths(body):
+            resolved = normalize_posix_path(str(base_dir / run_flow))
+            if resolved not in declared_paths:
+                errors.append(
+                    f"{TESTCASE_DESIGN_MD}: {file_path} runFlow target is not "
+                    f"declared in generated suite example: {run_flow}"
+                )
     return errors
 
 
