@@ -40,11 +40,15 @@ jobs:
           npm ci
           npm test
 
-      - name: Validate install script syntax
+      - name: Validate shell scripts and AI references
         run: |
           bash -n lumi-tester/scripts/install.sh
           bash -n lumi-tester/scripts/install-ai.sh
+          bash -n lumi-tester/scripts/generate-package-manifests.sh
+          bash -n lumi-tester/scripts/publish-package-manager-manifests.sh
+          bash -n lumi-tester/scripts/check-package-manifests.sh
           python3 lumi-tester/scripts/check-ai-reference.py
+          bash lumi-tester/scripts/check-package-manifests.sh
 
       - name: Validate Windows install script syntax
         shell: pwsh

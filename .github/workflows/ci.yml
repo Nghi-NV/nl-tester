@@ -43,9 +43,13 @@ jobs:
           bash -n lumi-tester/scripts/install-ai.sh
           bash -n lumi-tester/scripts/generate-package-manifests.sh
           bash -n lumi-tester/scripts/publish-package-manager-manifests.sh
+          bash -n lumi-tester/scripts/check-package-manifests.sh
 
       - name: Validate AI references
         run: python3 lumi-tester/scripts/check-ai-reference.py
+
+      - name: Validate package manifests
+        run: bash lumi-tester/scripts/check-package-manifests.sh
 
       - name: Validate Windows install script
         shell: pwsh
