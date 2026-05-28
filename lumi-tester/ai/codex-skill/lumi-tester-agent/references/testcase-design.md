@@ -65,6 +65,16 @@ Permissions and privacy:
 - First-run permission allow, deny, deny forever, revoke after grant.
 - Android runtime permissions, iOS permission dialogs, camera/microphone/photos,
   location while-in-use/always, notifications, storage.
+- Permission states use `allow` or `deny`.
+- Android supported short keys include `camera`, `microphone`/`mic`,
+  `location`/`gps`, `coarse_location`, `contacts`, `phone`/`call`, `sms`,
+  `storage`/`files`, `write_storage`, `calendar`, `notifications`, and `all`.
+- iOS permission mutation is simulator-only. Supported keys include `calendar`,
+  `contacts`, `contacts-limited`, `location`/`gps`, `fine_location`,
+  `coarse_location`, `location-always`, `background_location`, `photos`,
+  `gallery`, `photos-add`, `microphone`, `record_audio`, `camera`,
+  `media-library`, `motion`, `sensors`, `reminders`, `siri`, `faceid`,
+  `homekit`, `health`, and `all`.
 - Do not assume `permissions: { all: allow }` is always correct. Use it for
   smoke setup only when the testcase requires pre-granted permissions.
 
@@ -94,8 +104,8 @@ Use folders when scenarios share state:
 ```text
 tests/generated/<feature>/
   cases.csv                 # testcase matrix: id, risk, tags, yaml path
-  setup.yaml                # auto-runs before each file in this folder run
-  teardown.yaml             # auto-runs after each file in this folder run
+  setup.yaml                # auto-runs once before collected main files
+  teardown.yaml             # auto-runs once after collected main files
   data/
     users.csv
   subflows/                 # skipped by directory runs; call with runFlow
@@ -123,6 +133,9 @@ Directory runs automatically skip files named `setup.yaml`, `setup.yml`,
 `teardown.yaml`, and `teardown.yml`, then execute root setup/teardown hooks
 around the main files. Directories named `subflows/` are skipped during
 directory collection; call those reusable flows explicitly with `runFlow`.
+If a scenario needs per-file setup, call an explicit `runFlow` inside that
+scenario or run self-contained files separately. Nested directory hooks are not
+auto-applied unless that nested directory is the folder passed to `run`.
 
 Run a folder/group when files depend on shared setup:
 

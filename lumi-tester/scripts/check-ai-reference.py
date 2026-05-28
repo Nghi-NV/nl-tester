@@ -111,6 +111,8 @@ def validate_reference_examples() -> list[str]:
         "relative.anchor schema": r"relative:\s*\n[ \t]+anchor:",
         "relative.direction schema": r"relative:\s*\n(?:[ \t]+[A-Za-z0-9_]+:.*\n)*[ \t]+direction:",
         "relative.target schema": r"relative:\s*\n(?:[ \t]+[A-Za-z0-9_]+:.*\n)*[ \t]+target:",
+        "setup hook per-file wording": r"setup\.ya?ml[^.\n]*(?:before each file|per file)",
+        "teardown hook per-file wording": r"teardown\.ya?ml[^.\n]*(?:after each file|per file)",
     }
     errors: list[str] = []
     paths = [SKILL_MD, *sorted((SKILL_DIR / "references").glob("*"))]

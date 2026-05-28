@@ -84,8 +84,10 @@ The helper prints stdout/stderr and exits with the Lumi command exit code.
 1. Search `references/cli.csv` first when choosing a Lumi CLI command.
 2. Search `references/commands.csv` first when choosing a YAML command.
 3. Search `references/selectors.csv` first when choosing a selector.
-4. Run `schema --json` when the exact YAML shape is unclear; do not guess
-   command fields from memory.
+4. Run `schema --json` when the YAML shape is unclear, but treat it as a
+   guardrail, not a strict contract. Some command params/selectors are
+   permissive; a successful validation means parseable, not proof that every
+   field is semantically used.
 5. Read `references/command-catalog.md` when examples or command intent are
    still unclear.
 6. Read `references/testcase-design.md` before generating a suite from product
@@ -191,6 +193,19 @@ Find the app identity before writing `launchApp`:
 - Android uses package name in `appId`, for example `com.example.app`.
 - iOS uses bundle id in `appId`, for example `com.example.app`.
 - Web uses `url` plus optional `browser`.
+
+When a user or existing YAML already provides an `appId`, verify it is installed
+and launchable before debugging selectors:
+
+```bash
+adb -s <serial> shell pm path <appId>
+adb -s <serial> shell cmd package resolve-activity --brief <appId>
+xcrun simctl listapps <udid-or-booted> | rg '<bundleId>'
+```
+
+After launch, compare the foreground/frontmost app with the expected `appId`.
+If it does not match, debug install, launch, crash, or device selection before
+tuning selectors.
 
 Android foreground package/activity:
 
