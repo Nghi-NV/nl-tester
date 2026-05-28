@@ -1,0 +1,9 @@
+platform: macos
+appId: /System/Applications/Calculator.app
+---
+# Requires granting the terminal app Accessibility permission in
+# System Settings > Privacy & Security > Accessibility.
+- launchApp
+- assertVisible: Calculator
+- pressKey: escape
+- back

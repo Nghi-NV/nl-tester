@@ -1,0 +1,198 @@
+name: Desktop Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_native_smoke:
+        description: "Run native GUI smoke tests. Requires self-hosted runners with desktop permissions."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+  pull_request:
+    paths:
+      - ".github/workflows/desktop-smoke.yml"
+      - "lumi-tester/e2e/desktop/**"
+      - "lumi-tester/schema/lumi-test.schema.json"
+      - "lumi-tester/src/driver/**"
+      - "lumi-tester/src/main.rs"
+      - "lumi-tester/src/parser/**"
+      - "lumi-tester/src/runner/**"
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-validate:
+    name: Desktop driver build and flow validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build and validate desktop smoke flows
+        run: |
+          cargo test --locked --manifest-path lumi-tester/Cargo.toml parser::yaml::tests::parses_desktop_platform_headers
+          cargo test --locked --manifest-path lumi-tester/Cargo.toml driver::windows::driver::tests --lib
+          cargo run --locked --manifest-path lumi-tester/Cargo.toml -- validate lumi-tester/e2e/desktop/macos-native-smoke.yaml
+          cargo run --locked --manifest-path lumi-tester/Cargo.toml -- validate lumi-tester/e2e/desktop/macos-ax-selector-smoke.yaml
+          cargo run --locked --manifest-path lumi-tester/Cargo.toml -- validate lumi-tester/e2e/desktop/macos-calculator-smoke.yaml
+          cargo run --locked --manifest-path lumi-tester/Cargo.toml -- validate lumi-tester/e2e/desktop/windows-native-smoke.yaml
+          cargo run --locked --manifest-path lumi-tester/Cargo.toml -- validate lumi-tester/e2e/desktop/windows-uia-selector-smoke.yaml
+
+  windows-host-validate:
+    name: Windows desktop driver host validation
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate Windows driver on Windows host
+        shell: pwsh
+        run: |
+          cargo test --locked --manifest-path lumi-tester/Cargo.toml driver::windows::driver::tests --lib
+          cargo run --locked --manifest-path lumi-tester/Cargo.toml -- doctor --platform windows
+          cargo run --locked --manifest-path lumi-tester/Cargo.toml -- validate lumi-tester/e2e/desktop/windows-native-smoke.yaml
+          cargo run --locked --manifest-path lumi-tester/Cargo.toml -- validate lumi-tester/e2e/desktop/windows-uia-selector-smoke.yaml
+          $errors = $null
+          [System.Management.Automation.PSParser]::Tokenize(
+            (Get-Content "lumi-tester/scripts/run-windows-desktop-smoke.ps1" -Raw),
+            [ref]$errors
+          ) | Out-Null
+          if ($errors) {
+            $errors | Format-List | Out-String | Write-Error
+            exit 1
+          }
+
+  windows-hosted-runtime-probe:
+    name: Windows hosted desktop runtime probe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Windows desktop smoke on hosted runner
+        shell: pwsh
+        run: |
+          ./lumi-tester/scripts/run-windows-desktop-smoke.ps1 `
+            -OutputRoot "$env:RUNNER_TEMP\lumi-windows-hosted-runtime-probe"
+
+      - name: Upload hosted Windows probe artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-hosted-runtime-probe
+          path: ${{ runner.temp }}\lumi-windows-hosted-runtime-probe
+          if-no-files-found: ignore
+
+  macos-smoke:
+    name: macOS native desktop smoke
+    if: github.event_name == 'workflow_dispatch' && inputs.run_native_smoke == 'true'
+    runs-on: [self-hosted, macOS]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate macOS smoke flow
+        run: |
+          cargo run --locked --manifest-path lumi-tester/Cargo.toml -- validate lumi-tester/e2e/desktop/macos-native-smoke.yaml
+          cargo run --locked --manifest-path lumi-tester/Cargo.toml -- validate lumi-tester/e2e/desktop/macos-ax-selector-smoke.yaml
+          cargo run --locked --manifest-path lumi-tester/Cargo.toml -- validate lumi-tester/e2e/desktop/macos-calculator-smoke.yaml
+
+      - name: Check macOS desktop permissions
+        run: |
+          swift - <<'SWIFT'
+          import ApplicationServices
+          import CoreGraphics
+          if !AXIsProcessTrusted() {
+            fputs("Accessibility permission is not granted for this self-hosted runner process.\n", stderr)
+            exit(1)
+          }
+          SWIFT
+
+      - name: Run macOS native smoke
+        run: |
+          cargo run --locked --manifest-path lumi-tester/Cargo.toml -- \
+            run lumi-tester/e2e/desktop/macos-native-smoke.yaml \
+            --platform macos \
+            --output "$RUNNER_TEMP/lumi-macos-native-smoke" \
+            --events-jsonl
+          cargo run --locked --manifest-path lumi-tester/Cargo.toml -- \
+            run lumi-tester/e2e/desktop/macos-ax-selector-smoke.yaml \
+            --platform macos \
+            --output "$RUNNER_TEMP/lumi-macos-ax-selector-smoke" \
+            --events-jsonl
+          cargo run --locked --manifest-path lumi-tester/Cargo.toml -- \
+            run lumi-tester/e2e/desktop/macos-calculator-smoke.yaml \
+            --platform macos \
+            --output "$RUNNER_TEMP/lumi-macos-calculator-smoke" \
+            --events-jsonl
+
+      - name: Upload macOS smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-native-smoke
+          path: |
+            ${{ runner.temp }}/lumi-macos-native-smoke
+            ${{ runner.temp }}/lumi-macos-ax-selector-smoke
+            ${{ runner.temp }}/lumi-macos-calculator-smoke
+          if-no-files-found: ignore
+
+  windows-smoke:
+    name: Windows native desktop smoke
+    if: github.event_name == 'workflow_dispatch' && inputs.run_native_smoke == 'true'
+    runs-on: [self-hosted, Windows]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate Windows smoke flow
+        run: |
+          cargo run --locked --manifest-path lumi-tester/Cargo.toml -- validate lumi-tester/e2e/desktop/windows-native-smoke.yaml
+          cargo run --locked --manifest-path lumi-tester/Cargo.toml -- validate lumi-tester/e2e/desktop/windows-uia-selector-smoke.yaml
+
+      - name: Check Windows desktop automation prerequisites
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
+          Add-Type -TypeDefinition @"
+          using System;
+          using System.Runtime.InteropServices;
+          public class LumiWin32 {
+            [DllImport("user32.dll")]
+            public static extern IntPtr GetForegroundWindow();
+          }
+          "@
+          $handle = [LumiWin32]::GetForegroundWindow()
+          if ($handle -eq [IntPtr]::Zero) {
+            throw "No interactive foreground desktop window is available for this self-hosted Windows runner."
+          }
+
+      - name: Run Windows native smoke
+        shell: pwsh
+        run: |
+          ./lumi-tester/scripts/run-windows-desktop-smoke.ps1 `
+            -OutputRoot "$env:RUNNER_TEMP\lumi-windows-desktop-smoke"
+
+      - name: Upload Windows smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-native-smoke
+          path: |
+            ${{ runner.temp }}\lumi-windows-desktop-smoke
+          if-no-files-found: ignore
