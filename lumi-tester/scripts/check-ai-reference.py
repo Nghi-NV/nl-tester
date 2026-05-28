@@ -47,6 +47,7 @@ CLI_CSV = (
 OPENAI_YAML = SKILL_DIR / "agents" / "openai.yaml"
 TESTCASE_DESIGN_MD = SKILL_DIR / "references" / "testcase-design.md"
 DEBUG_ARTIFACTS_MD = SKILL_DIR / "references" / "debug-artifacts.md"
+PATTERNS_MD = SKILL_DIR / "references" / "patterns.md"
 SCHEMA_JSON = ROOT / "lumi-tester" / "schema" / "lumi-test.schema.json"
 HELPER_SCRIPT = SKILL_DIR / "scripts" / "lumi_agent.py"
 
@@ -542,6 +543,77 @@ def validate_debug_artifacts_reference() -> list[str]:
     return errors
 
 
+def validate_patterns_reference() -> list[str]:
+    errors: list[str] = []
+    raw_text = PATTERNS_MD.read_text(encoding="utf-8")
+    text = raw_text.lower()
+    skill_text = SKILL_MD.read_text(encoding="utf-8").lower()
+    if "references/patterns.md" not in skill_text:
+        errors.append(f"{SKILL_MD}: missing flow patterns reference")
+
+    section_requirements = {
+        "Current Android App Smoke": {
+            "adb devices -l": "device enumeration",
+            "mcurrentfocus": "current focus discovery",
+            "uiautomator dump": "UI XML discovery",
+            "appId": "discovered app id",
+            "do not use\n  coordinates": "coordinate avoidance",
+            "accessibilityId": "semantic Android selector",
+        },
+        "Login": {
+            "env: { file: \".env\" }": "sensitive credential guidance",
+            "hideKeyboard": "keyboard handling",
+            "waitUntilVisible": "login readiness wait",
+        },
+        "Permission Dialog": {
+            "permission": "permission workflow",
+            "os version": "OS-specific prompt warning",
+            "runFlow": "reusable permission flow",
+        },
+        "GPS Route": {
+            "mockLocation": "GPS route start",
+            "waitForLocation": "GPS assertion wait",
+            "stopMockLocation": "GPS cleanup",
+        },
+        "Web Form": {
+            "platform: web": "web platform header",
+            "browser: chromium": "browser target",
+            "css": "web CSS selector",
+            "role": "web role selector",
+        },
+        "Failure Recovery Pattern": {
+            "list ./flow.yaml --json": "command index discovery",
+            "--command-index": "smallest failing command rerun",
+            "--snapshot": "snapshot artifact",
+            "--events-jsonl": "event artifact",
+            "suggest_selectors": "selector suggestion workflow",
+            "rerun the whole flow": "full flow confirmation",
+        },
+    }
+    for heading, terms in section_requirements.items():
+        section = markdown_section(raw_text, heading)
+        if not section:
+            errors.append(f"{PATTERNS_MD}: missing section: {heading}")
+            continue
+        normalized_section = section.lower()
+        for term, label in terms.items():
+            if term.lower() not in normalized_section:
+                errors.append(f"{PATTERNS_MD}: missing {label} in {heading}")
+
+    required_global_terms = {
+        "replace selectors with discovered": "selector discovery prerequisite",
+        "validate before running": "validation prerequisite",
+        "do not reuse a nearby\n  yaml file": "current app package guard",
+        "coordinates": "coordinate warning",
+        "clearState: true": "first-run state reset example",
+        "runFlow": "reusable setup flow guidance",
+    }
+    for term, label in required_global_terms.items():
+        if term.lower() not in text:
+            errors.append(f"{PATTERNS_MD}: missing {label}")
+    return errors
+
+
 def validate_reference_examples() -> list[str]:
     stale_patterns = {
         "killApp command": r"\bkillApp\b",
@@ -961,6 +1033,7 @@ def main() -> int:
     errors.extend(validate_helper_script_behavior())
     errors.extend(validate_testcase_design_reference())
     errors.extend(validate_debug_artifacts_reference())
+    errors.extend(validate_patterns_reference())
     errors.extend(validate_reference_examples())
     errors.extend(validate_command_example_fields())
     errors.extend(validate_selector_catalog())
