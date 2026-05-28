@@ -215,6 +215,8 @@ def validate_headers_catalog() -> list[str]:
     for term in ("references/headers.csv", "desktopState.clear.mode", "registryKeys"):
         if term not in catalog_text and term not in skill_text:
             errors.append(f"{HEADERS_CSV}: {term} is not surfaced in skill guidance")
+    if "Read or search `references/headers.csv`" not in skill_text:
+        errors.append(f"{SKILL_MD}: Extra Reference should mention headers.csv")
     return errors
 
 

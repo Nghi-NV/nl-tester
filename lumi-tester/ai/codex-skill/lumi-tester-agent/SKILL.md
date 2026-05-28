@@ -406,6 +406,8 @@ Treat these as runtime/debug bugs:
 
 - Read or search `references/cli.csv` for fast Lumi CLI lookup by purpose,
   platform, options, output, and when an AI agent should use it.
+- Read or search `references/headers.csv` for YAML header fields, aliases,
+  platform support, examples, and desktop `desktopState.clear` shape.
 - Read `references/command-catalog.md` before writing unfamiliar commands.
 - Read `references/testcase-design.md` before turning requirements or
   exploratory findings into a folder of generated tests.
