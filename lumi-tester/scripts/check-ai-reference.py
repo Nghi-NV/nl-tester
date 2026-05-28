@@ -545,6 +545,50 @@ def validate_cli_catalog() -> list[str]:
     return errors
 
 
+def csv_cli_names() -> set[str]:
+    with CLI_CSV.open(newline="", encoding="utf-8") as fh:
+        return {row["command"].strip() for row in csv.DictReader(fh)}
+
+
+def shell_fence_bodies(text: str) -> list[str]:
+    return re.findall(r"```(?:bash|sh)\n(.*?)```", text, flags=re.DOTALL)
+
+
+def cli_commands_in_shell_example(body: str) -> set[str]:
+    names: set[str] = set()
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        match = re.match(r"lumi-tester\s+([A-Za-z][A-Za-z0-9-]*|<command>)\b", stripped)
+        if not match:
+            match = re.match(
+                r"cargo\s+run\s+--\s+([A-Za-z][A-Za-z0-9-]*|<command>)\b",
+                stripped,
+            )
+        if not match:
+            continue
+        command = match.group(1)
+        if command != "<command>":
+            names.add(command)
+    return names
+
+
+def validate_shell_cli_examples(cli_names: set[str]) -> list[str]:
+    errors: list[str] = []
+    paths = [SKILL_MD, *sorted((SKILL_DIR / "references").glob("*.md"))]
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        for idx, body in enumerate(shell_fence_bodies(text), start=1):
+            unknown = sorted(cli_commands_in_shell_example(body).difference(cli_names))
+            if unknown:
+                errors.append(
+                    f"{path}: shell example block {idx} uses unknown CLI command(s): "
+                    + ", ".join(unknown)
+                )
+    return errors
+
+
 def main() -> int:
     errors: list[str] = []
     errors.extend(
@@ -607,8 +651,10 @@ def main() -> int:
 
     parser_names = parser_commands()
     csv_names = csv_command_names()
+    cli_names = csv_cli_names()
     schema_names = schema_command_names()
     errors.extend(validate_yaml_command_examples(parser_names))
+    errors.extend(validate_shell_cli_examples(cli_names))
 
     missing = sorted(parser_names.difference(csv_names))
     if missing:
