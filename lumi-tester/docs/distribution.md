@@ -14,11 +14,47 @@
 Create a Git tag from the repository root:
 
 ```bash
-git tag v0.1.3
-git push origin v0.1.3
+git tag v0.1.5
+git push origin v0.1.5
 ```
 
-The GitHub Actions release workflow builds all targets, uploads the binaries, and publishes `SHA256SUMS`.
+The GitHub Actions release workflow builds all targets, uploads the binaries, publishes `SHA256SUMS`, includes install scripts, and generates Homebrew/Scoop/Winget manifest files as release assets.
+
+## AI Pack Install
+
+Use this path when the target machine should be ready for AI-assisted Lumi test authoring, execution, and debugging.
+
+macOS and Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+iwr https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.ps1 -UseB | iex
+```
+
+The AI installer:
+
+- Installs the `lumi-tester` CLI.
+- Downloads the matching `lumi-tester-mcp-<target>.tgz` release asset.
+- Installs the Codex skill into `$CODEX_HOME/skills/lumi-tester-agent`.
+- Writes MCP config snippets under `$HOME/.lumi-tester/ai`.
+- Adds a Codex MCP server entry unless `LUMI_AI_CONFIGURE_CODEX=0`.
+
+Requirements:
+
+- `node` and `npm`.
+- Restart the AI client after install.
+- Android/iOS/Web device dependencies as needed.
+
+Pin a release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.sh | LUMI_TESTER_VERSION=v0.1.5 bash
+```
 
 ## One-line Install
 
@@ -37,13 +73,13 @@ iwr https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts
 Install a specific version:
 
 ```bash
-LUMI_TESTER_VERSION=v0.1.3 curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | LUMI_TESTER_VERSION=v0.1.5 bash
 ```
 
 Skip `system install --all`:
 
 ```bash
-LUMI_SKIP_SYSTEM_INSTALL=1 curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | LUMI_SKIP_SYSTEM_INSTALL=1 bash
 ```
 
 After installation, users can run:
@@ -98,7 +134,7 @@ the package id to `NghiNV.LumiTester`.
 
 ## MCP Package
 
-`lumi-tester-mcp` is a Node MCP server for AI agents.
+`lumi-tester-mcp` is a Node MCP server for AI agents. Release assets include platform-specific packages named `lumi-tester-mcp-<target>.tgz`; the AI installer downloads the right one automatically.
 
 Runtime resolution order:
 

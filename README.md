@@ -47,6 +47,55 @@ For more details, see [nexus-api/README.md](nexus-api/README.md).
 
 ## 🚀 Installation
 
+### Lumi Tester AI Pack (recommended for AI agents)
+
+This installs the `lumi-tester` CLI, the platform-matched MCP package, and the Codex skill that teaches AI agents how to write, validate, run, and debug Lumi YAML tests.
+
+macOS / Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+iwr https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.ps1 -UseB | iex
+```
+
+Requirements for the AI pack:
+
+- `node` and `npm` for the MCP server.
+- A restarted AI client after installation so it reloads the new MCP config/skill.
+- Android/iOS/Web runtime tools as needed; the installer runs `lumi-tester system install --all` by default.
+
+Quick check after install:
+
+```bash
+lumi-tester --version
+lumi-tester doctor --platform android --json
+```
+
+### Lumi Tester CLI only
+
+macOS / Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+iwr https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.ps1 -UseB | iex
+```
+
+Install a pinned release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | LUMI_TESTER_VERSION=v0.1.5 bash
+```
+
 ### Lumi Tester Studio (Desktop App)
 
 Download the latest installers from the [Releases](https://github.com/Nghi-NV/nl-tester/releases) page:
@@ -58,7 +107,7 @@ Download the latest installers from the [Releases](https://github.com/Nghi-NV/nl
 
 ### Lumi Tester (CLI Tool)
 
-Download from the [lumi-tester Releases](https://github.com/Nghi-NV/nl-tester/releases):
+Manual download from the [lumi-tester Releases](https://github.com/Nghi-NV/nl-tester/releases):
 
 - **Windows**: `lumi-tester-x86_64-pc-windows-msvc.exe` or `lumi-tester-aarch64-pc-windows-msvc.exe`
 - **macOS**: `lumi-tester-aarch64-apple-darwin` for Apple Silicon, or `lumi-tester-x86_64-apple-darwin` for Intel
@@ -129,5 +178,5 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 
 ---
 
-**Version**: 0.1.3
+**Version**: 0.1.5
 **Repository**: [https://github.com/Nghi-NV/nl-tester](https://github.com/Nghi-NV/nl-tester)

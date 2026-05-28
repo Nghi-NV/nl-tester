@@ -24,7 +24,47 @@
 
 ## 📦 Installation
 
-### One-line Install
+### AI Pack (recommended for AI agents)
+
+The AI pack installs:
+
+- `lumi-tester` CLI.
+- A platform-matched `lumi-tester-mcp` package with a bundled binary.
+- The Codex skill `lumi-tester-agent`.
+- MCP config snippets for Codex and Claude-style clients.
+
+macOS / Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+iwr https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.ps1 -UseB | iex
+```
+
+Requirements:
+
+- `node` and `npm` for the MCP server.
+- Restart the AI client after install.
+- Device/browser dependencies for the platform under test. The installer runs `lumi-tester system install --all` unless `LUMI_SKIP_SYSTEM_INSTALL=1` is set.
+
+Pin a specific release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.sh | LUMI_TESTER_VERSION=v0.1.5 bash
+```
+
+Quick checks:
+
+```bash
+lumi-tester --version
+lumi-tester doctor --platform android --json
+```
+
+### CLI One-line Install
 
 macOS / Linux:
 
@@ -43,18 +83,18 @@ The scripts detect OS/CPU, download the matching GitHub Release binary, add it t
 Install a specific version:
 
 ```bash
-LUMI_TESTER_VERSION=v0.1.3 curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | LUMI_TESTER_VERSION=v0.1.5 bash
 ```
 
 Skip driver/browser initialization:
 
 ```bash
-LUMI_SKIP_SYSTEM_INSTALL=1 curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | LUMI_SKIP_SYSTEM_INSTALL=1 bash
 ```
 
 ### Package Managers
 
-Planned distribution channels:
+Release assets include generated manifests for package-manager distribution:
 
 ```bash
 brew install nghi-nv/tap/lumi-tester
