@@ -163,6 +163,8 @@ Before choosing a selector, search
 `ai/codex-skill/lumi-tester-agent/references/selectors.csv` for platform
 support, rank, and anti-patterns. For unfamiliar screens or selector failures,
 read `ai/codex-skill/lumi-tester-agent/references/selector-discovery.md`.
+After `lumi-tester ai install`, the same files are available under
+`~/.codex/skills/lumi-tester-agent/references/`.
 
 Fast selector discovery loop:
 
@@ -275,7 +277,8 @@ lumi-tester run ./test.yaml --platform <platform> --command-index <index> --repo
 For ambiguous failures, read
 `ai/codex-skill/lumi-tester-agent/references/debug-artifacts.md` and classify
 the issue as wrong target, setup/state, app/runtime, or selector before editing
-YAML.
+YAML. On machines with the installed Codex skill, read the same file from
+`~/.codex/skills/lumi-tester-agent/references/debug-artifacts.md`.
 
 ## Schema
 

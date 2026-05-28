@@ -633,11 +633,15 @@ def validate_ai_authoring_contract() -> list[str]:
         "tests/generated/<feature>/": "generated folder convention",
         "references/selectors.csv": "selector CSV guidance",
         "references/selector-discovery.md": "selector discovery playbook guidance",
+        "~/.codex/skills/lumi-tester-agent/references/": "installed skill reference path",
         "inspector_get /api/hierarchy": "Inspector hierarchy guidance",
         "inspector_get /api/element-at": "Inspector element-at guidance",
         "uihierarchypath": "UI hierarchy artifact guidance",
         "suggest_selectors": "MCP selector suggestion guidance",
         "debug launch/crash/wrong target": "wrong target before selector tuning guidance",
+        "~/.codex/skills/lumi-tester-agent/references/debug-artifacts.md": (
+            "installed debug-artifacts path"
+        ),
     }
     for platform in REQUIRED_AGENT_PLATFORMS:
         required_terms[f"doctor --platform {platform} --json"] = (
