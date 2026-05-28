@@ -537,6 +537,27 @@ def validate_package_manager_ai_guidance() -> list[str]:
     return errors
 
 
+def validate_ai_installer_skill_fallback() -> list[str]:
+    errors: list[str] = []
+    sources = {
+        AI_RS: AI_RS.read_text(encoding="utf-8"),
+        INSTALL_AI_SH: INSTALL_AI_SH.read_text(encoding="utf-8"),
+        INSTALL_AI_PS1: INSTALL_AI_PS1.read_text(encoding="utf-8"),
+    }
+    for path, text in sources.items():
+        for term in ("falling back", "SKILL.md", "references/cli.csv"):
+            if term not in text:
+                errors.append(f"{path}: missing AI skill install fallback term: {term}")
+
+    if "resolve_skill_base_url" not in sources[AI_RS] or "url_exists" not in sources[AI_RS]:
+        errors.append(f"{AI_RS}: Rust AI installer should preflight skill file URLs")
+    if "url_exists" not in sources[INSTALL_AI_SH]:
+        errors.append(f"{INSTALL_AI_SH}: shell AI installer should preflight skill file URLs")
+    if "Test-UrlExists" not in sources[INSTALL_AI_PS1]:
+        errors.append(f"{INSTALL_AI_PS1}: PowerShell AI installer should preflight skill file URLs")
+    return errors
+
+
 def markdown_section(text: str, heading: str) -> str:
     pattern = rf"^## {re.escape(heading)}\s*$"
     match = re.search(pattern, text, flags=re.MULTILINE)
@@ -848,8 +869,7 @@ def validate_desktop_reference() -> list[str]:
         "doctor --platform windows": "Windows doctor command",
         "events-jsonl": "debug artifact flag",
         "point": "desktop point fallback",
-        "ocr": "desktop OCR fallback",
-        "image": "desktop image fallback",
+        "not implemented for macos/windows desktop drivers": "desktop OCR/image runtime limit",
     }
     for term, label in required_terms.items():
         if term not in text:
@@ -1257,6 +1277,46 @@ def validate_selector_quality() -> list[str]:
     return errors
 
 
+def validate_desktop_selector_guidance() -> list[str]:
+    errors: list[str] = []
+    with SELECTORS_CSV.open(newline="", encoding="utf-8") as fh:
+        rows = {row["selector"].strip(): row for row in csv.DictReader(fh)}
+
+    for selector in ("text", "id", "accessibilityId", "role", "type", "description"):
+        if selector not in rows:
+            errors.append(f"{SELECTORS_CSV}: missing desktop semantic selector: {selector}")
+            continue
+        platforms = split_field_names(rows[selector]["platforms"])
+        missing = sorted({"macos", "windows"}.difference(platforms))
+        if missing:
+            errors.append(
+                f"{SELECTORS_CSV}: selector {selector} is missing desktop platform(s): "
+                + ", ".join(missing)
+            )
+
+    for selector in ("ocr", "image"):
+        if selector not in rows:
+            continue
+        platforms = split_field_names(rows[selector]["platforms"])
+        unsupported = sorted({"macos", "windows"}.intersection(platforms))
+        if unsupported:
+            errors.append(
+                f"{SELECTORS_CSV}: selector {selector} lists unsupported desktop platform(s): "
+                + ", ".join(unsupported)
+            )
+
+    for path in (DESKTOP_MD, SKILL_DIR / "references" / "selector-discovery.md"):
+        text = path.read_text(encoding="utf-8").lower()
+        for phrase in (
+            "not implemented for macos/windows desktop",
+            "screenshot/pixel",
+            "`point`",
+        ):
+            if phrase not in text:
+                errors.append(f"{path}: missing desktop selector runtime limit: {phrase}")
+    return errors
+
+
 def validate_cli_catalog() -> list[str]:
     errors: list[str] = []
     source_names = cli_commands()
@@ -1377,6 +1437,7 @@ def main() -> int:
     errors.extend(validate_mcp_tool_references())
     errors.extend(validate_user_install_docs())
     errors.extend(validate_package_manager_ai_guidance())
+    errors.extend(validate_ai_installer_skill_fallback())
     errors.extend(validate_testcase_design_reference())
     errors.extend(validate_debug_artifacts_reference())
     errors.extend(validate_patterns_reference())
@@ -1386,6 +1447,7 @@ def main() -> int:
     errors.extend(validate_command_example_fields())
     errors.extend(validate_selector_catalog())
     errors.extend(validate_selector_quality())
+    errors.extend(validate_desktop_selector_guidance())
     errors.extend(validate_cli_catalog())
 
     parser_names = parser_commands()

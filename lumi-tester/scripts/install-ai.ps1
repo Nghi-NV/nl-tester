@@ -41,8 +41,21 @@ function Get-RawBaseUrl {
     return "https://raw.githubusercontent.com/$Repo/$Ref"
 }
 
+function Get-RawRefBaseUrl {
+    return "https://raw.githubusercontent.com/$Repo/$Ref"
+}
+
 function Download-File($Url, $Output) {
     Invoke-WebRequest -Uri $Url -OutFile $Output -UseBasicParsing
+}
+
+function Test-UrlExists($Url) {
+    try {
+        Invoke-WebRequest -Uri $Url -Method Head -UseBasicParsing | Out-Null
+        return $true
+    } catch {
+        return $false
+    }
 }
 
 function Install-Cli {
@@ -114,6 +127,16 @@ function Install-CodexSkill {
         "scripts/lumi_agent.py",
         "agents/openai.yaml"
     )
+
+    if ($Version -ne "latest") {
+        foreach ($file in $files) {
+            if (!(Test-UrlExists "$base/$file")) {
+                Write-Host "Warning: skill file $file is not available at $Version; falling back to $Ref"
+                $base = "$(Get-RawRefBaseUrl)/lumi-tester/ai/codex-skill/lumi-tester-agent"
+                break
+            }
+        }
+    }
 
     Write-Host "Installing Codex skill..."
     New-Item -ItemType Directory -Force -Path (Join-Path $skillDir "references") | Out-Null

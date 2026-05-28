@@ -165,12 +165,9 @@ async fn install_codex_skill(
     codex_home: &Path,
 ) -> Result<()> {
     let skill_dir = codex_home.join("skills").join("lumi-tester-agent");
-    let base = format!(
-        "{}/lumi-tester/ai/codex-skill/lumi-tester-agent",
-        raw_base_url(repo, version, git_ref)
-    );
 
     println!("{} Installing Codex skill", "•".blue());
+    let base = resolve_skill_base_url(repo, version, git_ref).await?;
     tokio::fs::create_dir_all(skill_dir.join("references")).await?;
     tokio::fs::create_dir_all(skill_dir.join("scripts")).await?;
     tokio::fs::create_dir_all(skill_dir.join("agents")).await?;
@@ -186,6 +183,36 @@ async fn install_codex_skill(
     make_executable(&skill_dir.join("scripts").join("lumi_agent.py"))?;
     println!("  Installed Codex skill: {}", skill_dir.display());
     Ok(())
+}
+
+async fn resolve_skill_base_url(repo: &str, version: &str, git_ref: &str) -> Result<String> {
+    let primary = format!(
+        "{}/lumi-tester/ai/codex-skill/lumi-tester-agent",
+        raw_base_url(repo, version, git_ref)
+    );
+    if version == "latest" {
+        return Ok(primary);
+    }
+
+    for file in SKILL_FILES {
+        let url = format!("{}/{}", primary, file);
+        if !url_exists(&url).await? {
+            let fallback = format!(
+                "{}/lumi-tester/ai/codex-skill/lumi-tester-agent",
+                raw_ref_base_url(repo, git_ref)
+            );
+            eprintln!(
+                "{} Skill file {} is not available at {}; falling back to {}",
+                "warning:".yellow(),
+                file,
+                version,
+                git_ref
+            );
+            return Ok(fallback);
+        }
+    }
+
+    Ok(primary)
 }
 
 struct ConfigSnippets {
@@ -307,6 +334,15 @@ async fn download_to_file(url: &str, output: &Path) -> Result<()> {
     Ok(())
 }
 
+async fn url_exists(url: &str) -> Result<bool> {
+    let response = reqwest::Client::new()
+        .head(url)
+        .send()
+        .await
+        .with_context(|| format!("Failed to check {}", url))?;
+    Ok(response.status().is_success())
+}
+
 fn release_base_url(repo: &str, version: &str) -> String {
     if version == "latest" {
         format!("https://github.com/{}/releases/latest/download", repo)
@@ -317,10 +353,14 @@ fn release_base_url(repo: &str, version: &str) -> String {
 
 fn raw_base_url(repo: &str, version: &str, git_ref: &str) -> String {
     if version == "latest" {
-        format!("https://raw.githubusercontent.com/{}/{}", repo, git_ref)
+        raw_ref_base_url(repo, git_ref)
     } else {
         format!("https://raw.githubusercontent.com/{}/{}", repo, version)
     }
+}
+
+fn raw_ref_base_url(repo: &str, git_ref: &str) -> String {
+    format!("https://raw.githubusercontent.com/{}/{}", repo, git_ref)
 }
 
 fn toml_escape(value: &str) -> String {

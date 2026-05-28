@@ -44,8 +44,8 @@ Use the first stable selector available:
 4. `regex` for dynamic visible text
 5. relative selector near a stable anchor
 6. `type` with `index`
-7. `ocr`
-8. `image`
+7. `ocr` on Android, iOS, or Web
+8. `image` on Android, iOS, or Web
 9. `point`
 
 Coordinates are allowed only when no semantic selector exists or when testing
@@ -281,12 +281,16 @@ Role/type with index when labels repeat:
     index: 1
 ```
 
-Use OCR or image matching only when the desktop hierarchy cannot expose the
-target:
+When desktop hierarchy cannot expose the target, inspect the screenshot and use
+screenshot/pixel assertions plus a documented `point` fallback. Do not use
+`ocr` or `image` selectors for macOS/Windows desktop flows; they are not
+implemented for macOS/Windows desktop drivers in the current runtime:
+
+In short: `ocr`/`image` are not implemented for macOS/Windows desktop drivers.
 
 ```yaml
 - tap:
-    ocr: "Continue"
+    point: "50%,80%"
 ```
 
 ## Relative Selector Pattern

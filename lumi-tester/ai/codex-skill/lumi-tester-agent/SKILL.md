@@ -24,11 +24,12 @@ selecting commands, selectors, devices, and debug artifacts:
   `text`, and browser artifacts.
 - macOS: local desktop app path or bundle id in `appId`, Accessibility
   hierarchy, `text`/`id`/`description`/`role`/`type` best-effort selectors,
-  screenshot/OCR/image/point fallback, Accessibility and Screen Recording
-  permissions.
+  screenshot/pixel commands, `point` fallback, Accessibility and Screen
+  Recording permissions.
 - Windows: local executable path in `appId`, UI Automation hierarchy for the
   foreground window, `text`/`id`/`description`/`role`/`type` best-effort
-  selectors, screenshot/OCR/image/point fallback, interactive desktop session.
+  selectors, screenshot/pixel commands, `point` fallback, interactive desktop
+  session.
 
 ## Find Lumi Tester
 
@@ -210,6 +211,10 @@ Selector priority:
 5. `type` with `index`
 6. `ocr` when native hierarchy cannot expose text
 7. `point` only as a last resort, preferably percentages like `"50%,80%"`
+
+For macOS and Windows desktop tests, `ocr` and `image` are not selector
+fallbacks in the current runtime. Use Accessibility/UI Automation selectors
+first, then screenshot/pixel assertions and `point` only when needed.
 
 Do not switch to coordinates just because a selector failed once. First inspect
 the UI XML/screenshot, choose the best semantic selector, and only use `point`

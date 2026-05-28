@@ -65,6 +65,21 @@ raw_base_url() {
   fi
 }
 
+raw_ref_base_url() {
+  echo "https://raw.githubusercontent.com/$REPO/$REF"
+}
+
+url_exists() {
+  local url="$1"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsIL "$url" >/dev/null 2>&1
+  elif command -v wget >/dev/null 2>&1; then
+    wget --spider -q "$url" >/dev/null 2>&1
+  else
+    fail "Missing curl or wget"
+  fi
+}
+
 install_cli() {
   if [ "$SKIP_CLI" = "1" ]; then
     say "Skipping CLI install because LUMI_AI_SKIP_CLI=1"
@@ -124,6 +139,16 @@ install_codex_skill() {
     "scripts/lumi_agent.py"
     "agents/openai.yaml"
   )
+
+  if [ "$VERSION" != "latest" ]; then
+    for file in "${files[@]}"; do
+      if ! url_exists "$base/$file"; then
+        say "Warning: skill file $file is not available at $VERSION; falling back to $REF"
+        base="$(raw_ref_base_url)/lumi-tester/ai/codex-skill/lumi-tester-agent"
+        break
+      fi
+    done
+  fi
 
   say "Installing Codex skill..."
   mkdir -p "$skill_dir/references" "$skill_dir/scripts" "$skill_dir/agents"

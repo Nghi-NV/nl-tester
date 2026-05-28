@@ -23,8 +23,9 @@ Use this reference for native desktop flows using `platform: macos` or
 - Desktop automation is local-host only in the MVP. Do not assume remote macOS
   or remote Windows execution.
 - Desktop apps vary heavily in Accessibility/UI Automation exposure. Prefer
-  semantic selectors when exposed, but expect custom-rendered/canvas apps to
-  need image/OCR or `point` fallback.
+  semantic selectors when exposed. For custom-rendered/canvas apps, use
+  screenshot/pixel checks for assertions and `point` only when no semantic
+  selector exists.
 
 ## macOS Flow
 
@@ -132,12 +133,9 @@ Safety rules:
 
 ## Selector Guidance
 
-Reliable desktop MVP selectors:
+Reliable desktop MVP selector:
 
 - `point`
-- `image`
-- `ocr`
-- screenshot and pixel color commands
 
 Best-effort native selectors:
 
@@ -149,8 +147,9 @@ Best-effort native selectors:
 
 For macOS, selectors come from Accessibility attributes. For Windows, selectors
 come from UI Automation properties on the foreground window. If the hierarchy
-does not expose the target, inspect the screenshot, then use OCR/image or
-`point` as a documented fallback.
+does not expose the target, inspect the screenshot, then use screenshot/pixel
+assertions or `point` as a documented fallback. `ocr` and `image` selectors are
+not implemented for macOS/Windows desktop drivers in the current runtime.
 
 ## Commands
 
