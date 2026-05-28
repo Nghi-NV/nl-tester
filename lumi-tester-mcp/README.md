@@ -53,3 +53,21 @@ separate `lumi-tester` install.
 - `read_artifact`
 - `inspector_get`
 - `suggest_selectors`
+
+Agent workflow:
+
+1. Run `doctor` for the target platform. Supported platforms are `android`,
+   `android_auto`, `ios`, `web`, `macos`, `windows`, and `all`.
+2. Run `validate_yaml` and stop on invalid YAML.
+3. Run `list_tests` before using a command index.
+4. Use `schema` when command/header shape is unclear.
+5. Use `run_test`; it enables report, snapshot, and `events.jsonl` by default.
+6. On failure, read `run.json` with `read_report`, then inspect `events.jsonl`
+   with `read_events`.
+7. Use `read_artifact` for failure XML/log text. Use `suggest_selectors` for
+   Android UIAutomator XML selector candidates before falling back to points.
+
+`run_test` supports `android`, `android_auto`, `ios`, `web`, `macos`, and
+`windows`. Native desktop tests must run on the local desktop host; macOS needs
+Accessibility/Screen Recording permissions and Windows needs an interactive
+desktop session.

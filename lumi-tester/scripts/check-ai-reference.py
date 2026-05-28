@@ -522,6 +522,24 @@ def validate_mcp_tool_references() -> list[str]:
                 errors.append(
                     f"{MCP_SERVER_JS}: MCP tool {tool} should accept platform: {platform}"
                 )
+
+    required_readme_terms = {
+        "agent workflow": "MCP agent workflow",
+        "android_auto": "Android Auto platform guidance",
+        "macos": "macOS platform guidance",
+        "windows": "Windows platform guidance",
+        "run_test` supports": "run_test platform support",
+        "report, snapshot, and `events.jsonl` by default": "debug artifact defaults",
+        "`read_report`": "read_report debug step",
+        "`read_events`": "read_events debug step",
+        "`read_artifact`": "read_artifact debug step",
+        "`suggest_selectors`": "selector suggestion debug step",
+        "native desktop tests must run on the local desktop host": "desktop host limitation",
+    }
+    lower_readme = readme_text.lower()
+    for term, label in required_readme_terms.items():
+        if term.lower() not in lower_readme:
+            errors.append(f"{MCP_README}: missing {label}")
     return errors
 
 
