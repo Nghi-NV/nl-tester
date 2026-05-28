@@ -623,6 +623,10 @@ def validate_ai_installer_skill_fallback() -> list[str]:
         errors.append(f"{INSTALL_AI_SH}: shell AI installer should preflight skill file URLs")
     if "Test-UrlExists" not in sources[INSTALL_AI_PS1]:
         errors.append(f"{INSTALL_AI_PS1}: PowerShell AI installer should preflight skill file URLs")
+    for path, text in sources.items():
+        for platform in REQUIRED_AGENT_PLATFORMS:
+            if f"doctor --platform {platform} --json" not in text:
+                errors.append(f"{path}: AI installer quick checks missing platform: {platform}")
     return errors
 
 

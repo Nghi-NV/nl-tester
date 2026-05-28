@@ -238,6 +238,7 @@ main() {
   say "Restart your AI client, then ask it to use the lumi-tester agent/MCP tools."
   say "Quick checks:"
   say "  lumi-tester doctor --platform android --json"
+  say "  lumi-tester doctor --platform android_auto --json"
   say "  lumi-tester doctor --platform ios --json  # macOS + idb"
   say "  lumi-tester doctor --platform web --json"
   say "  lumi-tester doctor --platform macos --json"
