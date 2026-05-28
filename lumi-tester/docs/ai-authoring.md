@@ -68,6 +68,52 @@ Always set the platform and app identity explicitly:
 - macOS: `platform: macos` with `.app` path or bundle id in `appId`.
 - Windows: `platform: windows` with executable path in `appId`.
 
+## State Reset
+
+Use `clearState: true` only when the test intentionally needs first-run or
+fresh-session behavior. Prefer shared setup flows, seeded data, or grouped suite
+execution when later test files depend on login/session state.
+
+Android and iOS can clear state from the app identity directly:
+
+```yaml
+platform: android
+appId: com.example.app
+---
+- launchApp:
+    clearState: true
+```
+
+For macOS and Windows, always pair `launchApp: { clearState: true }` with a
+header-level `desktopState.clear` plan. Do not use Android-only `clearAppData`
+for desktop apps.
+
+```yaml
+platform: macos
+appId: /Applications/MyApp.app
+desktopState:
+  clear:
+    mode: autoSafe
+---
+- launchApp:
+    clearState: true
+```
+
+```yaml
+platform: windows
+appId: C:\Program Files\Example\Example.exe
+desktopState:
+  clear:
+    mode: autoSafe
+---
+- launchApp:
+    clearState: true
+```
+
+Use `mode: autoSafe` by default. Use `mode: manual` only when explicit
+app-scoped paths, macOS Keychain services, or Windows `HKCU:\Software\...`
+registry keys are known and documented in the test header.
+
 ## Preferred Commands
 
 Use these names for new files:

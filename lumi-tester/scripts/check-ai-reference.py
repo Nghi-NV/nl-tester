@@ -615,6 +615,14 @@ def validate_ai_authoring_contract() -> list[str]:
         "dhu": "Android Auto DHU guidance",
         "`.app` path or bundle id": "macOS app identity guidance",
         "executable path": "Windows app identity guidance",
+        "desktopstate.clear": "desktop clearState header guidance",
+        "clearstate: true": "state reset launch guidance",
+        "clearappdata": "desktop clearAppData warning",
+        "mode: autosafe": "desktop autoSafe guidance",
+        "mode: manual": "desktop manual guidance",
+        "keychain services": "macOS Keychain reset guidance",
+        "hkcu:\\software": "Windows registry reset guidance",
+        "grouped suite": "stateful suite grouping guidance",
     }
     for platform in REQUIRED_AGENT_PLATFORMS:
         required_terms[f"doctor --platform {platform} --json"] = (
