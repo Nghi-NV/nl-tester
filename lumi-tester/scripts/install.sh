@@ -5,6 +5,13 @@ REPO="${LUMI_TESTER_REPO:-Nghi-NV/nl-tester}"
 VERSION="${LUMI_TESTER_VERSION:-latest}"
 INSTALL_DIR="${LUMI_INSTALL_DIR:-}"
 SKIP_SYSTEM_INSTALL="${LUMI_SKIP_SYSTEM_INSTALL:-0}"
+TMP_DIR=""
+
+cleanup() {
+  if [ -n "$TMP_DIR" ]; then
+    rm -rf "$TMP_DIR"
+  fi
+}
 
 say() {
   printf '%s\n' "$*"
@@ -94,16 +101,16 @@ main() {
   need_cmd uname
   need_cmd mktemp
 
-  local asset base_url install_dir tmp_dir tmp_asset tmp_checksums install_path
+  local asset base_url install_dir tmp_asset tmp_checksums install_path
   asset="$(detect_asset)"
   base_url="$(release_base_url)"
   install_dir="$(default_install_dir)"
-  tmp_dir="$(mktemp -d)"
-  tmp_asset="$tmp_dir/$asset"
-  tmp_checksums="$tmp_dir/SHA256SUMS"
+  TMP_DIR="$(mktemp -d)"
+  tmp_asset="$TMP_DIR/$asset"
+  tmp_checksums="$TMP_DIR/SHA256SUMS"
   install_path="$install_dir/lumi-tester"
 
-  trap 'rm -rf "$tmp_dir"' EXIT
+  trap cleanup EXIT
 
   say "Installing lumi-tester"
   say "  Repository: $REPO"
