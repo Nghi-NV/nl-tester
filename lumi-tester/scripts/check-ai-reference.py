@@ -105,6 +105,16 @@ def schema_selector_names() -> set[str]:
     return set(schema["$defs"]["selector"]["properties"])
 
 
+def schema_selector_example_names() -> set[str]:
+    schema = json.loads(SCHEMA_JSON.read_text(encoding="utf-8"))
+    names = set(schema["$defs"]["selector"]["properties"])
+    scrollable = schema["$defs"]["selector"]["properties"]["scrollable"]["oneOf"][1]
+    names.update(scrollable["properties"])
+    ocr_selector = schema["$defs"]["ocrSelector"]["oneOf"][1]
+    names.update(ocr_selector["properties"])
+    return names
+
+
 def validate_skill_references() -> list[str]:
     errors: list[str] = []
     text = SKILL_MD.read_text(encoding="utf-8")
@@ -191,9 +201,19 @@ def validate_yaml_command_examples(parser_names: set[str]) -> list[str]:
     return errors
 
 
+def selector_example_keys(example: str) -> set[str]:
+    keys: set[str] = set()
+    for match in re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*:", example):
+        prefix = example[: match.start()].rstrip()
+        if not prefix or prefix[-1] in "{,;":
+            keys.add(match.group(1))
+    return keys
+
+
 def validate_selector_catalog() -> list[str]:
     errors: list[str] = []
     schema_names = schema_selector_names()
+    example_names = schema_selector_example_names()
     with SELECTORS_CSV.open(newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
             names = [row["selector"].strip()]
@@ -204,6 +224,14 @@ def validate_selector_catalog() -> list[str]:
                 errors.append(
                     f"{SELECTORS_CSV}: selector row {row['selector']} has names "
                     "not present in schema selector properties: " + ", ".join(unknown)
+                )
+            example_keys = selector_example_keys(row["example"])
+            unknown_example_keys = sorted(example_keys.difference(example_names))
+            if unknown_example_keys:
+                errors.append(
+                    f"{SELECTORS_CSV}: selector row {row['selector']} example has "
+                    "fields not present in schema selector properties: "
+                    + ", ".join(unknown_example_keys)
                 )
     return errors
 
