@@ -265,6 +265,14 @@ def validate_testcase_design_reference() -> list[str]:
             "permission": "permission stop condition",
             "reports/artifacts": "debug artifact stop condition",
         },
+        "Generated Suite Example": {
+            "setup.yaml": "root setup example",
+            "subflows/login.yaml": "login subflow example",
+            "001_toggle_notifications.yaml": "leaf regression example",
+            "lumi-tester validate tests/generated": "folder validation command",
+            "lumi-tester run tests/generated": "folder run command",
+            "not the leaf file": "folder run warning",
+        },
     }
     for heading, terms in section_requirements.items():
         section = markdown_section(raw_text, heading).lower()

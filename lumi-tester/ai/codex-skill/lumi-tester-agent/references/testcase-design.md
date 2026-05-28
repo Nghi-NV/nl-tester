@@ -11,6 +11,7 @@ feature, convert testcase documents into YAML, or organize generated tests.
 - Test design techniques
 - App and web coverage checklist
 - Grouping strategy
+- Generated suite example
 - YAML authoring rules from testcases
 - Coverage matrix template
 - Stop conditions
@@ -226,6 +227,86 @@ for explicit setup flows:
 ```yaml
 - runFlow: "../subflows/login.yaml"
 ```
+
+## Generated Suite Example
+
+Use this shape when converting a testcase matrix into runnable files. Keep
+shared login, permissions, and seeded state outside leaf tests.
+
+`tests/generated/account/settings/setup.yaml`:
+
+```yaml
+platform: android
+appId: com.example.app
+tags:
+  - setup
+defaultTimeout: 15000
+---
+- launchApp:
+    appId: com.example.app
+    permissions:
+      notifications: allow
+- waitUntilVisible:
+    accessibilityId: "Login"
+    timeout: 15000
+- runFlow: "./subflows/login.yaml"
+- waitUntilVisible:
+    accessibilityId: "Settings"
+    timeout: 15000
+```
+
+`tests/generated/account/settings/subflows/login.yaml`:
+
+```yaml
+platform: android
+appId: com.example.app
+tags:
+  - subflow
+  - login
+defaultTimeout: 15000
+---
+- tap:
+    accessibilityId: "Email"
+- inputText: "${USER_EMAIL}"
+- tap:
+    accessibilityId: "Password"
+- inputText: "${USER_PASSWORD}"
+- hideKeyboard
+- tap:
+    accessibilityId: "Login"
+```
+
+`tests/generated/account/settings/regression/001_toggle_notifications.yaml`:
+
+```yaml
+platform: android
+appId: com.example.app
+tags:
+  - regression
+  - settings
+  - TC-SETTINGS-001
+defaultTimeout: 10000
+---
+- waitUntilVisible:
+    accessibilityId: "Settings"
+    timeout: 15000
+- tap:
+    accessibilityId: "Notifications"
+- see:
+    accessibilityId: "Notifications enabled"
+```
+
+Validate and run the folder, not the leaf file, when the suite depends on root
+setup or shared state:
+
+```bash
+lumi-tester validate tests/generated/account/settings --json
+lumi-tester list tests/generated/account/settings --json
+lumi-tester run tests/generated/account/settings --platform android --report --snapshot --events-jsonl --output ./output/account-settings
+```
+
+Do not copy this selector text blindly. Replace selectors with values from UI
+XML/accessibility tree/DOM, then validate before running.
 
 ## YAML Authoring Rules From Testcases
 
