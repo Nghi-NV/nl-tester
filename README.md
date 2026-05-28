@@ -96,6 +96,27 @@ Install a pinned release:
 curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | LUMI_TESTER_VERSION=v0.1.5 bash
 ```
 
+### Package managers
+
+Homebrew tap:
+
+```bash
+brew install Nghi-NV/tap/lumi-tester
+```
+
+Scoop bucket:
+
+```powershell
+scoop bucket add Nghi-NV https://github.com/Nghi-NV/scoop-bucket.git
+scoop install lumi-tester
+```
+
+Winget manifests are attached to each release. After the package is accepted into `microsoft/winget-pkgs`, Windows users can install it with:
+
+```powershell
+winget install NghiNV.LumiTester
+```
+
 ### Lumi Tester Studio (Desktop App)
 
 Download the latest installers from the [Releases](https://github.com/Nghi-NV/nl-tester/releases) page:

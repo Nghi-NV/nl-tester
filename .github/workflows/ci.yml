@@ -42,6 +42,7 @@ jobs:
           bash -n lumi-tester/scripts/install.sh
           bash -n lumi-tester/scripts/install-ai.sh
           bash -n lumi-tester/scripts/generate-package-manifests.sh
+          bash -n lumi-tester/scripts/publish-package-manager-manifests.sh
 
       - name: Validate AI references
         run: python3 lumi-tester/scripts/check-ai-reference.py

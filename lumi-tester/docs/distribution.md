@@ -93,12 +93,22 @@ lumi-tester system install --all
 
 Package-manager distribution should wrap the same release assets.
 
+The release workflow generates package-manager manifests. The package-manager workflow publishes Homebrew and Scoop manifests to:
+
+- `Nghi-NV/homebrew-tap` at `Formula/lumi-tester.rb`
+- `Nghi-NV/scoop-bucket` at `bucket/lumi-tester.json`
+
+Set repository secret `PACKAGE_MANAGER_TOKEN` with `repo` scope so the workflow can create/update those repositories. Override target repositories with GitHub Actions variables:
+
+- `HOMEBREW_TAP_REPO`
+- `SCOOP_BUCKET_REPO`
+
 ### Homebrew
 
 Expected UX:
 
 ```bash
-brew install nghi-nv/tap/lumi-tester
+brew install Nghi-NV/tap/lumi-tester
 ```
 
 Formula behavior:
@@ -112,6 +122,7 @@ Formula behavior:
 Expected UX:
 
 ```powershell
+scoop bucket add Nghi-NV https://github.com/Nghi-NV/scoop-bucket.git
 scoop install lumi-tester
 ```
 
@@ -130,7 +141,13 @@ winget install NghiNV.LumiTester
 ```
 
 Winget should point to the GitHub Release installer or portable binary and map
-the package id to `NghiNV.LumiTester`.
+the package id to `NghiNV.LumiTester`. Winget manifests are generated into release assets, but `winget install NghiNV.LumiTester` only works after those manifests are submitted to and accepted by `microsoft/winget-pkgs`.
+
+Generated release assets:
+
+- `winget-NghiNV.LumiTester.yaml`
+- `winget-NghiNV.LumiTester.locale.en-US.yaml`
+- `winget-NghiNV.LumiTester.installer.yaml`
 
 ## MCP Package
 

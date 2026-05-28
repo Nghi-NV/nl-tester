@@ -94,14 +94,22 @@ curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/
 
 ### Package Managers
 
-Release assets include generated manifests for package-manager distribution:
+Homebrew tap:
 
 ```bash
-brew install nghi-nv/tap/lumi-tester
+brew install Nghi-NV/tap/lumi-tester
 ```
 
+Scoop bucket:
+
 ```powershell
+scoop bucket add Nghi-NV https://github.com/Nghi-NV/scoop-bucket.git
 scoop install lumi-tester
+```
+
+Winget manifests are attached to each release. After the package is accepted into `microsoft/winget-pkgs`, Windows users can install it with:
+
+```powershell
 winget install NghiNV.LumiTester
 ```
 

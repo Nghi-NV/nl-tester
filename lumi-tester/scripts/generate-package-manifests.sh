@@ -33,26 +33,27 @@ class LumiTester < Formula
 
   on_macos do
     if Hardware::CPU.arm?
-      url "$(asset_url "$MAC_ARM64")"
+      url "$(asset_url "$MAC_ARM64")", using: :nounzip
       sha256 "$(sha_for "$MAC_ARM64")"
     else
-      url "$(asset_url "$MAC_X64")"
+      url "$(asset_url "$MAC_X64")", using: :nounzip
       sha256 "$(sha_for "$MAC_X64")"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "$(asset_url "$LINUX_ARM64")"
+      url "$(asset_url "$LINUX_ARM64")", using: :nounzip
       sha256 "$(sha_for "$LINUX_ARM64")"
     else
-      url "$(asset_url "$LINUX_X64")"
+      url "$(asset_url "$LINUX_X64")", using: :nounzip
       sha256 "$(sha_for "$LINUX_X64")"
     end
   end
 
   def install
-    bin.install Dir["lumi-tester-*"].first => "lumi-tester"
+    chmod 0755, cached_download
+    bin.install cached_download => "lumi-tester"
   end
 
   def caveats
@@ -74,19 +75,25 @@ cat > "${DIST_DIR}/scoop-lumi-tester.json" <<EOF
   "architecture": {
     "64bit": {
       "url": "$(asset_url "$WIN_X64")",
-      "hash": "$(sha_for "$WIN_X64")"
+      "hash": "$(sha_for "$WIN_X64")",
+      "bin": [
+        [
+          "${WIN_X64}",
+          "lumi-tester.exe"
+        ]
+      ]
     },
     "arm64": {
       "url": "$(asset_url "$WIN_ARM64")",
-      "hash": "$(sha_for "$WIN_ARM64")"
+      "hash": "$(sha_for "$WIN_ARM64")",
+      "bin": [
+        [
+          "${WIN_ARM64}",
+          "lumi-tester.exe"
+        ]
+      ]
     }
   },
-  "bin": [
-    [
-      "lumi-tester-*-pc-windows-msvc.exe",
-      "lumi-tester.exe"
-    ]
-  ],
   "checkver": "github",
   "autoupdate": {
     "architecture": {

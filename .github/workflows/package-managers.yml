@@ -1,0 +1,59 @@
+name: Publish Package Managers
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag to publish, for example v0.1.5"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish Homebrew and Scoop manifests
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.release.tag_name }}
+      HOMEBREW_TAP_REPO: ${{ vars.HOMEBREW_TAP_REPO || 'Nghi-NV/homebrew-tap' }}
+      SCOOP_BUCKET_REPO: ${{ vars.SCOOP_BUCKET_REPO || 'Nghi-NV/scoop-bucket' }}
+      GH_TOKEN: ${{ secrets.PACKAGE_MANAGER_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate release tag
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+(\.[0-9]+){1,2}([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag must look like v0.1.5, got: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+      - name: Require package manager token
+        shell: bash
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "Set repository secret PACKAGE_MANAGER_TOKEN with repo scope to publish Homebrew/Scoop manifests." >&2
+            exit 1
+          fi
+
+      - name: Download release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir dist
+
+      - name: Regenerate package manager manifests
+        shell: bash
+        run: bash lumi-tester/scripts/generate-package-manifests.sh "$RELEASE_TAG" dist
+
+      - name: Publish Homebrew tap and Scoop bucket
+        shell: bash
+        run: bash lumi-tester/scripts/publish-package-manager-manifests.sh "$RELEASE_TAG" dist
