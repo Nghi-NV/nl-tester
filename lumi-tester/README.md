@@ -1,6 +1,6 @@
 # 🚀 lumi-tester
 
-`lumi-tester` is a high-performance command-line tool (CLI) written in Rust, designed for automating mobile and web application testing. It empowers testers to define test scenarios using simple, intuitive YAML files.
+`lumi-tester` is a high-performance command-line tool (CLI) written in Rust, designed for automating mobile, web, and desktop application testing. It empowers testers to define test scenarios using simple, intuitive YAML files.
 
 ## ✨ Highlights
 
@@ -13,9 +13,11 @@
 - **Android**: ADB, UiAutomator (full control)
 - **iOS**: IDB (simulators & devices), XCUITest
 - **Web**: Playwright (Chrome/Firefox/WebKit)
+- **macOS**: native desktop automation through Accessibility, Apple Events, screenshots, and clipboard tooling
+- **Windows**: native desktop automation through PowerShell and UI Automation
 
 ### Key Features
-- **Cross-platform DSL**: Write once, run everywhere (Android, iOS, Web).
+- **Cross-platform DSL**: Write once, run everywhere (Android, iOS, Web, macOS, Windows).
 - **Smart Selectors**: Support for `text`, `id`, `css`, `xpath`, `regex` (including advanced patterns like `\d+`, `[...]`, `(...)`), and `point`.
 - **Control Flow**: Advanced logic with `repeat`, `conditional`, `runFlow`, and `variables`.
 - **Media Support**: Integrated screenshots and video recording (video currently Android only).
@@ -72,6 +74,8 @@ lumi-tester --version
 lumi-tester doctor --platform android --json
 lumi-tester doctor --platform ios --json  # macOS + idb
 lumi-tester doctor --platform web --json
+lumi-tester doctor --platform macos --json
+lumi-tester doctor --platform windows --json
 ```
 
 ### CLI One-line Install

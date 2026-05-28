@@ -56,6 +56,8 @@ INSTALL_AI_SH = ROOT / "lumi-tester" / "scripts" / "install-ai.sh"
 INSTALL_AI_PS1 = ROOT / "lumi-tester" / "scripts" / "install-ai.ps1"
 MCP_SERVER_JS = ROOT / "lumi-tester-mcp" / "src" / "server.js"
 MCP_README = ROOT / "lumi-tester-mcp" / "README.md"
+README_MD = ROOT / "lumi-tester" / "README.md"
+DISTRIBUTION_MD = ROOT / "lumi-tester" / "docs" / "distribution.md"
 REQUIRED_AGENT_PLATFORMS = {"android", "ios", "web", "macos", "windows"}
 
 
@@ -484,6 +486,36 @@ def validate_mcp_tool_references() -> list[str]:
                 errors.append(
                     f"{MCP_SERVER_JS}: MCP tool {tool} should accept platform: {platform}"
                 )
+    return errors
+
+
+def validate_user_install_docs() -> list[str]:
+    errors: list[str] = []
+    docs = {
+        README_MD: README_MD.read_text(encoding="utf-8").lower(),
+        DISTRIBUTION_MD: DISTRIBUTION_MD.read_text(encoding="utf-8").lower(),
+    }
+    required_terms = {
+        "lumi-tester ai install": "AI installer command",
+        "install-ai.sh": "Unix AI one-line installer",
+        "install-ai.ps1": "Windows AI one-line installer",
+        "doctor --platform android --json": "Android quick check",
+        "doctor --platform ios --json": "iOS quick check",
+        "doctor --platform web --json": "Web quick check",
+        "doctor --platform macos --json": "macOS quick check",
+        "doctor --platform windows --json": "Windows quick check",
+        "codex skill": "Codex skill install explanation",
+        "mcp": "MCP install explanation",
+    }
+    for path, text in docs.items():
+        for term, label in required_terms.items():
+            if term not in text:
+                errors.append(f"{path}: missing {label}")
+
+    readme = docs[README_MD]
+    for platform in ("android", "ios", "web", "macos", "windows"):
+        if platform not in readme:
+            errors.append(f"{README_MD}: missing platform mention: {platform}")
     return errors
 
 
@@ -1325,6 +1357,7 @@ def main() -> int:
     errors.extend(validate_helper_script_behavior())
     errors.extend(validate_skill_preflight())
     errors.extend(validate_mcp_tool_references())
+    errors.extend(validate_user_install_docs())
     errors.extend(validate_testcase_design_reference())
     errors.extend(validate_debug_artifacts_reference())
     errors.extend(validate_patterns_reference())
