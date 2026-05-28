@@ -72,12 +72,19 @@ iwr https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts
 You can use the bundled helper without loading it:
 
 ```bash
-python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py validate path/to/test.yaml
-python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py list path/to/test.yaml
-python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py doctor --platform android
+python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-validate path/to/test.yaml
+python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-list path/to/test.yaml
+python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-doctor --platform android
+python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-run path/to/test.yaml --platform android --device <serial> --output ./output
+python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-debug path/to/test.yaml --platform android --device <serial> --command-index 3 --output ./output
 ```
 
-The helper prints stdout/stderr and exits with the Lumi command exit code.
+The helper prefers repo-local `cargo run` and falls back to an installed
+`lumi-tester` binary. `agent-run` and `agent-debug` always include
+`--report --snapshot --events-jsonl` so failures have artifacts. Raw Lumi
+commands such as `validate`, `list`, `doctor`, and `run` are still available as
+passthrough commands when custom flags are needed. The helper prints
+stdout/stderr and exits with the Lumi command exit code.
 
 ## Authoring Loop
 

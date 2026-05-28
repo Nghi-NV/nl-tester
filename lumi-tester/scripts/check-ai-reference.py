@@ -45,6 +45,7 @@ OPENAI_YAML = SKILL_DIR / "agents" / "openai.yaml"
 TESTCASE_DESIGN_MD = SKILL_DIR / "references" / "testcase-design.md"
 DEBUG_ARTIFACTS_MD = SKILL_DIR / "references" / "debug-artifacts.md"
 SCHEMA_JSON = ROOT / "lumi-tester" / "schema" / "lumi-test.schema.json"
+HELPER_SCRIPT = SKILL_DIR / "scripts" / "lumi_agent.py"
 
 
 def parser_commands() -> set[str]:
@@ -214,6 +215,48 @@ def validate_agents_metadata() -> list[str]:
     for term in ("design", "run", "debug"):
         if term not in text.lower():
             errors.append(f"{OPENAI_YAML}: metadata should mention {term}")
+    return errors
+
+
+def validate_helper_script_reference() -> list[str]:
+    errors: list[str] = []
+    if not HELPER_SCRIPT.exists():
+        return [f"{HELPER_SCRIPT}: file does not exist"]
+
+    helper_text = HELPER_SCRIPT.read_text(encoding="utf-8")
+    skill_text = SKILL_MD.read_text(encoding="utf-8")
+    required_agent_commands = {
+        "agent-validate": {"validate", "--json"},
+        "agent-list": {"list", "--json"},
+        "agent-doctor": {"doctor", "--platform", "--json"},
+        "agent-run": {"run", "--platform", "--report", "--snapshot", "--events-jsonl", "--output"},
+        "agent-debug": {
+            "run",
+            "--platform",
+            "--command-index",
+            "--report",
+            "--snapshot",
+            "--events-jsonl",
+            "--output",
+        },
+    }
+    for command, terms in required_agent_commands.items():
+        if command not in helper_text:
+            errors.append(f"{HELPER_SCRIPT}: missing helper command: {command}")
+        if command not in skill_text:
+            errors.append(f"{SKILL_MD}: missing helper usage for: {command}")
+        for term in terms:
+            if term not in helper_text:
+                errors.append(f"{HELPER_SCRIPT}: {command} should include {term}")
+
+    for command in ("validate", "list", "doctor", "run", "schema", "devices"):
+        if f'"{command}"' not in helper_text:
+            errors.append(f"{HELPER_SCRIPT}: missing raw Lumi passthrough command: {command}")
+
+    if "repo-local `cargo run`" not in skill_text:
+        errors.append(f"{SKILL_MD}: helper docs should explain repo-local cargo fallback")
+    if "falls back to an installed" not in skill_text:
+        errors.append(f"{SKILL_MD}: helper docs should explain installed binary fallback")
     return errors
 
 
@@ -833,6 +876,7 @@ def main() -> int:
     errors.extend(validate_skill_references())
     errors.extend(validate_reference_navigation())
     errors.extend(validate_agents_metadata())
+    errors.extend(validate_helper_script_reference())
     errors.extend(validate_testcase_design_reference())
     errors.extend(validate_debug_artifacts_reference())
     errors.extend(validate_reference_examples())
