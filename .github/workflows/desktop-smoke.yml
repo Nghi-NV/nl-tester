@@ -70,6 +70,29 @@ jobs:
             exit 1
           }
 
+  windows-hosted-runtime-probe:
+    name: Windows hosted desktop runtime probe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Windows desktop smoke on hosted runner
+        shell: pwsh
+        run: |
+          ./lumi-tester/scripts/run-windows-desktop-smoke.ps1 `
+            -OutputRoot "$env:RUNNER_TEMP\lumi-windows-hosted-runtime-probe"
+
+      - name: Upload hosted Windows probe artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-hosted-runtime-probe
+          path: ${{ runner.temp }}\lumi-windows-hosted-runtime-probe
+          if-no-files-found: ignore
+
   macos-smoke:
     name: macOS native desktop smoke
     if: github.event_name == 'workflow_dispatch' && inputs.run_native_smoke == 'true'
