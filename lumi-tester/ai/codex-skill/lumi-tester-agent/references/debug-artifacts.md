@@ -74,11 +74,35 @@ Runtime dependency failure:
   `brew tap facebook/fb && brew install idb-companion` when missing.
 - For Web/video capture, check `ffmpeg`.
 
+Platform-specific target checks:
+
+- Android: compare `appId` with `mCurrentFocus`, UI XML `package`, `pidof`, and
+  recent `logcat` lines.
+- iOS: compare `appId` with the bundle id from `simctl listapps`, the
+  frontmost app from simulator/device tooling, the accessibility hierarchy, and
+  recent device logs. If a system permission alert is frontmost, handle the
+  dialog or set permission state before tuning selectors.
+- Web: compare the requested `url` with the actual browser page URL, title,
+  screenshot, DOM/hierarchy artifact, console errors, failed network requests,
+  and storage/session state. If the page is still loading, blocked by auth, or
+  redirected, fix navigation/setup before tuning selectors.
+
+Use platform-specific evidence to classify the failure before editing YAML:
+
+- Wrong target: foreground app/page does not match `appId` or `url`.
+- Setup/state issue: login, onboarding, permission, storage, seed data, or
+  `clearState` changed the expected screen.
+- App/runtime issue: crash, aborted launch, browser console fatal error, or
+  failed required network call.
+- Selector issue: expected screen is correct but the target element selector is
+  absent, unstable, duplicated, or appears after a wait.
+
 App launch/crash/abort:
 
 - Treat `appCrashed`, `FATAL EXCEPTION`, `Force finishing`, `START_ABORTED`,
-  `am_crash`, tombstone output, or a missing app process as app/runtime
-  failures, not selector failures.
+  `am_crash`, tombstone output, iOS process exit/crash logs, browser page crash,
+  console fatal errors, or a missing app process as app/runtime failures, not
+  selector failures.
 - Check the event stream, reports, current focus, process state, and recent logs:
 
 ```bash
@@ -86,6 +110,9 @@ rg -n 'appCrashed|START_ABORTED|FATAL EXCEPTION|Force finishing|am_crash|tombsto
 adb -s <serial> shell dumpsys window | rg -i 'mCurrentFocus|mFocusedApp|topResumed'
 adb -s <serial> shell pidof <appId>
 adb -s <serial> logcat -d -v time | rg -i '<appId>|FATAL EXCEPTION|START_ABORTED|am_crash|tombstone'
+xcrun simctl listapps booted | rg '<bundleId>'
+xcrun simctl spawn booted log show --last 5m --style compact | rg -i '<bundleId>|crash|exception|abort'
+rg -n 'console|network|pageerror|crash|ERR_|4[0-9]{2}|5[0-9]{2}' ./output
 ```
 
 - If `clearState` causes launch aborts or data-dependent crashes, rerun once

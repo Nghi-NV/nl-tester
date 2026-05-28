@@ -291,9 +291,12 @@ Debug process:
 1. Read the first failed command from `run.json` or `test-results.json`.
 2. Check its `index`, `commandName`, `status.error`, and artifact paths.
 3. Inspect the screenshot/UI XML/log excerpt if present.
-4. Patch only the smallest YAML selector/timing issue.
-5. Rerun the failed command with `--command-index`.
-6. Rerun the whole flow after the targeted command passes.
+4. Read `references/debug-artifacts.md` when the cause is not obvious,
+   especially for wrong app, crash, permission dialog, or platform-specific
+   failures.
+5. Patch only the smallest YAML selector/timing/setup issue.
+6. Rerun the failed command with `--command-index`.
+7. Rerun the whole flow after the targeted command passes.
 
 Do not count command indexes by hand; use `list --json`.
 

@@ -43,6 +43,7 @@ CLI_CSV = (
 )
 OPENAI_YAML = SKILL_DIR / "agents" / "openai.yaml"
 TESTCASE_DESIGN_MD = SKILL_DIR / "references" / "testcase-design.md"
+DEBUG_ARTIFACTS_MD = SKILL_DIR / "references" / "debug-artifacts.md"
 SCHEMA_JSON = ROOT / "lumi-tester" / "schema" / "lumi-test.schema.json"
 
 
@@ -232,6 +233,74 @@ def validate_testcase_design_reference() -> list[str]:
     for column in ("source", "entry_point"):
         if column not in {part.strip() for part in header.split(",")}:
             errors.append(f"{TESTCASE_DESIGN_MD}: cases.csv is missing {column} column")
+    return errors
+
+
+def validate_debug_artifacts_reference() -> list[str]:
+    errors: list[str] = []
+    raw_text = DEBUG_ARTIFACTS_MD.read_text(encoding="utf-8")
+    text = raw_text.lower()
+    skill_text = SKILL_MD.read_text(encoding="utf-8").lower()
+    debug_loop = markdown_section(SKILL_MD.read_text(encoding="utf-8"), "Debugging Loop").lower()
+    if "references/debug-artifacts.md" not in skill_text:
+        errors.append(f"{SKILL_MD}: missing debug artifacts reference")
+    if "references/debug-artifacts.md" not in debug_loop:
+        errors.append(f"{SKILL_MD}: debug loop should point to debug-artifacts.md")
+    for term in ("wrong app", "crash", "permission", "platform-specific"):
+        if term not in debug_loop:
+            errors.append(f"{SKILL_MD}: debug loop should mention {term} failures")
+
+    required_terms = {
+        "run.json": "run summary artifact",
+        "test-results.json": "report artifact",
+        "events.jsonl": "event stream artifact",
+        "commandfailed.index": "failed command rerun guidance",
+        "wrong app": "wrong target diagnosis",
+        "element not found": "selector failure diagnosis",
+        "assertion timeout": "assertion timeout diagnosis",
+        "runtime dependency failure": "runtime dependency diagnosis",
+        "app launch/crash/abort": "launch/crash diagnosis",
+    }
+    for term, label in required_terms.items():
+        if term not in text:
+            errors.append(f"{DEBUG_ARTIFACTS_MD}: missing {label}")
+
+    section = markdown_section(raw_text, "Common Failure Diagnosis").lower()
+    if not section:
+        errors.append(f"{DEBUG_ARTIFACTS_MD}: missing section: Common Failure Diagnosis")
+        return errors
+
+    platform_patterns = {
+        "android": {
+            "focus": r"mcurrentfocus|mfocusedapp|topresumed",
+            "process": r"\bpidof\b|process",
+            "logs": r"\blogcat\b",
+        },
+        "ios": {
+            "bundle": r"simctl listapps|bundle id",
+            "hierarchy": r"accessibility (?:hierarchy|tree)",
+            "permission": r"permission (?:alert|dialog|state)",
+        },
+        "web": {
+            "url": r"(?:actual|resolved|browser|page) (?:page )?url|\burl\b",
+            "console": r"console (?:errors?|logs?)|pageerror",
+            "network": r"(?:failed )?network requests?|http failures?|4\[0-9\]\{2\}|5\[0-9\]\{2\}",
+        },
+    }
+    for platform, patterns in platform_patterns.items():
+        for label, pattern in patterns.items():
+            if not re.search(pattern, section):
+                errors.append(f"{DEBUG_ARTIFACTS_MD}: missing {platform} debug signal: {label}")
+
+    classifications = (
+        "wrong target",
+        "setup/state issue",
+        "app/runtime issue",
+        "selector issue",
+    )
+    for label in classifications:
+        if label not in section:
+            errors.append(f"{DEBUG_ARTIFACTS_MD}: missing failure classification: {label}")
     return errors
 
 
@@ -475,6 +544,7 @@ def main() -> int:
     errors.extend(validate_skill_references())
     errors.extend(validate_agents_metadata())
     errors.extend(validate_testcase_design_reference())
+    errors.extend(validate_debug_artifacts_reference())
     errors.extend(validate_reference_examples())
     errors.extend(validate_command_example_fields())
     errors.extend(validate_selector_catalog())
