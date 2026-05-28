@@ -302,7 +302,7 @@ def validate_agents_metadata() -> list[str]:
 
     if "$lumi-tester-agent" not in text:
         errors.append(f"{OPENAI_YAML}: default_prompt should mention $lumi-tester-agent")
-    for term in ("design", "run", "debug", "macos", "windows"):
+    for term in ("design", "run", "debug", "android auto", "macos", "windows"):
         if term not in text.lower():
             errors.append(f"{OPENAI_YAML}: metadata should mention {term}")
     return errors

@@ -1,4 +1,4 @@
 interface:
   display_name: "Lumi Tester Agent"
-  short_description: "Design, run, and debug Lumi YAML tests across mobile, web, and desktop"
-  default_prompt: "Use $lumi-tester-agent to design testcase coverage, validate, run, and debug Lumi Tester YAML flows for Android, iOS, Web, macOS, and Windows."
+  short_description: "Design, run, and debug Lumi YAML tests across mobile, Android Auto, web, and desktop"
+  default_prompt: "Use $lumi-tester-agent to design testcase coverage, validate, run, and debug Lumi Tester YAML flows for Android, Android Auto, iOS, Web, macOS, and Windows."
