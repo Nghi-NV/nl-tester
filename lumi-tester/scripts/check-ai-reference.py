@@ -14,6 +14,7 @@ from pathlib import Path, PurePosixPath
 
 
 ROOT = Path(__file__).resolve().parents[2]
+ROOT_README_MD = ROOT / "README.md"
 YAML_RS = ROOT / "lumi-tester" / "src" / "parser" / "yaml.rs"
 COMMANDS_CSV = (
     ROOT
@@ -560,6 +561,7 @@ def validate_mcp_tool_references() -> list[str]:
 def validate_user_install_docs() -> list[str]:
     errors: list[str] = []
     docs = {
+        ROOT_README_MD: ROOT_README_MD.read_text(encoding="utf-8").lower(),
         README_MD: README_MD.read_text(encoding="utf-8").lower(),
         DISTRIBUTION_MD: DISTRIBUTION_MD.read_text(encoding="utf-8").lower(),
     }

@@ -7,7 +7,7 @@ A monorepo for a comprehensive mobile and web automation testing suite, featurin
 ## 📦 Components
 
 ### 1. **lumi-tester** - CLI Testing Tool
-A high-performance command-line tool written in Rust for automating tests across mobile (Android, iOS) and web platforms.
+A high-performance command-line tool written in Rust for automating tests across Android, Android Auto, iOS, web, macOS, and Windows platforms.
 
 **Key Features:**
 - 📝 **YAML DSL**: Define test cases using simple YAML files—no coding required.
@@ -18,8 +18,11 @@ A high-performance command-line tool written in Rust for automating tests across
 
 **Supported Platforms:**
 - **Android**: ADB, UiAutomator
+- **Android Auto**: Android device plus Desktop Head Unit (DHU)
 - **iOS**: IDB (Simulators & Devices), XCUITest
 - **Web**: Playwright (Chrome, Firefox, WebKit)
+- **macOS**: Native desktop automation through Accessibility and Apple Events
+- **Windows**: Native desktop automation through PowerShell and UI Automation
 
 For more details, see [lumi-tester/README.md](lumi-tester/README.md).
 
@@ -74,13 +77,18 @@ Requirements for the AI pack:
 
 - `node` and `npm` for the MCP server.
 - A restarted AI client after installation so it reloads the new MCP config/skill.
-- Android/iOS/Web runtime tools as needed; run `lumi-tester system install --all` when you want Lumi Tester to install common local dependencies.
+- Android/Android Auto/iOS/Web/macOS/Windows runtime tools as needed; run `lumi-tester system install --all` when you want Lumi Tester to install common local dependencies.
 
-Quick check after install:
+Quick checks after install:
 
 ```bash
 lumi-tester --version
 lumi-tester doctor --platform android --json
+lumi-tester doctor --platform android_auto --json
+lumi-tester doctor --platform ios --json  # macOS + idb
+lumi-tester doctor --platform web --json
+lumi-tester doctor --platform macos --json
+lumi-tester doctor --platform windows --json
 ```
 
 ### Lumi Tester CLI only
