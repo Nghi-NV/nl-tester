@@ -2,6 +2,12 @@
 
 Use this reference when a run fails and the user wants a diagnosis or a patch.
 
+## Contents
+
+- Artifact priority
+- Event JSONL
+- Common failure diagnosis
+
 ## Artifact Priority
 
 1. `run.json`: first place to find summary, failed command indexes, errors, and

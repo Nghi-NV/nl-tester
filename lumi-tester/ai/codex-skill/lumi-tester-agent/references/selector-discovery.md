@@ -4,6 +4,21 @@ Use this when creating tests for an unfamiliar app/page or when a selector
 fails. The goal is to find the most stable selector quickly, then verify it with
 the smallest run.
 
+## Contents
+
+- Fast path
+- Selector priority
+- Inspector workflow
+- MCP selector suggestions
+- Snapshot workflow
+- Android selector examples
+- iOS selector examples
+- Web selector examples
+- Relative selector pattern
+- OCR and image fallback
+- Selector debug checklist
+- Anti-patterns
+
 ## Fast Path
 
 1. Run `doctor` for the platform.

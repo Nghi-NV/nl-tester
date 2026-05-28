@@ -4,6 +4,19 @@ Use this reference before writing or repairing Lumi YAML. Prefer the canonical
 names below; aliases are accepted but should not be the first choice in new
 tests.
 
+## Contents
+
+- Header
+- Core app and navigation
+- Element actions
+- Assertions and waits
+- Control flow
+- Variables, data, and scripts
+- Artifacts and media
+- GPS and device state
+- Visual assertions
+- Command selection rules
+
 ## Header
 
 Common header fields:

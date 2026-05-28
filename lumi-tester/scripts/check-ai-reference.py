@@ -130,6 +130,52 @@ def validate_skill_references() -> list[str]:
         path = SKILL_DIR / ref
         if not path.exists():
             errors.append(f"{SKILL_MD}: referenced file does not exist: {ref}")
+    linked = set(refs)
+    for path in sorted((SKILL_DIR / "references").glob("*")):
+        if path.is_file() and f"references/{path.name}" not in linked:
+            errors.append(f"{path}: reference file is not linked from {SKILL_MD}")
+    return errors
+
+
+def normalize_heading(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+
+def validate_reference_navigation() -> list[str]:
+    errors: list[str] = []
+    for path in sorted((SKILL_DIR / "references").glob("*.md")):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        if len(lines) <= 100:
+            continue
+        text = "\n".join(lines[:40])
+        if "## Contents" not in text:
+            errors.append(f"{path}: long reference should have ## Contents near the top")
+        contents_index = next(
+            (idx for idx, line in enumerate(lines) if line.strip() == "## Contents"),
+            None,
+        )
+        if contents_index is None:
+            continue
+        bullets = [
+            line[2:].strip()
+            for line in lines[contents_index + 1 : contents_index + 15]
+            if line.startswith("- ")
+        ]
+        if len(bullets) < 3:
+            errors.append(f"{path}: Contents should include at least 3 bullets")
+            continue
+        headings = {
+            normalize_heading(line.removeprefix("##").strip())
+            for line in lines
+            if line.startswith("## ") and line.strip() != "## Contents"
+        }
+        for bullet in bullets:
+            label = re.sub(r"^\[([^\]]+)\]\([^)]+\)$", r"\1", bullet)
+            normalized = normalize_heading(label)
+            if normalized not in headings:
+                errors.append(
+                    f"{path}: Contents bullet does not match a ## heading: {bullet}"
+                )
     return errors
 
 
@@ -542,6 +588,7 @@ def main() -> int:
         )
     )
     errors.extend(validate_skill_references())
+    errors.extend(validate_reference_navigation())
     errors.extend(validate_agents_metadata())
     errors.extend(validate_testcase_design_reference())
     errors.extend(validate_debug_artifacts_reference())

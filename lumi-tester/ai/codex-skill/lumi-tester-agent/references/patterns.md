@@ -3,6 +3,18 @@
 Use these patterns as starting points. Always replace selectors with discovered
 stable selectors from `selectors.csv` and validate before running.
 
+## Contents
+
+- Current Android app smoke
+- Login
+- Onboarding skip
+- Search
+- Settings toggle
+- Permission dialog
+- GPS route
+- Web form
+- Failure recovery pattern
+
 ## Current Android App Smoke
 
 Use when the user asks to test the app currently open on a connected Android

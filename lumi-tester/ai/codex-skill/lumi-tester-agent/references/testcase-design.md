@@ -3,6 +3,18 @@
 Use this reference when asked to create enough test cases for an app or web
 feature, convert testcase documents into YAML, or organize generated tests.
 
+## Contents
+
+- Coverage loop
+- Research inputs
+- Coverage model
+- Test design techniques
+- App and web coverage checklist
+- Grouping strategy
+- YAML authoring rules from testcases
+- Coverage matrix template
+- Stop conditions
+
 ## Coverage Loop
 
 1. Identify the feature, platform, app identity, target environment, user roles,
