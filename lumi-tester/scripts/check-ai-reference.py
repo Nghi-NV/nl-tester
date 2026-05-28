@@ -624,6 +624,13 @@ def validate_ai_authoring_contract() -> list[str]:
         "keychain services": "macOS Keychain reset guidance",
         "hkcu:\\software": "Windows registry reset guidance",
         "grouped suite": "stateful suite grouping guidance",
+        "after `launchapp`, wait for a stable screen element": "launch readiness wait rule",
+        "do not use a fixed `wait` as launch readiness": "fixed wait launch warning",
+        "permissions: { all: allow }": "blanket permission warning",
+        "separate allow/deny cases": "permission behavior split guidance",
+        "validate/list/run the folder or group": "group run guidance",
+        "setup.yaml": "setup file group guidance",
+        "tests/generated/<feature>/": "generated folder convention",
     }
     for platform in REQUIRED_AGENT_PLATFORMS:
         required_terms[f"doctor --platform {platform} --json"] = (

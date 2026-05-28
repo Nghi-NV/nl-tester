@@ -114,6 +114,31 @@ Use `mode: autoSafe` by default. Use `mode: manual` only when explicit
 app-scoped paths, macOS Keychain services, or Windows `HKCU:\Software\...`
 registry keys are known and documented in the test header.
 
+## Launch Readiness And Shared Setup
+
+After `launchApp`, wait for a stable screen element with `waitUntilVisible` or
+`waitSee`; do not use a fixed `wait` as launch readiness. Android Auto is the
+exception because the DHU driver has no UI hierarchy; use a bounded `wait` plus
+screenshot/log assertions there.
+
+Use `permissions` only when the testcase requires a pre-granted or pre-denied
+state. Do not assume `permissions: { all: allow }` is correct for every flow.
+For permission behavior, write separate allow/deny cases or reusable
+permission setup flows.
+
+When tests depend on login, permission setup, seeded data, `setup.yaml`, or
+`clearState`, validate/list/run the folder or group instead of a leaf file:
+
+```bash
+lumi-tester validate tests/generated/account --json
+lumi-tester list tests/generated/account --json
+lumi-tester run tests/generated/account --platform <platform> --report --snapshot --events-jsonl --output ./output/account
+```
+
+Use `runFlow` for reusable login, permission, and cleanup blocks. Keep generated
+test files under a feature folder such as `tests/generated/<feature>/` so setup,
+data, subflows, and reports stay together.
+
 ## Preferred Commands
 
 Use these names for new files:
