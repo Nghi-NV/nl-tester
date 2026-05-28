@@ -40,14 +40,20 @@ jobs:
       - name: Validate shell scripts
         run: |
           bash -n lumi-tester/scripts/install.sh
+          bash -n lumi-tester/scripts/install-ai.sh
           bash -n lumi-tester/scripts/generate-package-manifests.sh
+
+      - name: Validate AI references
+        run: python3 lumi-tester/scripts/check-ai-reference.py
 
       - name: Validate Windows install script
         shell: pwsh
         run: |
-          $errors = $null
-          [System.Management.Automation.PSParser]::Tokenize((Get-Content lumi-tester/scripts/install.ps1 -Raw), [ref]$errors) | Out-Null
-          if ($errors) {
-            $errors | Format-List | Out-String | Write-Error
-            exit 1
+          foreach ($script in @("lumi-tester/scripts/install.ps1", "lumi-tester/scripts/install-ai.ps1")) {
+            $errors = $null
+            [System.Management.Automation.PSParser]::Tokenize((Get-Content $script -Raw), [ref]$errors) | Out-Null
+            if ($errors) {
+              $errors | Format-List | Out-String | Write-Error
+              exit 1
+            }
           }

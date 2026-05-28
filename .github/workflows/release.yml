@@ -41,16 +41,21 @@ jobs:
           npm test
 
       - name: Validate install script syntax
-        run: bash -n lumi-tester/scripts/install.sh
+        run: |
+          bash -n lumi-tester/scripts/install.sh
+          bash -n lumi-tester/scripts/install-ai.sh
+          python3 lumi-tester/scripts/check-ai-reference.py
 
       - name: Validate Windows install script syntax
         shell: pwsh
         run: |
-          $errors = $null
-          [System.Management.Automation.PSParser]::Tokenize((Get-Content lumi-tester/scripts/install.ps1 -Raw), [ref]$errors) | Out-Null
-          if ($errors) {
-            $errors | Format-List | Out-String | Write-Error
-            exit 1
+          foreach ($script in @("lumi-tester/scripts/install.ps1", "lumi-tester/scripts/install-ai.ps1")) {
+            $errors = $null
+            [System.Management.Automation.PSParser]::Tokenize((Get-Content $script -Raw), [ref]$errors) | Out-Null
+            if ($errors) {
+              $errors | Format-List | Out-String | Write-Error
+              exit 1
+            }
           }
 
   build:
@@ -168,6 +173,8 @@ jobs:
           done
           cp lumi-tester/scripts/install.sh dist/install.sh
           cp lumi-tester/scripts/install.ps1 dist/install.ps1
+          cp lumi-tester/scripts/install-ai.sh dist/install-ai.sh
+          cp lumi-tester/scripts/install-ai.ps1 dist/install-ai.ps1
           ls -la dist
 
       - name: Generate checksums

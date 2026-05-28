@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nlt-corp.github.io/lumi-tester/schema/lumi-test.schema.json",
   "title": "Lumi Tester Flow",
+  "description": "Schema for Lumi Tester YAML flows. Command names are kept in sync with src/parser/yaml.rs; command parameters are intentionally permissive for forward compatibility.",
   "type": "object",
   "additionalProperties": true,
   "properties": {
@@ -25,28 +26,13 @@
     },
     "browser": {
       "type": "string",
-      "enum": ["Chrome", "Firefox", "Webkit", "chrome", "firefox", "webkit"]
+      "enum": ["Chrome", "Firefox", "Webkit", "chrome", "firefox", "webkit", "chromium"]
     },
     "closeWhenFinish": { "type": "boolean" },
-    "env": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": { "type": ["string", "number", "boolean"] }
-        },
-        {
-          "type": "object",
-          "required": ["file"],
-          "properties": {
-            "file": { "type": "string" }
-          }
-        }
-      ]
-    },
-    "vars": {
-      "type": "object",
-      "additionalProperties": { "type": ["string", "number", "boolean"] }
-    },
+    "env": { "$ref": "#/$defs/env" },
+    "vars": { "$ref": "#/$defs/envMap" },
+    "var": { "$ref": "#/$defs/envMap" },
+    "data": { "type": "string" },
     "steps": {
       "type": "array",
       "items": { "$ref": "#/$defs/command" }
@@ -56,113 +42,315 @@
       "items": { "$ref": "#/$defs/command" }
     }
   },
+  "anyOf": [
+    { "required": ["steps"] },
+    { "required": ["commands"] }
+  ],
   "$defs": {
-    "selector": {
+    "env": {
+      "oneOf": [
+        { "$ref": "#/$defs/envMap" },
+        {
+          "type": "object",
+          "required": ["file"],
+          "properties": {
+            "file": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "envMap": {
       "type": "object",
-      "additionalProperties": true,
-      "properties": {
-        "text": { "type": "string" },
-        "id": { "type": "string" },
-        "desc": { "type": "string" },
-        "contentDesc": { "type": "string" },
-        "accessibilityId": { "type": "string" },
-        "css": { "type": "string" },
-        "xpath": { "type": "string" },
-        "regex": { "type": "string" },
-        "point": { "type": "string" },
-        "ocr": {
-          "oneOf": [
-            { "type": "string" },
-            {
-              "type": "object",
-              "required": ["text"],
-              "properties": {
-                "text": { "type": "string" },
-                "index": { "type": "integer", "minimum": 0 },
-                "region": { "type": "string" }
-              }
-            }
-          ]
-        },
-        "index": { "type": "integer", "minimum": 0 },
-        "type": { "type": "string" },
-        "exact": { "type": "boolean" },
-        "optional": { "type": "boolean" }
-      }
+      "additionalProperties": { "type": ["string", "number", "boolean"] }
+    },
+    "commandName": {
+      "type": "string",
+      "enum": [
+        "airplaneMode",
+        "assert",
+        "assertClipboard",
+        "assertColor",
+        "assertNotVisible",
+        "assertPerformance",
+        "assertScreenshot",
+        "assertTrue",
+        "assertVar",
+        "assertVisible",
+        "await",
+        "back",
+        "backgroundApp",
+        "buildGif",
+        "captureFrame",
+        "captureGifFrame",
+        "checkColor",
+        "clear",
+        "clearAppData",
+        "click",
+        "conditional",
+        "contextClick",
+        "copyTextFrom",
+        "createGif",
+        "dbQuery",
+        "deepLink",
+        "display",
+        "doubleTap",
+        "doubleTapOn",
+        "eraseText",
+        "evalScript",
+        "exportReport",
+        "extendedWaitUntil",
+        "find",
+        "generate",
+        "getClipboard",
+        "gps",
+        "hideKbd",
+        "hideKeyboard",
+        "home",
+        "httpRequest",
+        "inputAt",
+        "inputRandomEmail",
+        "inputRandomNumber",
+        "inputRandomPersonName",
+        "inputRandomPhoneNumber",
+        "inputRandomText",
+        "inputText",
+        "installApp",
+        "lark",
+        "launchApp",
+        "locale",
+        "lockDevice",
+        "longPress",
+        "longPressOn",
+        "mockLocation",
+        "mockLocationControl",
+        "navigate",
+        "notSee",
+        "open",
+        "openLink",
+        "openNotifications",
+        "openQuickSettings",
+        "pasteText",
+        "playMedia",
+        "press",
+        "pressHome",
+        "pressKey",
+        "pullFile",
+        "pushFile",
+        "repeat",
+        "retry",
+        "rightClick",
+        "rotate",
+        "rotateScreen",
+        "runFlow",
+        "runScript",
+        "screenshot",
+        "scrollTo",
+        "scrollUntilVisible",
+        "see",
+        "selectDisplay",
+        "sendLarkMessage",
+        "sendlarkmessage",
+        "setClipboard",
+        "setLocale",
+        "setNetwork",
+        "setOrientation",
+        "setVar",
+        "setVolume",
+        "startAudioCapture",
+        "startGifCapture",
+        "startProfiling",
+        "startRecording",
+        "stop",
+        "stopApp",
+        "stopAudioCapture",
+        "stopGifCapture",
+        "stopGps",
+        "stopMedia",
+        "stopMockLocation",
+        "stopProfiling",
+        "stopRecord",
+        "stopRecording",
+        "swipe",
+        "swipeDown",
+        "swipeLeft",
+        "swipeRight",
+        "swipeUp",
+        "takeScreenshot",
+        "tap",
+        "tapAt",
+        "tapOn",
+        "toggleAirplaneMode",
+        "type",
+        "uninstallApp",
+        "unlockDevice",
+        "verifyAudioDucking",
+        "wait",
+        "waitForAnimationToEnd",
+        "waitForLocation",
+        "waitForMockCompletion",
+        "waitNotSee",
+        "waitSee",
+        "waitUntilNotVisible",
+        "waitUntilVisible",
+        "write"
+      ]
     },
     "command": {
       "oneOf": [
-        {
-          "type": "string",
-          "enum": [
-            "launchApp",
-            "stopApp",
-            "hideKeyboard",
-            "back",
-            "pressHome",
-            "swipeLeft",
-            "swipeRight",
-            "swipeUp",
-            "swipeDown",
-            "stopRecording",
-            "stopMockLocation",
-            "pasteText",
-            "inputRandomEmail",
-            "inputRandomNumber",
-            "inputRandomPersonName",
-            "inputRandomText"
-          ]
-        },
+        { "$ref": "#/$defs/commandName" },
         {
           "type": "object",
           "minProperties": 1,
           "maxProperties": 1,
+          "propertyNames": { "$ref": "#/$defs/commandName" },
+          "additionalProperties": { "$ref": "#/$defs/commandParams" }
+        }
+      ]
+    },
+    "commandParams": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "integer" },
+        { "type": "boolean" },
+        { "$ref": "#/$defs/selector" },
+        { "$ref": "#/$defs/commandArray" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/value" }
+        }
+      ]
+    },
+    "commandArray": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/command" }
+    },
+    "value": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "integer" },
+        { "type": "boolean" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/value" }
+        },
+        {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/value" }
+        }
+      ]
+    },
+    "selector": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "label": { "type": "string" },
+        "element": { "type": "string" },
+        "text": { "type": "string" },
+        "regex": { "type": "string" },
+        "id": { "type": "string" },
+        "resourceId": { "type": "string" },
+        "desc": { "type": "string" },
+        "description": { "type": "string" },
+        "contentDesc": { "type": "string" },
+        "accessibilityId": { "type": "string" },
+        "css": { "type": "string" },
+        "xpath": { "type": "string" },
+        "role": { "type": "string" },
+        "placeholder": { "type": "string" },
+        "type": { "type": "string" },
+        "elementType": { "type": "string" },
+        "point": { "type": "string" },
+        "index": { "type": "integer", "minimum": 0 },
+        "exact": { "type": "boolean" },
+        "optional": { "type": "boolean" },
+        "timeout": { "type": "integer", "minimum": 0 },
+        "soft": { "type": "boolean" },
+        "image": { "type": "string" },
+        "imageRegion": { "type": "string" },
+        "ocr": { "$ref": "#/$defs/ocrSelector" },
+        "relative": { "$ref": "#/$defs/relativeSelector" },
+        "rightOf": { "$ref": "#/$defs/anchor" },
+        "leftOf": { "$ref": "#/$defs/anchor" },
+        "above": { "$ref": "#/$defs/anchor" },
+        "below": { "$ref": "#/$defs/anchor" },
+        "scrollable": {
+          "oneOf": [
+            { "type": "boolean" },
+            {
+              "type": "object",
+              "properties": {
+                "enable": { "type": "boolean" },
+                "index": { "type": "integer", "minimum": 0 },
+                "itemIndex": { "type": "integer", "minimum": 0 }
+              },
+              "additionalProperties": true
+            }
+          ]
+        },
+        "containsChild": { "$ref": "#/$defs/selector" },
+        "contains_child": { "$ref": "#/$defs/selector" },
+        "commands": { "$ref": "#/$defs/commandArray" },
+        "then": { "$ref": "#/$defs/commandArray" },
+        "else": { "$ref": "#/$defs/commandArray" }
+      }
+    },
+    "ocrSelector": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "required": ["text"],
           "properties": {
-            "launchApp": {},
-            "open": {},
-            "tap": { "$ref": "#/$defs/selector" },
-            "tapOn": { "$ref": "#/$defs/selector" },
-            "doubleTap": { "$ref": "#/$defs/selector" },
-            "longPress": { "$ref": "#/$defs/selector" },
-            "see": { "$ref": "#/$defs/selector" },
-            "notSee": { "$ref": "#/$defs/selector" },
-            "waitUntilVisible": { "$ref": "#/$defs/selector" },
-            "waitNotSee": { "$ref": "#/$defs/selector" },
-            "inputText": {
-              "oneOf": [
-                { "type": "string" },
-                {
-                  "type": "object",
-                  "properties": {
-                    "text": { "type": "string" }
-                  }
-                }
-              ]
-            },
-            "write": { "type": "string" },
-            "wait": {},
-            "await": {},
-            "scrollTo": {},
-            "runFlow": {},
-            "repeat": {},
-            "retry": {},
-            "takeScreenshot": {},
-            "assertScreenshot": {},
-            "assertColor": {},
-            "mockLocation": {},
-            "gps": {},
-            "openLink": { "type": "string" },
-            "deepLink": { "type": "string" },
-            "setVar": {},
-            "assertVar": {},
-            "runScript": {},
-            "httpRequest": {},
-            "conditional": {},
-            "navigate": {},
-            "click": {},
-            "type": {}
+            "text": { "type": "string" },
+            "index": { "type": "integer", "minimum": 0 },
+            "region": { "type": "string" }
           },
-          "additionalProperties": false
+          "additionalProperties": true
+        }
+      ]
+    },
+    "relativeSelector": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "rightOf": { "$ref": "#/$defs/anchor" },
+        "leftOf": { "$ref": "#/$defs/anchor" },
+        "above": { "$ref": "#/$defs/anchor" },
+        "below": { "$ref": "#/$defs/anchor" },
+        "maxDist": { "type": "integer", "minimum": 0 },
+        "maxDistance": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "anchor": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "element": { "type": "string" },
+            "text": { "type": "string" },
+            "regex": { "type": "string" },
+            "textRegex": { "type": "string" },
+            "id": { "type": "string" },
+            "resourceId": { "type": "string" },
+            "desc": { "type": "string" },
+            "contentDesc": { "type": "string" },
+            "accessibilityId": { "type": "string" },
+            "css": { "type": "string" },
+            "xpath": { "type": "string" },
+            "placeholder": { "type": "string" },
+            "role": { "type": "string" },
+            "type": { "type": "string" },
+            "image": { "type": "string" },
+            "exact": { "type": "boolean" },
+            "index": { "type": "integer", "minimum": 0 }
+          }
         }
       ]
     }
