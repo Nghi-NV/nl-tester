@@ -242,8 +242,30 @@ enum AiCommands {
     },
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
+    std::thread::Builder::new()
+        .name("lumi-main".to_string())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .thread_stack_size(16 * 1024 * 1024)
+                .build()?
+                .block_on(async_main())
+        })?
+        .join()
+        .map_err(|panic| {
+            if let Some(message) = panic.downcast_ref::<&str>() {
+                anyhow::anyhow!("lumi-tester panicked: {}", message)
+            } else if let Some(message) = panic.downcast_ref::<String>() {
+                anyhow::anyhow!("lumi-tester panicked: {}", message)
+            } else {
+                anyhow::anyhow!("lumi-tester panicked")
+            }
+        })?
+}
+
+async fn async_main() -> anyhow::Result<()> {
     env_logger::init();
     let cli = Cli::parse();
 
