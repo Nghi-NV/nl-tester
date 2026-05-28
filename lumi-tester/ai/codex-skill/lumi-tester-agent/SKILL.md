@@ -399,7 +399,9 @@ that can run in the current environment:
    when runtime execution is available. Treat `== lumi agent-check: PASS ==`
    as the concise self-test summary. Use
    `--summary-json <file>` when a machine-readable evidence file is useful;
-   each JSON step includes the exact Lumi command string.
+   each JSON step includes the exact Lumi command string, and `runtimeStatus`
+   states whether runtime was `passed`, `failed`, `blocked`, `not_run`, or
+   `not_checked`.
 2. Always run `validate --json` on the file or folder you changed.
 3. Always run `list --json` on the same file or folder to prove grouping,
    setup/teardown, skipped subflows, and command indexes.
@@ -407,7 +409,8 @@ that can run in the current environment:
    test with `--report --snapshot --events-jsonl --output <dir>`.
 5. When runtime execution is blocked, still run `doctor --platform <platform>
    --json`, record the exact missing dependency/device/app, and do not claim
-   runtime pass.
+   runtime pass. In `agent-check` summary JSON, treat `status: blocked` or
+   `runtimeStatus: blocked` as an environment/app readiness blocker.
 6. After fixing a runtime failure, rerun the smallest failing command with
    `--command-index`, then rerun the full file or folder.
 7. In the final answer, mention the exact validation/list/run commands and

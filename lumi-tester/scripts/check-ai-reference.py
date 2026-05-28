@@ -413,6 +413,9 @@ def validate_helper_script_reference() -> list[str]:
             "PASS",
             "command",
             "commandLine",
+            "runtimeStatus",
+            "blocked",
+            "BLOCKED",
         },
         "agent-validate": {"validate", "--json"},
         "agent-list": {"list", "--json"},
@@ -566,6 +569,7 @@ def validate_helper_script_behavior() -> list[str]:
             }
         ],
         "passed",
+        "passed",
         0,
     )
     if not summary_target.exists():
@@ -575,6 +579,7 @@ def validate_helper_script_behavior() -> list[str]:
         first_step = summary.get("steps", [{}])[0]
         if (
             summary.get("status") != "passed"
+            or summary.get("runtimeStatus") != "passed"
             or summary.get("commandLine") != agent_check_run.command_line
             or first_step.get("name") != "validate"
             or "lumi-tester validate" not in first_step.get("command", "")
@@ -663,6 +668,8 @@ def validate_agent_self_test_contract() -> list[str]:
         "== lumi agent-check: pass ==": "agent-check summary marker",
         "--summary-json <file>": "agent-check machine-readable summary",
         "exact lumi command string": "agent-check command evidence",
+        "runtimestatus": "agent-check runtime status evidence",
+        "status: blocked": "agent-check blocked status evidence",
         "validate --json": "validation evidence",
         "list --json": "collection/index evidence",
         "setup/teardown": "group setup evidence",

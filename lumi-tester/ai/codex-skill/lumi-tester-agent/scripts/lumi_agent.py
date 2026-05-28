@@ -173,6 +173,7 @@ def write_agent_check_summary(
     parsed: argparse.Namespace,
     steps: list[dict[str, object]],
     status: str,
+    runtime_status: str,
     exit_code: int,
 ) -> None:
     if not parsed.summary_json:
@@ -186,6 +187,7 @@ def write_agent_check_summary(
         "platform": parsed.platform,
         "device": parsed.device,
         "runRequested": parsed.run,
+        "runtimeStatus": runtime_status,
         "output": parsed.output if parsed.run else None,
         "commandLine": parsed.command_line,
         "steps": steps,
@@ -214,7 +216,7 @@ def run_agent_check(argv: list[str]) -> int:
     )
     if code != 0:
         print("== lumi agent-check: validate FAILED ==", file=sys.stderr)
-        write_agent_check_summary(parsed, steps, "failed", code)
+        write_agent_check_summary(parsed, steps, "failed", "not_checked", code)
         return code
     print("== lumi agent-check: validate PASSED ==", file=sys.stderr)
 
@@ -231,7 +233,7 @@ def run_agent_check(argv: list[str]) -> int:
     )
     if code != 0:
         print("== lumi agent-check: list FAILED ==", file=sys.stderr)
-        write_agent_check_summary(parsed, steps, "failed", code)
+        write_agent_check_summary(parsed, steps, "failed", "not_checked", code)
         return code
     print("== lumi agent-check: list PASSED ==", file=sys.stderr)
 
@@ -248,8 +250,8 @@ def run_agent_check(argv: list[str]) -> int:
             }
         )
         if code != 0:
-            print("== lumi agent-check: doctor FAILED ==", file=sys.stderr)
-            write_agent_check_summary(parsed, steps, "failed", code)
+            print("== lumi agent-check: doctor BLOCKED ==", file=sys.stderr)
+            write_agent_check_summary(parsed, steps, "blocked", "blocked", code)
             return code
         print("== lumi agent-check: doctor PASSED ==", file=sys.stderr)
 
@@ -280,12 +282,13 @@ def run_agent_check(argv: list[str]) -> int:
         )
         if code != 0:
             print("== lumi agent-check: run FAILED ==", file=sys.stderr)
-            write_agent_check_summary(parsed, steps, "failed", code)
+            write_agent_check_summary(parsed, steps, "failed", "failed", code)
             return code
         print("== lumi agent-check: run PASSED ==", file=sys.stderr)
 
     print("== lumi agent-check: PASS ==", file=sys.stderr)
-    write_agent_check_summary(parsed, steps, "passed", 0)
+    runtime_status = "passed" if parsed.run else ("not_run" if parsed.platform else "not_checked")
+    write_agent_check_summary(parsed, steps, "passed", runtime_status, 0)
     return 0
 
 
