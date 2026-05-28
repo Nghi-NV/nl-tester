@@ -41,6 +41,7 @@ CLI_CSV = (
     / "references"
     / "cli.csv"
 )
+OPENAI_YAML = SKILL_DIR / "agents" / "openai.yaml"
 SCHEMA_JSON = ROOT / "lumi-tester" / "schema" / "lumi-test.schema.json"
 
 
@@ -127,6 +128,29 @@ def validate_skill_references() -> list[str]:
         path = SKILL_DIR / ref
         if not path.exists():
             errors.append(f"{SKILL_MD}: referenced file does not exist: {ref}")
+    return errors
+
+
+def validate_agents_metadata() -> list[str]:
+    errors: list[str] = []
+    if not OPENAI_YAML.exists():
+        return [f"{OPENAI_YAML}: file does not exist"]
+
+    text = OPENAI_YAML.read_text(encoding="utf-8")
+    required = {
+        "display_name": r"^\s*display_name\s*:",
+        "short_description": r"^\s*short_description\s*:",
+        "default_prompt": r"^\s*default_prompt\s*:",
+    }
+    for field, pattern in required.items():
+        if not re.search(pattern, text, flags=re.MULTILINE):
+            errors.append(f"{OPENAI_YAML}: missing interface field: {field}")
+
+    if "$lumi-tester-agent" not in text:
+        errors.append(f"{OPENAI_YAML}: default_prompt should mention $lumi-tester-agent")
+    for term in ("design", "run", "debug"):
+        if term not in text.lower():
+            errors.append(f"{OPENAI_YAML}: metadata should mention {term}")
     return errors
 
 
@@ -368,6 +392,7 @@ def main() -> int:
         )
     )
     errors.extend(validate_skill_references())
+    errors.extend(validate_agents_metadata())
     errors.extend(validate_reference_examples())
     errors.extend(validate_command_example_fields())
     errors.extend(validate_selector_catalog())
