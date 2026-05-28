@@ -898,6 +898,10 @@ def validate_ai_installer_skill_fallback() -> list[str]:
                 errors.append(f"{path}: AI installer quick checks missing platform: {platform}")
         if "lumi_agent.py agent-schema" not in text:
             errors.append(f"{path}: AI installer quick checks missing agent-schema")
+        if "lumi_agent.py agent-check" not in text:
+            errors.append(f"{path}: AI installer quick checks missing agent-check")
+        if "--summary-json ./output/agent-check.json" not in text:
+            errors.append(f"{path}: AI installer quick checks missing agent-check summary JSON")
     return errors
 
 

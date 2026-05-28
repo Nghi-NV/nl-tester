@@ -68,6 +68,7 @@ lumi-tester doctor --platform web --json
 lumi-tester doctor --platform macos --json
 lumi-tester doctor --platform windows --json
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-schema
+python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-check path/to/test.yaml --summary-json ./output/agent-check.json
 ```
 
 Pin a release:

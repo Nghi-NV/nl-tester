@@ -233,4 +233,5 @@ Write-Host "  # iOS checks require macOS + idb: lumi-tester doctor --platform io
 Write-Host "  lumi-tester doctor --platform macos --json"
 Write-Host "  lumi-tester doctor --platform windows --json"
 Write-Host "  python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-schema"
+Write-Host "  python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-check path/to/test.yaml --summary-json ./output/agent-check.json"
 Write-Host "  node `"$AiHome\mcp\node_modules\lumi-tester-mcp\src\server.js`""

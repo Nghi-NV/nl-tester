@@ -74,6 +74,7 @@ pub async fn install(options: AiInstallOptions) -> Result<()> {
     println!("  lumi-tester doctor --platform macos --json");
     println!("  lumi-tester doctor --platform windows --json");
     println!("  python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-schema");
+    println!("  python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-check path/to/test.yaml --summary-json ./output/agent-check.json");
     println!("  node \"{}\"", snippets.server.display());
 
     Ok(())
