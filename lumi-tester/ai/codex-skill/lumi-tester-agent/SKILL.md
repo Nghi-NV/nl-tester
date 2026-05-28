@@ -86,6 +86,7 @@ You can use the bundled helper without loading it:
 ```bash
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-validate path/to/test.yaml
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-list path/to/test.yaml
+python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-schema
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-doctor --platform android
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-run path/to/test.yaml --platform android --device <serial> --output ./output
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-run path/to/auto.yaml --platform android_auto --device <serial> --output ./output

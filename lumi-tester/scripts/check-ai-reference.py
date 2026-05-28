@@ -369,6 +369,7 @@ def validate_helper_script_reference() -> list[str]:
     required_agent_commands = {
         "agent-validate": {"validate", "--json"},
         "agent-list": {"list", "--json"},
+        "agent-schema": {"schema", "--json"},
         "agent-doctor": {"doctor", "--platform", "--json"},
         "agent-run": {"run", "--platform", "--report", "--snapshot", "--events-jsonl", "--output"},
         "agent-debug": {
@@ -475,6 +476,9 @@ def validate_helper_script_behavior() -> list[str]:
         errors.append(f"{HELPER_SCRIPT}: agent-validate should append --json")
     if helper.parse_agent_doctor(["--platform", "web"]) != ["--platform", "web", "--json"]:
         errors.append(f"{HELPER_SCRIPT}: agent-doctor should append --json")
+    command, extra = helper.parse_passthrough(["agent-schema"])
+    if command != "agent-schema" or extra != []:
+        errors.append(f"{HELPER_SCRIPT}: agent-schema should parse without extra args")
     if helper.parse_agent_doctor(["--platform", "windows"]) != [
         "--platform",
         "windows",

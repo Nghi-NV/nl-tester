@@ -31,6 +31,7 @@ AGENT_COMMANDS = [
     "agent-doctor",
     "agent-list",
     "agent-run",
+    "agent-schema",
     "agent-validate",
 ]
 
@@ -154,6 +155,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_lumi("list", parse_agent_path_json(extra, "list"))
     if command == "agent-doctor":
         return run_lumi("doctor", parse_agent_doctor(extra))
+    if command == "agent-schema":
+        return run_lumi("schema", ["--json", *extra])
 
     return run_lumi(command, extra)
 
