@@ -109,6 +109,10 @@ def split_field_names(value: str) -> set[str]:
     return {item.strip() for item in re.split(r"[|,]", value) if item.strip()}
 
 
+def split_aliases(value: str) -> list[str]:
+    return [item.strip() for item in re.split(r"[|,]", value) if item.strip()]
+
+
 def validate_csv(path: Path, required_columns: set[str]) -> list[str]:
     errors: list[str] = []
     with path.open(newline="", encoding="utf-8") as fh:
@@ -119,6 +123,31 @@ def validate_csv(path: Path, required_columns: set[str]) -> list[str]:
         rows = list(reader)
     if not rows:
         errors.append(f"{path}: no data rows")
+    return errors
+
+
+def validate_csv_alias_quality(path: Path, primary_column: str) -> list[str]:
+    errors: list[str] = []
+    seen: dict[str, str] = {}
+    with path.open(newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            primary = row[primary_column].strip()
+            names = [primary, *split_aliases(row.get("aliases", ""))]
+            seen_in_row: set[str] = set()
+            for name in names:
+                if name in seen_in_row:
+                    errors.append(f"{path}: {primary} repeats alias/name: {name}")
+                seen_in_row.add(name)
+
+                previous = seen.get(name)
+                if previous and previous != primary:
+                    errors.append(
+                        f"{path}: alias/name {name} is used by both {previous} and {primary}"
+                    )
+                seen[name] = primary
+            for alias in split_aliases(row.get("aliases", "")):
+                if alias == primary:
+                    errors.append(f"{path}: {primary} aliases itself")
     return errors
 
 
@@ -1027,6 +1056,8 @@ def main() -> int:
         )
     )
     errors.extend(validate_skill_references())
+    errors.extend(validate_csv_alias_quality(COMMANDS_CSV, "command"))
+    errors.extend(validate_csv_alias_quality(SELECTORS_CSV, "selector"))
     errors.extend(validate_reference_navigation())
     errors.extend(validate_agents_metadata())
     errors.extend(validate_helper_script_reference())
