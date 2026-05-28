@@ -107,8 +107,8 @@ and exits with the Lumi command exit code.
 
 1. Search `references/cli.csv` first when choosing a Lumi CLI command.
 2. Search `references/headers.csv` first when choosing YAML header fields
-   such as `platform`, `appId`, `url`, `desktopState.clear`, permissions setup
-   strategy, or desktop state reset shape.
+   such as `platform`, `appId`, `url`, `browser`, `defaultTimeout`, or
+   `desktopState.clear`.
 3. Search `references/commands.csv` first when choosing a YAML command.
 4. Search `references/selectors.csv` first when choosing a selector.
 5. Run `schema --json` when the YAML shape is unclear, but treat it as a

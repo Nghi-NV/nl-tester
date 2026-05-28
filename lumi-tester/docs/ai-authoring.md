@@ -58,6 +58,12 @@ tags:
 Agents should emit this `header --- commands` shape unless the user explicitly
 asks for top-level `steps:`.
 
+Before choosing header fields, search
+`ai/codex-skill/lumi-tester-agent/references/headers.csv` for platform support,
+aliases, examples, and desktop `desktopState.clear` schema. After
+`lumi-tester ai install`, the same file is available at
+`~/.codex/skills/lumi-tester-agent/references/headers.csv`.
+
 Always set the platform and app identity explicitly:
 
 - Android: `platform: android` with package name in `appId`.

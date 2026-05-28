@@ -681,7 +681,11 @@ def validate_ai_authoring_contract() -> list[str]:
         "tests/generated/<feature>/": "generated folder convention",
         "references/selectors.csv": "selector CSV guidance",
         "references/selector-discovery.md": "selector discovery playbook guidance",
+        "references/headers.csv": "header CSV guidance",
         "~/.codex/skills/lumi-tester-agent/references/": "installed skill reference path",
+        "~/.codex/skills/lumi-tester-agent/references/headers.csv": (
+            "installed header CSV path"
+        ),
         "inspector_get /api/hierarchy": "Inspector hierarchy guidance",
         "inspector_get /api/element-at": "Inspector element-at guidance",
         "uihierarchypath": "UI hierarchy artifact guidance",
