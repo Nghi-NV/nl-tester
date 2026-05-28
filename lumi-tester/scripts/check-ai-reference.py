@@ -64,6 +64,7 @@ WRITING_TESTS_MD = ROOT / "lumi-tester" / "docs" / "writing_tests.md"
 COMMANDS_MD = ROOT / "lumi-tester" / "docs" / "api" / "commands.md"
 FLOWS_MD = ROOT / "lumi-tester" / "docs" / "flows" / "test_execution_flow.md"
 DOCS_INDEX_HTML = ROOT / "lumi-tester" / "docs" / "index.html"
+DESKTOP_TESTING_MD = ROOT / "lumi-tester" / "docs" / "desktop-testing.md"
 DISTRIBUTION_MD = ROOT / "lumi-tester" / "docs" / "distribution.md"
 PACKAGE_MANIFEST_SCRIPT = ROOT / "lumi-tester" / "scripts" / "generate-package-manifests.sh"
 MAIN_RS = ROOT / "lumi-tester" / "src" / "main.rs"
@@ -980,6 +981,7 @@ def validate_desktop_reference() -> list[str]:
     errors: list[str] = []
     raw_text = DESKTOP_MD.read_text(encoding="utf-8")
     text = raw_text.lower()
+    desktop_testing_text = DESKTOP_TESTING_MD.read_text(encoding="utf-8").lower()
     skill_text = SKILL_MD.read_text(encoding="utf-8").lower()
     if "references/desktop.md" not in skill_text:
         errors.append(f"{SKILL_MD}: missing desktop reference")
@@ -1010,6 +1012,31 @@ def validate_desktop_reference() -> list[str]:
     for term, label in required_terms.items():
         if term not in text:
             errors.append(f"{DESKTOP_MD}: missing {label}")
+
+    for path, source in {
+        DESKTOP_MD: raw_text,
+        DESKTOP_TESTING_MD: DESKTOP_TESTING_MD.read_text(encoding="utf-8"),
+    }.items():
+        macos_section = markdown_section(source, "macOS Flow")
+        if not macos_section:
+            macos_section = markdown_section(source, "macOS")
+        if "point:" in macos_section:
+            errors.append(
+                f"{path}: macOS example should not teach point-first desktop flows"
+            )
+        for term in ("setClipboard", "assertClipboard"):
+            if term.lower() not in macos_section.lower():
+                errors.append(f"{path}: macOS example should prefer {term} over point tap")
+
+    desktop_testing_required = {
+        "prefer native desktop selectors": "desktop selector priority guidance",
+        "documented fallback": "desktop point fallback framing",
+        "setclipboard": "semantic/key/clipboard-first macOS example",
+        "assertclipboard": "clipboard assertion macOS example",
+    }
+    for term, label in desktop_testing_required.items():
+        if term not in desktop_testing_text:
+            errors.append(f"{DESKTOP_TESTING_MD}: missing {label}")
     return errors
 
 

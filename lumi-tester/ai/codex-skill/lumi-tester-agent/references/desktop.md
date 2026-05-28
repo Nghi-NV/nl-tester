@@ -40,8 +40,8 @@ tags:
 - waitUntilVisible:
     text: "Calculator"
     timeout: 5000
-- tap:
-    point: "120,220"
+- setClipboard: "lumi desktop macos smoke"
+- assertClipboard: "lumi desktop macos smoke"
 - screenshot: output/calculator.png
 ```
 
@@ -133,11 +133,8 @@ Safety rules:
 
 ## Selector Guidance
 
-Reliable desktop MVP selector:
-
-- `point`
-
-Best-effort native selectors:
+Prefer native desktop selectors when the Accessibility/UI Automation hierarchy
+exposes them:
 
 - `text`
 - `id`

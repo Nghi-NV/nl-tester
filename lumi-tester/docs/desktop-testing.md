@@ -16,8 +16,11 @@ platform: macos
 appId: /System/Applications/Calculator.app
 ---
 - launchApp
-- tap:
-    point: "120,220"
+- waitUntilVisible:
+    text: "Calculator"
+    timeout: 5000
+- setClipboard: "lumi desktop macos smoke"
+- assertClipboard: "lumi desktop macos smoke"
 - takeScreenshot: output/calculator.png
 ```
 
@@ -121,11 +124,7 @@ such as `HKLM`.
 
 ## Selector Support
 
-Reliable MVP selectors:
-
-- `point`
-- screenshot-based commands
-- pixel color commands
+Prefer native desktop selectors when they are exposed:
 
 macOS best-effort native selectors:
 
@@ -144,6 +143,9 @@ Windows best-effort native selectors read the foreground window through UI Autom
 - `type`
 
 This is enough for real desktop smoke tests, launch/input/clipboard/screenshot/color assertions, basic macOS Accessibility checks, and basic Windows UI Automation selector checks. It is still not enough to claim reliable automation for every arbitrary desktop app, because desktop apps differ heavily in Accessibility/UI Automation exposure and canvas/game/custom-rendered apps may need image/OCR-driven flows.
+
+Use screenshot-based commands, pixel color commands, and `point` only as a
+documented fallback when the native hierarchy does not expose a usable element.
 
 ## Manual Smoke Tests
 
