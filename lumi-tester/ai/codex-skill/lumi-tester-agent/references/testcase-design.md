@@ -7,17 +7,56 @@ feature, convert testcase documents into YAML, or organize generated tests.
 
 1. Identify the feature, platform, app identity, target environment, user roles,
    and data dependencies.
-2. Build a small coverage model before writing YAML. Include screens/pages,
-   inputs, permissions, states, roles, network conditions, and integrations.
-3. Generate testcase candidates with the techniques below.
-4. Collapse redundant cases with risk and pairwise thinking; keep one stable
+2. Research the system from product artifacts and runtime behavior before
+   writing YAML.
+3. Build a small coverage model. Include screens/pages, inputs, permissions,
+   states, roles, network conditions, integrations, and platform differences.
+4. Generate testcase candidates with the techniques below.
+5. Collapse redundant cases with risk and pairwise thinking; keep one stable
    smoke path and focused edge/negative cases.
-5. Group tests by required setup. Do not run files independently when they
+6. Group tests by required setup. Do not run files independently when they
    require login, onboarding, seeded data, permissions, or a specific state.
-6. Write root `setup.yaml`/`teardown.yaml` or explicit `runFlow` setup flows
+7. Write root `setup.yaml`/`teardown.yaml` or explicit `runFlow` setup flows
    first, then leaf scenario files.
-7. Validate every generated YAML file, then run by folder/group with reports and
+8. Validate every generated YAML file, then run by folder/group with reports and
    artifacts.
+
+## Research Inputs
+
+Use every available source to avoid shallow happy-path suites:
+
+- Product requirements, user stories, acceptance criteria, bug reports, release
+  notes, analytics funnels, support tickets, API docs, and design files.
+- Existing manual testcases, unit/integration tests, Playwright/Appium/Maestro
+  tests, QA checklists, and production incidents.
+- Runtime exploration: app navigation, UI XML/accessibility tree, DOM,
+  screenshots, network logs, permissions, deep links, storage/state, and logs.
+- Platform contracts: Android/iOS permission behavior, browser differences,
+  responsive breakpoints, OS version differences, and app lifecycle events.
+
+When requirements are incomplete, explore the app/web surface and create a
+coverage map from observable screens, forms, actions, states, and error
+surfaces. Mark uncertain expectations as `exploratory` until confirmed.
+
+## Coverage Model
+
+Before writing YAML, create a compact model:
+
+- Actors/roles: anonymous, user, admin, wrong role, expired or disabled account.
+- Entry points: cold launch, deep link, notification, share/open-with, browser
+  URL, refresh/back/forward, resumed app.
+- States: fresh install, logged in, logged out, onboarding complete, seeded
+  data, empty data, cached data, migrated data, offline/online.
+- Objects/data: valid, invalid, duplicate, missing, large, deleted, archived,
+  permission-restricted, server-generated, localized.
+- Operations: create, view, edit, delete, undo, submit, cancel, retry, search,
+  filter, sort, paginate, upload/download, sync.
+- Oracles: visible text/state, persisted data, navigation, disabled/enabled
+  controls, error messages, permissions, network side effects, no duplicate
+  submits, no leaked sensitive data.
+
+Turn the model into a matrix, then choose rows by risk. High-risk rules need
+positive, negative, boundary, state-transition, and permission/network variants.
 
 ## Test Design Techniques
 
@@ -35,6 +74,14 @@ feature, convert testcase documents into YAML, or organize generated tests.
 - Error guessing/risk testing: add cases for flaky backends, expired sessions,
   duplicate submits, retry, timeout, empty data, slow media, and interrupted
   navigation.
+- Exploratory chartering: when behavior is unknown, run focused exploration for
+  one area, save artifacts, then convert stable findings into regression cases.
+- CRUD matrix: for each entity, cover create/read/update/delete plus duplicate,
+  undo, permissions, stale object, and concurrent or repeated submit behavior.
+- Lifecycle testing: cover cold start, background/foreground, rotation/resize,
+  refresh, app kill/relaunch, and resume from interrupted flows when supported.
+- Accessibility/i18n smoke: cover stable accessibility labels, dynamic text,
+  long localized strings, RTL if relevant, and font scale/responsive layout.
 - Regression selection: tag critical smoke, risky changed flows, and full
   regression separately.
 
@@ -47,6 +94,8 @@ Functional:
 - Create, read, update, delete, undo, duplicate, idempotency.
 - Search/filter/sort/pagination/infinite scroll.
 - Deep link, notification entry, share/open-with, browser refresh/back/forward.
+- App/web lifecycle: cold launch, background/resume, refresh, reconnect,
+  interrupted action, duplicate tap/submit.
 
 Inputs:
 
@@ -96,6 +145,18 @@ Security-focused Web/API smoke:
 
 - Authentication, authorization, session management, input validation, upload,
   redirect/deep-link handling, and sensitive data exposure checks.
+
+Web-specific:
+
+- Browser back/forward, reload, direct URL access, responsive breakpoints,
+  focus/keyboard navigation, form autofill, cookies/local storage/session
+  storage, file upload/download, tabs/windows, and cross-browser differences.
+
+Mobile-specific:
+
+- Runtime permissions, app lifecycle, orientation, keyboard overlays, OS dialogs,
+  push/deep-link entry, no-network/airplane-like behavior, device locale/time,
+  and small/large screen variants.
 
 ## Grouping Strategy
 
@@ -174,13 +235,13 @@ for explicit setup flows:
 Use this compact table before writing YAML:
 
 ```text
-Requirement | Risk | Platform | State | Role | Data class | Permission | Network | Expected result | YAML file
+Requirement | Source | Risk | Platform | State | Role | Entry point | Data class | Permission | Network | Expected result | YAML file
 ```
 
 Suggested `cases.csv` columns:
 
 ```csv
-id,requirement,risk,platform,tags,state,role,data_class,permission,network,expected,yaml
+id,requirement,source,risk,platform,tags,state,role,entry_point,data_class,permission,network,expected,yaml
 ```
 
 Mark each row as one of:

@@ -42,6 +42,7 @@ CLI_CSV = (
     / "cli.csv"
 )
 OPENAI_YAML = SKILL_DIR / "agents" / "openai.yaml"
+TESTCASE_DESIGN_MD = SKILL_DIR / "references" / "testcase-design.md"
 SCHEMA_JSON = ROOT / "lumi-tester" / "schema" / "lumi-test.schema.json"
 
 
@@ -151,6 +152,86 @@ def validate_agents_metadata() -> list[str]:
     for term in ("design", "run", "debug"):
         if term not in text.lower():
             errors.append(f"{OPENAI_YAML}: metadata should mention {term}")
+    return errors
+
+
+def markdown_section(text: str, heading: str) -> str:
+    pattern = rf"^## {re.escape(heading)}\s*$"
+    match = re.search(pattern, text, flags=re.MULTILINE)
+    if not match:
+        return ""
+    next_heading = re.search(r"^##\s+", text[match.end() :], flags=re.MULTILINE)
+    if next_heading:
+        return text[match.end() : match.end() + next_heading.start()]
+    return text[match.end() :]
+
+
+def csv_header_line(text: str) -> str:
+    match = re.search(r"```csv\n(.*?)```", text, flags=re.DOTALL)
+    if not match:
+        return ""
+    return match.group(1).strip().splitlines()[0].strip().lower()
+
+
+def validate_testcase_design_reference() -> list[str]:
+    errors: list[str] = []
+    raw_text = TESTCASE_DESIGN_MD.read_text(encoding="utf-8")
+    text = raw_text.lower()
+    required_terms = {
+        "equivalence partitioning": "equivalence partitioning",
+        "boundary value": "boundary value analysis",
+        "decision tables": "decision tables",
+        "state transition": "state transition testing",
+        "pairwise": "pairwise/combinatorial testing",
+    }
+    for term, label in required_terms.items():
+        if term not in text:
+            errors.append(f"{TESTCASE_DESIGN_MD}: missing {label}")
+
+    section_requirements = {
+        "Research Inputs": {
+            "product requirements": "product artifact research",
+            "runtime exploration": "runtime exploration",
+            "ui xml": "UI hierarchy research",
+            "dom": "DOM research",
+            "platform contracts": "platform contract research",
+        },
+        "Coverage Model": {
+            "actors/roles": "actors/roles model",
+            "entry points": "entry points model",
+            "states": "states model",
+            "objects/data": "objects/data model",
+            "operations": "operations model",
+            "oracles": "oracles model",
+        },
+        "App And Web Coverage Checklist": {
+            "web-specific": "web-specific coverage",
+            "mobile-specific": "mobile-specific coverage",
+            "permissions and privacy": "permissions coverage",
+            "state and data": "state/data coverage",
+            "security-focused web/api smoke": "security coverage",
+        },
+        "Stop Conditions": {
+            "every requirement": "requirement traceability stop condition",
+            "high-risk": "high-risk stop condition",
+            "boundary": "boundary stop condition",
+            "permission": "permission stop condition",
+            "reports/artifacts": "debug artifact stop condition",
+        },
+    }
+    for heading, terms in section_requirements.items():
+        section = markdown_section(raw_text, heading).lower()
+        if not section:
+            errors.append(f"{TESTCASE_DESIGN_MD}: missing section: {heading}")
+            continue
+        for term, label in terms.items():
+            if term not in section:
+                errors.append(f"{TESTCASE_DESIGN_MD}: missing {label}")
+
+    header = csv_header_line(raw_text)
+    for column in ("source", "entry_point"):
+        if column not in {part.strip() for part in header.split(",")}:
+            errors.append(f"{TESTCASE_DESIGN_MD}: cases.csv is missing {column} column")
     return errors
 
 
@@ -393,6 +474,7 @@ def main() -> int:
     )
     errors.extend(validate_skill_references())
     errors.extend(validate_agents_metadata())
+    errors.extend(validate_testcase_design_reference())
     errors.extend(validate_reference_examples())
     errors.extend(validate_command_example_fields())
     errors.extend(validate_selector_catalog())
