@@ -51,6 +51,9 @@ PATTERNS_MD = SKILL_DIR / "references" / "patterns.md"
 DESKTOP_MD = SKILL_DIR / "references" / "desktop.md"
 SCHEMA_JSON = ROOT / "lumi-tester" / "schema" / "lumi-test.schema.json"
 HELPER_SCRIPT = SKILL_DIR / "scripts" / "lumi_agent.py"
+AI_RS = ROOT / "lumi-tester" / "src" / "ai.rs"
+INSTALL_AI_SH = ROOT / "lumi-tester" / "scripts" / "install-ai.sh"
+INSTALL_AI_PS1 = ROOT / "lumi-tester" / "scripts" / "install-ai.ps1"
 REQUIRED_AGENT_PLATFORMS = {"android", "ios", "web", "macos", "windows"}
 
 
@@ -185,6 +188,36 @@ def validate_skill_references() -> list[str]:
     for path in sorted((SKILL_DIR / "references").glob("*")):
         if path.is_file() and f"references/{path.name}" not in linked:
             errors.append(f"{path}: reference file is not linked from {SKILL_MD}")
+    return errors
+
+
+def skill_file_paths() -> list[str]:
+    paths: list[str] = []
+    for path in sorted(SKILL_DIR.rglob("*")):
+        if not path.is_file():
+            continue
+        if "__pycache__" in path.parts:
+            continue
+        if path.suffix == ".pyc":
+            continue
+        paths.append(path.relative_to(SKILL_DIR).as_posix())
+    return paths
+
+
+def validate_skill_install_file_lists() -> list[str]:
+    errors: list[str] = []
+    expected = skill_file_paths()
+    install_sources = {
+        AI_RS: AI_RS.read_text(encoding="utf-8"),
+        INSTALL_AI_SH: INSTALL_AI_SH.read_text(encoding="utf-8"),
+        INSTALL_AI_PS1: INSTALL_AI_PS1.read_text(encoding="utf-8"),
+    }
+    for file_path in expected:
+        for source_path, text in install_sources.items():
+            if file_path not in text:
+                errors.append(
+                    f"{source_path}: skill installer is missing {file_path}"
+                )
     return errors
 
 
@@ -1245,6 +1278,7 @@ def main() -> int:
         )
     )
     errors.extend(validate_skill_references())
+    errors.extend(validate_skill_install_file_lists())
     errors.extend(validate_csv_alias_quality(COMMANDS_CSV, "command"))
     errors.extend(validate_csv_alias_quality(SELECTORS_CSV, "selector"))
     errors.extend(validate_reference_navigation())

@@ -112,12 +112,15 @@ install_codex_skill() {
   base="$(raw_base_url)/lumi-tester/ai/codex-skill/lumi-tester-agent"
   files=(
     "SKILL.md"
+    "references/cli.csv"
     "references/command-catalog.md"
     "references/commands.csv"
     "references/debug-artifacts.md"
+    "references/desktop.md"
     "references/patterns.md"
     "references/selector-discovery.md"
     "references/selectors.csv"
+    "references/testcase-design.md"
     "scripts/lumi_agent.py"
     "agents/openai.yaml"
   )
