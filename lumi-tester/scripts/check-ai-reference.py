@@ -691,6 +691,8 @@ def validate_testcase_design_reference() -> list[str]:
             "setup.yaml": "root setup example",
             "subflows/login.yaml": "login subflow example",
             "001_toggle_notifications.yaml": "leaf regression example",
+            'env: { file: ".env" }': "credential env file loading",
+            "user_password=replace-with-secret": "credential env file example",
             "lumi-tester validate tests/generated": "folder validation command",
             "lumi-tester run tests/generated": "folder run command",
             "not the leaf file": "folder run warning",
@@ -824,6 +826,8 @@ def validate_patterns_reference() -> list[str]:
         },
         "Login": {
             "env: { file: \".env\" }": "sensitive credential guidance",
+            "USER_PASSWORD": "credential variable example",
+            "out of committed YAML": "credential secrecy warning",
             "hideKeyboard": "keyboard handling",
             "waitUntilVisible": "login readiness wait",
         },

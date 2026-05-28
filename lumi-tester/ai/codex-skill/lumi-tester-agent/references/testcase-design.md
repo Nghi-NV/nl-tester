@@ -245,6 +245,7 @@ appId: com.example.app
 tags:
   - setup
 defaultTimeout: 15000
+env: { file: ".env" }
 ---
 - launchApp:
     appId: com.example.app
@@ -278,6 +279,14 @@ defaultTimeout: 15000
 - hideKeyboard
 - tap:
     accessibilityId: "Login"
+```
+
+Place the credential file beside `setup.yaml` because the setup flow loads it:
+
+```text
+tests/generated/account/settings/.env
+USER_EMAIL=test@example.com
+USER_PASSWORD=replace-with-secret
 ```
 
 `tests/generated/account/settings/regression/001_toggle_notifications.yaml`:

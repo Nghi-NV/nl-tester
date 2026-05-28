@@ -77,6 +77,7 @@ tags:
   - smoke
   - login
 defaultTimeout: 15000
+env: { file: ".env" }
 ---
 - launchApp
 - waitUntilVisible:
@@ -100,7 +101,8 @@ defaultTimeout: 15000
 
 Adaptation rules:
 
-- If credentials are sensitive, use `env: { file: ".env" }`.
+- If credentials are sensitive, use `env: { file: ".env" }` and keep
+  `USER_EMAIL`/`USER_PASSWORD` out of committed YAML.
 - If keyboard covers the button, use `hideKeyboard` before `tap`.
 - If login sometimes shows onboarding, use `conditional` or `runFlow`.
 
