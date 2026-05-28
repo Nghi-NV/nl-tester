@@ -72,6 +72,7 @@ pub async fn install(options: AiInstallOptions) -> Result<()> {
     println!("  lumi-tester doctor --platform web --json");
     println!("  lumi-tester doctor --platform macos --json");
     println!("  lumi-tester doctor --platform windows --json");
+    println!("  python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-schema");
     println!("  node \"{}\"", snippets.server.display());
 
     Ok(())

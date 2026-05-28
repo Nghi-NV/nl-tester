@@ -244,6 +244,7 @@ main() {
   say "  lumi-tester doctor --platform web --json"
   say "  lumi-tester doctor --platform macos --json"
   say "  lumi-tester doctor --platform windows --json"
+  say "  python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-schema"
   say "  node \"$AI_HOME/mcp/node_modules/lumi-tester-mcp/src/server.js\""
 }
 

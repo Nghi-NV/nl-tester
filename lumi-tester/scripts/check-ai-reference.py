@@ -756,6 +756,8 @@ def validate_ai_installer_skill_fallback() -> list[str]:
         for platform in REQUIRED_AGENT_PLATFORMS:
             if f"doctor --platform {platform} --json" not in text:
                 errors.append(f"{path}: AI installer quick checks missing platform: {platform}")
+        if "lumi_agent.py agent-schema" not in text:
+            errors.append(f"{path}: AI installer quick checks missing agent-schema")
     return errors
 
 

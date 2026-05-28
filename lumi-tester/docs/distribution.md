@@ -67,6 +67,7 @@ lumi-tester doctor --platform ios --json  # macOS + idb
 lumi-tester doctor --platform web --json
 lumi-tester doctor --platform macos --json
 lumi-tester doctor --platform windows --json
+python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-schema
 ```
 
 Pin a release:
