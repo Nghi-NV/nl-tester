@@ -21,6 +21,8 @@ LUMI_COMMANDS = [
     "report",
     "run",
     "schema",
+    "shell",
+    "system",
     "validate",
 ]
 

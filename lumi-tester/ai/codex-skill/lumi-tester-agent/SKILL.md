@@ -98,8 +98,10 @@ The helper prefers repo-local `cargo run` and falls back to an installed
 `lumi-tester` binary. `agent-run` and `agent-debug` always include
 `--report --snapshot --events-jsonl` so failures have artifacts. Raw Lumi
 commands such as `validate`, `list`, `doctor`, and `run` are still available as
-passthrough commands when custom flags are needed. The helper prints
-stdout/stderr and exits with the Lumi command exit code.
+passthrough commands when custom flags are needed. Any command listed in
+`references/cli.csv`, including setup/debug commands such as `system` and
+`shell`, should pass through the helper unchanged. The helper prints stdout/stderr
+and exits with the Lumi command exit code.
 
 ## Authoring Loop
 

@@ -339,7 +339,11 @@ def validate_helper_script_reference() -> list[str]:
             if term not in helper_text:
                 errors.append(f"{HELPER_SCRIPT}: {command} should include {term}")
 
-    for command in ("validate", "list", "doctor", "run", "schema", "devices"):
+    with CLI_CSV.open(newline="", encoding="utf-8") as fh:
+        cli_reference_commands = {
+            row["command"].strip() for row in csv.DictReader(fh) if row["command"].strip()
+        }
+    for command in sorted(cli_reference_commands):
         if f'"{command}"' not in helper_text:
             errors.append(f"{HELPER_SCRIPT}: missing raw Lumi passthrough command: {command}")
 
@@ -445,6 +449,16 @@ def validate_helper_script_behavior() -> list[str]:
         ["tests/smoke.yaml", "--platform", "web"],
     ):
         errors.append(f"{HELPER_SCRIPT}: raw run passthrough should preserve extra args")
+    if helper.parse_passthrough(["system", "install", "--all"]) != (
+        "system",
+        ["install", "--all"],
+    ):
+        errors.append(f"{HELPER_SCRIPT}: raw system passthrough should preserve extra args")
+    if helper.parse_passthrough(["shell", "--platform", "macos"]) != (
+        "shell",
+        ["--platform", "macos"],
+    ):
+        errors.append(f"{HELPER_SCRIPT}: raw shell passthrough should preserve extra args")
     return errors
 
 
