@@ -101,7 +101,7 @@ curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/
 Homebrew tap:
 
 ```bash
-brew install Nghi-NV/tap/lumi-tester
+brew install nghi-nv/tap/lumi-tester
 ```
 
 Scoop bucket:

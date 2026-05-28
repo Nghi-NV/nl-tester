@@ -108,7 +108,7 @@ Set repository secret `PACKAGE_MANAGER_TOKEN` with `repo` scope so the workflow 
 Expected UX:
 
 ```bash
-brew install Nghi-NV/tap/lumi-tester
+brew install nghi-nv/tap/lumi-tester
 ```
 
 Formula behavior:
