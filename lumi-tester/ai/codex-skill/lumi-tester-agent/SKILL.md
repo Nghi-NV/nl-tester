@@ -126,6 +126,20 @@ stdout/stderr and exits with the Lumi command exit code.
 15. Run with reports, snapshots, and event JSONL for debug-friendly artifacts.
 16. On failure, inspect artifacts and rerun the smallest failing command index.
 
+## Preflight Before Running
+
+Before any real device/browser/desktop execution, do this checklist:
+
+1. Run `doctor --platform <platform> --json` and fix missing runtime
+   dependencies first.
+2. Run `validate <file-or-folder> --json`; stop on `valid: false`.
+3. Run `list <file-or-folder> --json` to confirm collected files, setup/hooks,
+   skipped subflows, and command indexes.
+4. If the suite depends on login, permissions, seeded data, or `clearState`,
+   run the folder/group instead of a leaf file.
+5. Run with `--report --snapshot --events-jsonl --output <dir>` so debug
+   artifacts are available.
+
 Canonical commands:
 
 ```bash

@@ -393,6 +393,29 @@ def validate_helper_script_behavior() -> list[str]:
     return errors
 
 
+def validate_skill_preflight() -> list[str]:
+    errors: list[str] = []
+    raw_text = SKILL_MD.read_text(encoding="utf-8")
+    section = markdown_section(raw_text, "Preflight Before Running").lower()
+    if not section:
+        return [f"{SKILL_MD}: missing section: Preflight Before Running"]
+    required_terms = {
+        "doctor --platform": "platform doctor preflight",
+        "validate <file-or-folder> --json": "YAML validation preflight",
+        "valid: false": "validation failure stop rule",
+        "list <file-or-folder> --json": "list/index preflight",
+        "setup/hooks": "group setup/hook check",
+        "skipped subflows": "subflow collection check",
+        "folder/group": "group run guidance",
+        "leaf file": "leaf-file warning",
+        "--report --snapshot --events-jsonl --output": "debug artifact flags",
+    }
+    for term, label in required_terms.items():
+        if term not in section:
+            errors.append(f"{SKILL_MD}: preflight missing {label}")
+    return errors
+
+
 def markdown_section(text: str, heading: str) -> str:
     pattern = rf"^## {re.escape(heading)}\s*$"
     match = re.search(pattern, text, flags=re.MULTILINE)
@@ -1228,6 +1251,7 @@ def main() -> int:
     errors.extend(validate_agents_metadata())
     errors.extend(validate_helper_script_reference())
     errors.extend(validate_helper_script_behavior())
+    errors.extend(validate_skill_preflight())
     errors.extend(validate_testcase_design_reference())
     errors.extend(validate_debug_artifacts_reference())
     errors.extend(validate_patterns_reference())
