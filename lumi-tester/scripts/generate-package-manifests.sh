@@ -57,7 +57,10 @@ class LumiTester < Formula
   end
 
   def caveats
-    "Run 'lumi-tester system install --all' to install ADB and browser dependencies."
+    <<~EOS
+      Run 'lumi-tester system install --all' to install ADB and browser dependencies.
+      Run 'lumi-tester ai install' to install the Codex skill and MCP server for AI-assisted test authoring/debugging.
+    EOS
   end
 
   test do
@@ -72,6 +75,7 @@ cat > "${DIST_DIR}/scoop-lumi-tester.json" <<EOF
   "description": "Multi-platform automation testing CLI",
   "homepage": "https://github.com/${REPO}",
   "license": "MIT",
+  "notes": "Run 'lumi-tester system install --all' for local drivers, then 'lumi-tester ai install' to install the Codex skill and MCP server.",
   "architecture": {
     "64bit": {
       "url": "$(asset_url "$WIN_X64")",
@@ -124,6 +128,7 @@ Publisher: Nghi NV
 PackageName: Lumi Tester
 License: MIT
 ShortDescription: Multi-platform automation testing CLI
+Description: Multi-platform automation testing CLI. Run 'lumi-tester ai install' after installation to install the Codex skill and MCP server for AI-assisted test authoring/debugging.
 PackageUrl: https://github.com/${REPO}
 ManifestType: defaultLocale
 ManifestVersion: 1.6.0

@@ -58,6 +58,7 @@ MCP_SERVER_JS = ROOT / "lumi-tester-mcp" / "src" / "server.js"
 MCP_README = ROOT / "lumi-tester-mcp" / "README.md"
 README_MD = ROOT / "lumi-tester" / "README.md"
 DISTRIBUTION_MD = ROOT / "lumi-tester" / "docs" / "distribution.md"
+PACKAGE_MANIFEST_SCRIPT = ROOT / "lumi-tester" / "scripts" / "generate-package-manifests.sh"
 REQUIRED_AGENT_PLATFORMS = {"android", "ios", "web", "macos", "windows"}
 
 
@@ -516,6 +517,23 @@ def validate_user_install_docs() -> list[str]:
     for platform in ("android", "ios", "web", "macos", "windows"):
         if platform not in readme:
             errors.append(f"{README_MD}: missing platform mention: {platform}")
+    return errors
+
+
+def validate_package_manager_ai_guidance() -> list[str]:
+    errors: list[str] = []
+    text = PACKAGE_MANIFEST_SCRIPT.read_text(encoding="utf-8")
+    required_terms = {
+        "lumi-tester ai install": "AI installer command",
+        "Codex skill": "Codex skill guidance",
+        "MCP server": "MCP server guidance",
+        "def caveats": "Homebrew caveats",
+        '"notes"': "Scoop notes",
+        "Description:": "Winget description",
+    }
+    for term, label in required_terms.items():
+        if term not in text:
+            errors.append(f"{PACKAGE_MANIFEST_SCRIPT}: missing {label}")
     return errors
 
 
@@ -1358,6 +1376,7 @@ def main() -> int:
     errors.extend(validate_skill_preflight())
     errors.extend(validate_mcp_tool_references())
     errors.extend(validate_user_install_docs())
+    errors.extend(validate_package_manager_ai_guidance())
     errors.extend(validate_testcase_design_reference())
     errors.extend(validate_debug_artifacts_reference())
     errors.extend(validate_patterns_reference())
