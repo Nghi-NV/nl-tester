@@ -398,7 +398,8 @@ that can run in the current environment:
    `agent-check <file-or-folder> --platform <platform> --run --output <dir>`
    when runtime execution is available. Treat `== lumi agent-check: PASS ==`
    as the concise self-test summary. Use
-   `--summary-json <file>` when a machine-readable evidence file is useful.
+   `--summary-json <file>` when a machine-readable evidence file is useful;
+   each JSON step includes the exact Lumi command string.
 2. Always run `validate --json` on the file or folder you changed.
 3. Always run `list --json` on the same file or folder to prove grouping,
    setup/teardown, skipped subflows, and command indexes.
