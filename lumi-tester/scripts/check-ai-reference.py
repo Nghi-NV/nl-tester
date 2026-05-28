@@ -86,6 +86,11 @@ def schema_command_names() -> set[str]:
     return set(schema["$defs"]["commandName"]["enum"])
 
 
+def schema_selector_names() -> set[str]:
+    schema = json.loads(SCHEMA_JSON.read_text(encoding="utf-8"))
+    return set(schema["$defs"]["selector"]["properties"])
+
+
 def validate_skill_references() -> list[str]:
     errors: list[str] = []
     text = SKILL_MD.read_text(encoding="utf-8")
@@ -172,6 +177,23 @@ def validate_yaml_command_examples(parser_names: set[str]) -> list[str]:
     return errors
 
 
+def validate_selector_catalog() -> list[str]:
+    errors: list[str] = []
+    schema_names = schema_selector_names()
+    with SELECTORS_CSV.open(newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            names = [row["selector"].strip()]
+            aliases = row.get("aliases", "")
+            names.extend(alias.strip() for alias in re.split(r"[|,]", aliases) if alias.strip())
+            unknown = sorted(set(names).difference(schema_names))
+            if unknown:
+                errors.append(
+                    f"{SELECTORS_CSV}: selector row {row['selector']} has names "
+                    "not present in schema selector properties: " + ", ".join(unknown)
+                )
+    return errors
+
+
 def main() -> int:
     errors: list[str] = []
     errors.extend(
@@ -224,6 +246,7 @@ def main() -> int:
     )
     errors.extend(validate_skill_references())
     errors.extend(validate_reference_examples())
+    errors.extend(validate_selector_catalog())
 
     parser_names = parser_commands()
     csv_names = csv_command_names()

@@ -4,7 +4,7 @@ id,resourceId,android|ios|web,1,Stable app resource id/accessibility identifier,
 accessibilityId,desc|contentDesc,android|ios,1,Accessibility label/description/content-desc,"accessibilityId: Login","Avoid localized text if id exists"
 text,,android|ios|web,2,Visible stable text,"text: Login","Avoid non-exact text for short common words"
 exact,,all,2,Force exact text matching,"text: Login; exact: true","Do not set exact when text is dynamic/localized"
-regex,textRegex,all,3,Dynamic text with stable pattern,"regex: '^Order #[0-9]+$'","Avoid broad patterns like .*"
+regex,,all,3,Dynamic text with stable pattern,"regex: '^Order #[0-9]+$'","Avoid broad patterns like .*"
 css,,web,1,Stable web CSS/data-testid selector,"css: [data-testid='login']","Avoid brittle nth-child chains"
 role,,web,2,Accessible web role,"role: button","Combine with text when role is duplicated"
 placeholder,,web,2,Input placeholder text,"placeholder: Email","Avoid if placeholder disappears on focus"
