@@ -48,8 +48,10 @@ OPENAI_YAML = SKILL_DIR / "agents" / "openai.yaml"
 TESTCASE_DESIGN_MD = SKILL_DIR / "references" / "testcase-design.md"
 DEBUG_ARTIFACTS_MD = SKILL_DIR / "references" / "debug-artifacts.md"
 PATTERNS_MD = SKILL_DIR / "references" / "patterns.md"
+DESKTOP_MD = SKILL_DIR / "references" / "desktop.md"
 SCHEMA_JSON = ROOT / "lumi-tester" / "schema" / "lumi-test.schema.json"
 HELPER_SCRIPT = SKILL_DIR / "scripts" / "lumi_agent.py"
+REQUIRED_AGENT_PLATFORMS = {"android", "ios", "web", "macos", "windows"}
 
 
 def parser_commands() -> set[str]:
@@ -205,9 +207,17 @@ def validate_reference_navigation() -> list[str]:
         )
         if contents_index is None:
             continue
+        next_heading_index = next(
+            (
+                idx
+                for idx, line in enumerate(lines[contents_index + 1 :], start=contents_index + 1)
+                if line.startswith("## ") and idx > contents_index
+            ),
+            min(len(lines), contents_index + 15),
+        )
         bullets = [
             line[2:].strip()
-            for line in lines[contents_index + 1 : contents_index + 15]
+            for line in lines[contents_index + 1 : next_heading_index]
             if line.startswith("- ")
         ]
         if len(bullets) < 3:
@@ -245,7 +255,7 @@ def validate_agents_metadata() -> list[str]:
 
     if "$lumi-tester-agent" not in text:
         errors.append(f"{OPENAI_YAML}: default_prompt should mention $lumi-tester-agent")
-    for term in ("design", "run", "debug"):
+    for term in ("design", "run", "debug", "macos", "windows"):
         if term not in text.lower():
             errors.append(f"{OPENAI_YAML}: metadata should mention {term}")
     return errors
@@ -258,6 +268,9 @@ def validate_helper_script_reference() -> list[str]:
 
     helper_text = HELPER_SCRIPT.read_text(encoding="utf-8")
     skill_text = SKILL_MD.read_text(encoding="utf-8")
+    for platform in REQUIRED_AGENT_PLATFORMS:
+        if f'"{platform}"' not in helper_text:
+            errors.append(f"{HELPER_SCRIPT}: helper should accept platform: {platform}")
     required_agent_commands = {
         "agent-validate": {"validate", "--json"},
         "agent-list": {"list", "--json"},
@@ -363,6 +376,15 @@ def validate_helper_script_behavior() -> list[str]:
         errors.append(f"{HELPER_SCRIPT}: agent-validate should append --json")
     if helper.parse_agent_doctor(["--platform", "web"]) != ["--platform", "web", "--json"]:
         errors.append(f"{HELPER_SCRIPT}: agent-doctor should append --json")
+    if helper.parse_agent_doctor(["--platform", "windows"]) != [
+        "--platform",
+        "windows",
+        "--json",
+    ]:
+        errors.append(f"{HELPER_SCRIPT}: agent-doctor should accept windows")
+    desktop_run = helper.parse_agent_run(["desktop.yaml", "--platform", "macos"])
+    if "--platform" not in desktop_run or "macos" not in desktop_run:
+        errors.append(f"{HELPER_SCRIPT}: agent-run should accept macos")
     if helper.parse_passthrough(["run", "tests/smoke.yaml", "--platform", "web"]) != (
         "run",
         ["tests/smoke.yaml", "--platform", "web"],
@@ -640,6 +662,71 @@ def validate_patterns_reference() -> list[str]:
     for term, label in required_global_terms.items():
         if term.lower() not in text:
             errors.append(f"{PATTERNS_MD}: missing {label}")
+    return errors
+
+
+def validate_desktop_reference() -> list[str]:
+    errors: list[str] = []
+    raw_text = DESKTOP_MD.read_text(encoding="utf-8")
+    text = raw_text.lower()
+    skill_text = SKILL_MD.read_text(encoding="utf-8").lower()
+    if "references/desktop.md" not in skill_text:
+        errors.append(f"{SKILL_MD}: missing desktop reference")
+    for term in ("macos", "windows"):
+        if term not in skill_text:
+            errors.append(f"{SKILL_MD}: platform coverage should mention {term}")
+
+    required_terms = {
+        "platform: macos": "macOS YAML example",
+        "platform: windows": "Windows YAML example",
+        "accessibility permission": "macOS Accessibility permission guidance",
+        "screen recording": "macOS Screen Recording permission guidance",
+        "interactive foreground desktop session": "Windows interactive desktop guidance",
+        "ui automation": "Windows UI Automation guidance",
+        "clearstate` is not supported": "desktop clearState limitation",
+        "doctor --platform macos": "macOS doctor command",
+        "doctor --platform windows": "Windows doctor command",
+        "events-jsonl": "debug artifact flag",
+        "point": "desktop point fallback",
+        "ocr": "desktop OCR fallback",
+        "image": "desktop image fallback",
+    }
+    for term, label in required_terms.items():
+        if term not in text:
+            errors.append(f"{DESKTOP_MD}: missing {label}")
+    return errors
+
+
+def validate_desktop_platform_catalog() -> list[str]:
+    errors: list[str] = []
+    schema = json.loads(SCHEMA_JSON.read_text(encoding="utf-8"))
+    schema_platforms = set(schema["properties"]["platform"]["enum"])
+    for platform in ("macos", "windows"):
+        if platform not in schema_platforms:
+            errors.append(f"{SCHEMA_JSON}: missing desktop platform: {platform}")
+
+    required_cli = {
+        "validate",
+        "list",
+        "schema",
+        "doctor",
+        "devices",
+        "run",
+        "report",
+        "ai",
+        "shell",
+        "system",
+    }
+    with CLI_CSV.open(newline="", encoding="utf-8") as fh:
+        rows = {row["command"].strip(): row for row in csv.DictReader(fh)}
+    for command in required_cli:
+        platforms = split_field_names(rows[command]["platforms"])
+        missing = sorted({"macos", "windows"}.difference(platforms))
+        if missing:
+            errors.append(
+                f"{CLI_CSV}: command {command} is missing desktop platform(s): "
+                + ", ".join(missing)
+            )
     return errors
 
 
@@ -1065,6 +1152,8 @@ def main() -> int:
     errors.extend(validate_testcase_design_reference())
     errors.extend(validate_debug_artifacts_reference())
     errors.extend(validate_patterns_reference())
+    errors.extend(validate_desktop_reference())
+    errors.extend(validate_desktop_platform_catalog())
     errors.extend(validate_reference_examples())
     errors.extend(validate_command_example_fields())
     errors.extend(validate_selector_catalog())

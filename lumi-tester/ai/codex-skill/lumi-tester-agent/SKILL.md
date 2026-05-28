@@ -1,6 +1,6 @@
 ---
 name: lumi-tester-agent
-description: Design testcase coverage, write, validate, run, and debug Lumi Tester YAML automation flows for Android, iOS, Android Auto, and Web. Use when Codex is asked to create test cases from requirements, generate grouped test folders, create or fix Lumi YAML tests, run Lumi Tester from a repo or installed binary, inspect validate/list/doctor/schema JSON output, debug failed commands using run.json/events.jsonl/test-results.json/screenshots/UI XML/logs, or rerun a failing command by command index.
+description: Design testcase coverage, write, validate, run, and debug Lumi Tester YAML automation flows for Android, iOS, Android Auto, Web, macOS, and Windows. Use when Codex is asked to create test cases from requirements, generate grouped test folders, create or fix Lumi YAML tests, run Lumi Tester from a repo or installed binary, inspect validate/list/doctor/schema JSON output, debug failed commands using run.json/events.jsonl/test-results.json/screenshots/UI XML/logs, or rerun a failing command by command index.
 ---
 
 # Lumi Tester Agent
@@ -11,10 +11,10 @@ itself. For framework development, use the `lumi-tester` development skill.
 
 ## Platform Coverage
 
-Support Android, iOS, and Web workflows. Do not specialize the skill, helper, or
-flow patterns for only one platform unless the user's target is explicitly
-platform-specific. Always set or infer the target platform before selecting
-commands, selectors, devices, and debug artifacts:
+Support Android, iOS, Web, macOS, and Windows workflows. Do not specialize the
+skill, helper, or flow patterns for only one platform unless the user's target
+is explicitly platform-specific. Always set or infer the target platform before
+selecting commands, selectors, devices, and debug artifacts:
 
 - Android: app package `appId`, Android device serial, UIAutomator XML,
   `id`/`resourceId`, `accessibilityId`/`contentDesc`, `text`, OCR fallback.
@@ -22,6 +22,13 @@ commands, selectors, devices, and debug artifacts:
   `accessibilityId`/`label`, `text`, OCR fallback.
 - Web: `url`/browser, DOM selectors such as `css`, `role`, `placeholder`,
   `text`, and browser artifacts.
+- macOS: local desktop app path or bundle id in `appId`, Accessibility
+  hierarchy, `text`/`id`/`description`/`role`/`type` best-effort selectors,
+  screenshot/OCR/image/point fallback, Accessibility and Screen Recording
+  permissions.
+- Windows: local executable path in `appId`, UI Automation hierarchy for the
+  foreground window, `text`/`id`/`description`/`role`/`type` best-effort
+  selectors, screenshot/OCR/image/point fallback, interactive desktop session.
 
 ## Find Lumi Tester
 
@@ -77,6 +84,8 @@ python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-list path/
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-doctor --platform android
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-run path/to/test.yaml --platform android --device <serial> --output ./output
 python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-debug path/to/test.yaml --platform android --device <serial> --command-index 3 --output ./output
+python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-run path/to/desktop.yaml --platform macos --output ./output
+python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-run path/to/desktop.yaml --platform windows --output ./output
 ```
 
 The helper prefers repo-local `cargo run` and falls back to an installed
@@ -101,18 +110,21 @@ stdout/stderr and exits with the Lumi command exit code.
    requirements, user stories, screenshots, API specs, or exploratory findings.
 7. Read `references/patterns.md` when the request matches a common workflow
    such as login, onboarding, search, settings, permission, GPS, or web form.
-8. For device-backed requests, confirm the target device and app before writing
-   or running a flow. If the user says "current app", inspect current focus
-   instead of assuming an appId from an existing YAML file.
-9. Discover the app identity before launch: Android package, iOS bundle id, or
-   Web URL/browser target.
-10. After `launchApp`, wait for a stable screen element with `waitUntilVisible`
+8. Read `references/desktop.md` for native macOS or Windows desktop app tests.
+9. For device-backed or desktop-backed requests, confirm the target device/app,
+   local desktop host/app, or browser before writing or running a flow. If the
+   user says "current app", inspect current focus/frontmost app instead of
+   assuming an appId from an existing YAML file.
+10. Discover the app identity before launch: Android package, iOS bundle id,
+   Web URL/browser target, macOS `.app` path/bundle id, or Windows executable
+   path.
+11. After `launchApp`, wait for a stable screen element with `waitUntilVisible`
    or `waitSee`; do not use a fixed delay as launch readiness.
-11. Write YAML in canonical `header --- commands` format.
-12. Run validation before any device/browser execution.
-13. Use `list --json` to discover command indexes.
-14. Run with reports, snapshots, and event JSONL for debug-friendly artifacts.
-15. On failure, inspect artifacts and rerun the smallest failing command index.
+12. Write YAML in canonical `header --- commands` format.
+13. Run validation before any device/browser/desktop execution.
+14. Use `list --json` to discover command indexes.
+15. Run with reports, snapshots, and event JSONL for debug-friendly artifacts.
+16. On failure, inspect artifacts and rerun the smallest failing command index.
 
 Canonical commands:
 
@@ -138,6 +150,15 @@ For iOS:
 ```bash
 cargo run -- doctor --platform ios --json
 cargo run -- run ./test.yaml --platform ios --report --snapshot --events-jsonl --output ./output
+```
+
+For desktop:
+
+```bash
+cargo run -- doctor --platform macos --json
+cargo run -- doctor --platform windows --json
+cargo run -- run ./desktop.yaml --platform macos --report --snapshot --events-jsonl --output ./output
+cargo run -- run ./desktop.yaml --platform windows --report --snapshot --events-jsonl --output ./output
 ```
 
 ## Canonical YAML

@@ -32,6 +32,8 @@ AGENT_COMMANDS = [
     "agent-validate",
 ]
 
+PLATFORMS = ["android", "ios", "web", "macos", "windows"]
+
 
 def find_repo_root(start: Path) -> Path | None:
     current = start.resolve()
@@ -99,7 +101,7 @@ def parse_agent_run(argv: list[str], *, require_command_index: bool = False) -> 
         description="Run a Lumi test with debug-friendly artifacts enabled"
     )
     parser.add_argument("path", help="YAML file or test directory")
-    parser.add_argument("--platform", required=True, choices=["android", "ios", "web"])
+    parser.add_argument("--platform", required=True, choices=PLATFORMS)
     parser.add_argument("--device", help="Android serial, iOS UDID, or browser/device target")
     parser.add_argument("--output", default="./output/lumi-agent")
     parser.add_argument("--command-index", type=int, required=require_command_index)
@@ -132,7 +134,7 @@ def parse_agent_path_json(argv: list[str], command: str) -> list[str]:
 
 def parse_agent_doctor(argv: list[str]) -> list[str]:
     parser = argparse.ArgumentParser(description="Run Lumi doctor with JSON output")
-    parser.add_argument("--platform", required=True, choices=["android", "ios", "web"])
+    parser.add_argument("--platform", required=True, choices=PLATFORMS)
     parsed = parser.parse_args(argv)
     return ["--platform", parsed.platform, "--json"]
 
