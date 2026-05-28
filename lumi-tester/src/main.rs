@@ -24,8 +24,8 @@ enum Commands {
         /// Path to test file or directory
         path: PathBuf,
 
-        /// Target platform (android, ios, web)
-        /// Target platform (android, ios, web). parsed from file if not provided.
+        /// Target platform (android, android_auto, ios, web, macos, windows).
+        /// Parsed from file if not provided.
         #[arg(short, long)]
         platform: Option<String>,
 
@@ -117,7 +117,7 @@ enum Commands {
 
     /// Check local automation dependencies
     Doctor {
-        /// Target platform to check (android, ios, web, macos, windows, all)
+        /// Target platform to check (android, android_auto, ios, web, macos, windows, all)
         #[arg(short, long, default_value = "android")]
         platform: String,
 

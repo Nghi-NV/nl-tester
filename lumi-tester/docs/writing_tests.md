@@ -38,9 +38,10 @@ Phần Header nằm phía trên dấu `---`. Nếu không có dấu `---`, các 
 
 | Trường | Alias | Kiểu dữ liệu | Mô tả |
 | :--- | :--- | :--- | :--- |
-| `appId` | - | String | Package name (Android) hoặc Bundle ID (iOS). |
+| `appId` | - | String | Package name (Android), Bundle ID (iOS), `.app` path/bundle id (macOS), hoặc `.exe` path (Windows). |
 | `url` | - | String | URL khởi tạo (Web). |
-| `platform` | - | String | `android`, `ios`, `web`. |
+| `platform` | - | String | `android`, `android_auto`, `ios`, `web`, `macos`, `windows`. |
+| `desktopState` | - | Map | Cấu hình xóa state cho desktop; dùng `desktopState.clear` cùng `launchApp: { clearState: true }` trên macOS/Windows. |
 | `env` | `vars`, `var`| Map | Định nghĩa biến môi trường (Key-Value) hoặc load từ file (`file: path`). |
 | `data` | - | String | Path tới file dữ liệu (CSV/JSON). |
 | `defaultTimeout` | - | Number | Thời gian chờ mặc định (ms) cho các lệnh. |

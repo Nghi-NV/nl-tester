@@ -137,8 +137,8 @@ tap:
 **Tham số**:
 | Trường | Alias | Kiểu dữ liệu | Mặc định | Mô tả |
 | :--- | :--- | :--- | :--- | :--- |
-| `appId` | `url` | String | - | Package name (Android) hoặc Bundle ID (iOS). |
-| `clearState`| - | Boolean | `false` | Xóa dữ liệu ứng dụng (Clean Install) trước khi mở. |
+| `appId` | `url` | String | - | Package name (Android), Bundle ID (iOS), `.app` path/bundle id (macOS), hoặc `.exe` path (Windows). |
+| `clearState`| - | Boolean | `false` | Xóa dữ liệu ứng dụng trước khi mở. Trên macOS/Windows cần cấu hình `desktopState.clear` ở header. |
 | `clearKeychain`| - | Boolean | `false` | Xóa Keychain (chỉ áp dụng iOS Simulator). |
 | `stopApp` | - | Boolean | `true` | Dừng ứng dụng nếu đang chạy trước khi mở lại. |
 | `permissions`| - | Map | - | Danh sách quyền cần thiết lập (key là tên quyền, value là `allow`/`deny`). |

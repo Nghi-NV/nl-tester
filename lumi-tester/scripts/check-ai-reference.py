@@ -58,8 +58,11 @@ INSTALL_AI_PS1 = ROOT / "lumi-tester" / "scripts" / "install-ai.ps1"
 MCP_SERVER_JS = ROOT / "lumi-tester-mcp" / "src" / "server.js"
 MCP_README = ROOT / "lumi-tester-mcp" / "README.md"
 README_MD = ROOT / "lumi-tester" / "README.md"
+WRITING_TESTS_MD = ROOT / "lumi-tester" / "docs" / "writing_tests.md"
+COMMANDS_MD = ROOT / "lumi-tester" / "docs" / "api" / "commands.md"
 DISTRIBUTION_MD = ROOT / "lumi-tester" / "docs" / "distribution.md"
 PACKAGE_MANIFEST_SCRIPT = ROOT / "lumi-tester" / "scripts" / "generate-package-manifests.sh"
+MAIN_RS = ROOT / "lumi-tester" / "src" / "main.rs"
 REQUIRED_AGENT_PLATFORMS = {"android", "android_auto", "ios", "web", "macos", "windows"}
 
 
@@ -965,6 +968,27 @@ def validate_android_auto_reference() -> list[str]:
     return errors
 
 
+def validate_cli_help_platform_guidance() -> list[str]:
+    errors: list[str] = []
+    text = MAIN_RS.read_text(encoding="utf-8")
+    stale_patterns = {
+        "run platform help": r"Target platform \(android, ios, web\).*parsed from file",
+        "doctor platform help": r"Target platform to check \(android, ios, web, macos, windows, all\)",
+    }
+    for label, pattern in stale_patterns.items():
+        if re.search(pattern, text, flags=re.DOTALL | re.IGNORECASE):
+            errors.append(f"{MAIN_RS}: stale {label} is missing android_auto/desktop coverage")
+
+    required_terms = {
+        "Target platform (android, android_auto, ios, web, macos, windows).": "run platform help",
+        "Target platform to check (android, android_auto, ios, web, macos, windows, all)": "doctor platform help",
+    }
+    for term, label in required_terms.items():
+        if term not in text:
+            errors.append(f"{MAIN_RS}: missing {label}")
+    return errors
+
+
 def validate_desktop_platform_catalog() -> list[str]:
     errors: list[str] = []
     schema = json.loads(SCHEMA_JSON.read_text(encoding="utf-8"))
@@ -1053,6 +1077,53 @@ def validate_desktop_platform_catalog() -> list[str]:
                 f"{COMMANDS_CSV}: command {command} is missing desktop platform(s): "
                 + ", ".join(missing)
             )
+    return errors
+
+
+def validate_desktop_clear_state_docs() -> list[str]:
+    errors: list[str] = []
+    agent_command_catalog = SKILL_DIR / "references" / "command-catalog.md"
+    required = {
+        WRITING_TESTS_MD: [
+            "android_auto",
+            "macos",
+            "windows",
+            "desktopState",
+            "desktopState.clear",
+            "clearState: true",
+        ],
+        COMMANDS_MD: [
+            ".app",
+            ".exe",
+            "desktopState.clear",
+        ],
+        agent_command_catalog: [
+            "macOS `.app` paths",
+            "Windows executable paths",
+            "desktopState.clear",
+            "clearState: true",
+        ],
+    }
+    stale_terms = {
+        WRITING_TESTS_MD: [
+            "Package name (Android) hoặc Bundle ID (iOS).",
+            "`android`, `ios`, `web`.",
+        ],
+        COMMANDS_MD: [
+            "Package name (Android) hoặc Bundle ID (iOS).",
+        ],
+        agent_command_catalog: [
+            "Use `appId` for Android/iOS app tests",
+        ],
+    }
+    for path, terms in required.items():
+        text = path.read_text(encoding="utf-8")
+        for term in terms:
+            if term not in text:
+                errors.append(f"{path}: missing desktop clearState/appId guidance: {term}")
+        for term in stale_terms.get(path, []):
+            if term in text:
+                errors.append(f"{path}: stale desktop guidance still present: {term}")
     return errors
 
 
@@ -1530,8 +1601,10 @@ def main() -> int:
     errors.extend(validate_debug_artifacts_reference())
     errors.extend(validate_patterns_reference())
     errors.extend(validate_android_auto_reference())
+    errors.extend(validate_cli_help_platform_guidance())
     errors.extend(validate_desktop_reference())
     errors.extend(validate_desktop_platform_catalog())
+    errors.extend(validate_desktop_clear_state_docs())
     errors.extend(validate_reference_examples())
     errors.extend(validate_command_example_fields())
     errors.extend(validate_selector_catalog())

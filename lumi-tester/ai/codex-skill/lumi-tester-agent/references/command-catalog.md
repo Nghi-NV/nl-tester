@@ -36,8 +36,11 @@ env:
 ---
 ```
 
-Use `appId` for Android/iOS app tests, `url` for Web tests, and both only when
-the flow intentionally bridges app and web context.
+Use `appId` for Android package names, iOS bundle ids, macOS `.app` paths or
+bundle ids, and Windows executable paths. Use `url` for Web tests, and both only
+when the flow intentionally bridges app and web context. For macOS/Windows
+`clearState`, add a header-level `desktopState.clear` plan and then launch with
+`clearState: true`.
 
 ## Core App And Navigation
 
