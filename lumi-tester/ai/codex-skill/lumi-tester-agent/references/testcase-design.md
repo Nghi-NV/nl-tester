@@ -14,7 +14,8 @@ feature, convert testcase documents into YAML, or organize generated tests.
    smoke path and focused edge/negative cases.
 5. Group tests by required setup. Do not run files independently when they
    require login, onboarding, seeded data, permissions, or a specific state.
-6. Write setup/login/group flows first, then leaf scenario files.
+6. Write root `setup.yaml`/`teardown.yaml` or explicit `runFlow` setup flows
+   first, then leaf scenario files.
 7. Validate every generated YAML file, then run by folder/group with reports and
    artifacts.
 
@@ -92,10 +93,12 @@ Use folders when scenarios share state:
 
 ```text
 tests/generated/<feature>/
-  README.md                 # optional human traceability outside skill output
+  cases.csv                 # testcase matrix: id, risk, tags, yaml path
+  setup.yaml                # auto-runs before each file in this folder run
+  teardown.yaml             # auto-runs after each file in this folder run
   data/
     users.csv
-  setup/
+  subflows/                 # skipped by directory runs; call with runFlow
     login.yaml
     seed_data.yaml
     grant_permissions.yaml
@@ -109,15 +112,17 @@ tests/generated/<feature>/
     web/
     ios/
     android/
-  teardown/
-    logout.yaml
-    cleanup.yaml
 ```
 
 When the repo already has a test layout, follow it instead of forcing this
 shape. Keep generated tests under a feature folder such as
 `tests/generated/<feature>/` or the repo's equivalent, so artifacts from a
 testcase batch stay together.
+
+Directory runs automatically skip files named `setup.yaml`, `setup.yml`,
+`teardown.yaml`, and `teardown.yml`, then execute root setup/teardown hooks
+around the main files. Directories named `subflows/` are skipped during
+directory collection; call those reusable flows explicitly with `runFlow`.
 
 Run a folder/group when files depend on shared setup:
 
@@ -129,9 +134,18 @@ lumi-tester run tests/generated/login --platform android --report --snapshot --e
 
 Run a single file only when it is explicitly self-contained.
 
+When a scenario file lives in a subdirectory, use relative paths from that file
+for explicit setup flows:
+
+```yaml
+- runFlow: "../subflows/login.yaml"
+```
+
 ## YAML Authoring Rules From Testcases
 
 - Put testcase id and requirement id in `tags` when available.
+- Keep a `cases.csv` or equivalent matrix near generated YAML when creating a
+  suite from many testcase rows.
 - Keep one user intent per scenario file unless the testcase is an end-to-end
   journey.
 - Use `launchApp` followed by selector-based readiness waits.
@@ -148,6 +162,12 @@ Use this compact table before writing YAML:
 
 ```text
 Requirement | Risk | Platform | State | Role | Data class | Permission | Network | Expected result | YAML file
+```
+
+Suggested `cases.csv` columns:
+
+```csv
+id,requirement,risk,platform,tags,state,role,data_class,permission,network,expected,yaml
 ```
 
 Mark each row as one of:

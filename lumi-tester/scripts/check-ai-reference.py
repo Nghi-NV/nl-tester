@@ -21,6 +21,8 @@ COMMANDS_CSV = (
     / "references"
     / "commands.csv"
 )
+SKILL_DIR = ROOT / "lumi-tester" / "ai" / "codex-skill" / "lumi-tester-agent"
+SKILL_MD = SKILL_DIR / "SKILL.md"
 SELECTORS_CSV = (
     ROOT
     / "lumi-tester"
@@ -84,6 +86,17 @@ def schema_command_names() -> set[str]:
     return set(schema["$defs"]["commandName"]["enum"])
 
 
+def validate_skill_references() -> list[str]:
+    errors: list[str] = []
+    text = SKILL_MD.read_text(encoding="utf-8")
+    refs = sorted(set(re.findall(r"references/[A-Za-z0-9_.-]+", text)))
+    for ref in refs:
+        path = SKILL_DIR / ref
+        if not path.exists():
+            errors.append(f"{SKILL_MD}: referenced file does not exist: {ref}")
+    return errors
+
+
 def main() -> int:
     errors: list[str] = []
     errors.extend(
@@ -134,6 +147,7 @@ def main() -> int:
             },
         )
     )
+    errors.extend(validate_skill_references())
 
     parser_names = parser_commands()
     csv_names = csv_command_names()
