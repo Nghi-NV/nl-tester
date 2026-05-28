@@ -1,0 +1,25 @@
+platform: macos
+appId: /System/Applications/Calculator.app
+tags:
+  - desktop
+  - macos
+  - calculator
+---
+- launchApp
+- wait: 500
+- pressKey: escape
+- pressKey: "1"
+- pressKey: "2"
+- pressKey: "+"
+- pressKey: "3"
+- pressKey: "0"
+- pressKey: enter
+- wait: 300
+- pressKey: cmd+c
+- getClipboard: calculator_result
+- assertVar:
+    name: calculator_result
+    expected: "42"
+- assertTrue: calculator_result == "42"
+- takeScreenshot: macos-calculator-smoke.png
+- stopApp

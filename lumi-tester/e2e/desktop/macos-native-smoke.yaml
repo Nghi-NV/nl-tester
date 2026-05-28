@@ -1,0 +1,12 @@
+platform: macos
+appId: /System/Applications/Calculator.app
+---
+- launchApp
+- setClipboard: "lumi desktop macos smoke"
+- assertClipboard: "lumi desktop macos smoke"
+- getClipboard: desktop_clipboard
+- assertVar:
+    name: "desktop_clipboard"
+    expected: "lumi desktop macos smoke"
+- takeScreenshot: macos-native-smoke.png
+- stopApp

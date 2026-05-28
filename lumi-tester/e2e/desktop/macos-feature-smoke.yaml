@@ -1,0 +1,39 @@
+platform: macos
+appId: /System/Applications/Calculator.app
+tags:
+  - desktop
+  - macos
+  - feature-smoke
+---
+- launchApp
+- wait: 250
+- setVar:
+    name: smoke_label
+    value: "lumi desktop feature smoke"
+- setClipboard: "${smoke_label}"
+- assertClipboard: "${smoke_label}"
+- getClipboard: desktop_clipboard
+- assertVar:
+    name: desktop_clipboard
+    expected: "${smoke_label}"
+- assertTrue: desktop_clipboard == "lumi desktop feature smoke"
+- repeat:
+    times: 2
+    commands:
+      - setClipboard: "${smoke_label}"
+      - assertClipboard: "${smoke_label}"
+- retry:
+    maxRetries: 2
+    commands:
+      - assertClipboard: "${smoke_label}"
+      - getClipboard: desktop_clipboard_retry
+- assertVar:
+    name: desktop_clipboard_retry
+    expected: "${smoke_label}"
+- takeScreenshot: macos-feature-smoke.png
+- assertColor:
+    point: "50%,50%"
+    color: "#000000"
+    tolerance: 100
+- waitForAnimationToEnd
+- stopApp

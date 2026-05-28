@@ -1,0 +1,13 @@
+platform: macos
+appId: /System/Applications/Calculator.app
+tags: [desktop, macos, accessibility, selectors]
+---
+# Requires Accessibility permission for the terminal or lumi-tester process.
+- launchApp
+- wait: 700
+- assertVisible:
+    role: AXWindow
+- assertVisible:
+    type: AXButton
+- takeScreenshot: macos-ax-selector-smoke.png
+- stopApp

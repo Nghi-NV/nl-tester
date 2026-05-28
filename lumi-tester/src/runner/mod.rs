@@ -28,6 +28,11 @@ pub async fn run_tests(
     command_index: Option<usize>,
     command_name: Option<String>,
 ) -> Result<()> {
+    let platform = platform
+        .trim_matches('"')
+        .trim_matches('\'')
+        .to_ascii_lowercase();
+
     // 1. Resolve devices
     let device_serials = match devices {
         Some(d) => d,
@@ -40,6 +45,8 @@ pub async fn run_tests(
                 connected.into_iter().map(|d| d.serial).collect()
             } else if platform == "web" {
                 vec!["chromium".to_string()]
+            } else if platform == "macos" || platform == "windows" {
+                vec!["local".to_string()]
             } else {
                 vec!["".to_string()] // Default for others
             }
@@ -100,7 +107,7 @@ pub async fn run_tests(
 
         let mut handles = Vec::new();
         let path_owned = path.to_path_buf();
-        let platform_owned = platform.to_string();
+        let platform_owned = platform.clone();
         let output_owned = Some(output.to_path_buf());
 
         for (i, chunk) in chunks.enumerate() {
@@ -161,7 +168,7 @@ pub async fn run_tests(
         run_on_device(
             path,
             &all_files,
-            platform,
+            &platform,
             primary_device,
             Some(output),
             continue_on_failure,
@@ -224,9 +231,12 @@ async fn run_on_device(
     };
 
     // Strip quotes from platform if present (YAML parsing quirk)
-    let platform_clean = platform.trim_matches('"').trim_matches('\'');
+    let platform_clean = platform
+        .trim_matches('"')
+        .trim_matches('\'')
+        .to_ascii_lowercase();
 
-    let driver: Box<dyn crate::driver::traits::PlatformDriver> = match platform_clean {
+    let driver: Box<dyn crate::driver::traits::PlatformDriver> = match platform_clean.as_str() {
         "android" => Box::new(crate::driver::android::AndroidDriver::new(device).await?),
         "android_auto" => {
             Box::new(crate::driver::android_auto::AndroidAutoDriver::new(device, true).await?)
@@ -237,6 +247,8 @@ async fn run_on_device(
             Box::new(WebDriver::new(config).await?)
         }
         "ios" => Box::new(crate::driver::ios::IosDriver::new(device).await?),
+        "macos" => Box::new(crate::driver::macos::MacosDriver::new()),
+        "windows" => Box::new(crate::driver::windows::WindowsDriver::new()),
         _ => anyhow::bail!("Unknown platform: {}", platform_clean),
     };
 
