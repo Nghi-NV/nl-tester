@@ -73,11 +73,14 @@ The helper prints stdout/stderr and exits with the Lumi command exit code.
    still unclear.
 4. Read `references/patterns.md` when the request matches a common workflow
    such as login, onboarding, search, settings, permission, GPS, or web form.
-5. Write YAML in canonical `header --- commands` format.
-6. Run validation before any device/browser execution.
-7. Use `list --json` to discover command indexes.
-8. Run with reports, snapshots, and event JSONL for debug-friendly artifacts.
-9. On failure, inspect artifacts and rerun the smallest failing command index.
+5. For device-backed requests, confirm the target device and app before writing
+   or running a flow. If the user says "current app", inspect current focus
+   instead of assuming an appId from an existing YAML file.
+6. Write YAML in canonical `header --- commands` format.
+7. Run validation before any device/browser execution.
+8. Use `list --json` to discover command indexes.
+9. Run with reports, snapshots, and event JSONL for debug-friendly artifacts.
+10. On failure, inspect artifacts and rerun the smallest failing command index.
 
 Canonical commands:
 
@@ -130,8 +133,18 @@ Selector priority:
 1. `id`, `desc`, `accessibilityId`, `contentDesc`
 2. `text` with `exact: true` when stable
 3. `regex` for dynamic text
-4. `ocr` when native hierarchy cannot expose text
-5. `point` as last resort, preferably percentages like `"50%,80%"`
+4. relative selectors near a stable anchor
+5. `type` with `index`
+6. `ocr` when native hierarchy cannot expose text
+7. `point` only as a last resort, preferably percentages like `"50%,80%"`
+
+Do not switch to coordinates just because a selector failed once. First inspect
+the UI XML/screenshot, choose the best semantic selector, and only use `point`
+for canvas/graphics UI or when no native/visual semantic selector exists.
+
+When a screen has duplicate accessibility labels, keep the semantic selector and
+disambiguate with `index`, `type`, or a relative anchor before considering
+coordinates.
 
 For text entry, focus first, then type:
 
@@ -143,6 +156,30 @@ For text entry, focus first, then type:
 
 Do not put selector fields inside `inputText` unless the local parser explicitly
 supports that form.
+
+## Android Target Discovery
+
+When the user references a connected device by exclusion, such as "not the LM
+device", list devices and choose by serial/model explicitly:
+
+```bash
+adb devices -l
+```
+
+When the user asks to test the current Android app, identify the foreground app
+from the selected device:
+
+```bash
+adb -s <serial> shell dumpsys window | rg -i 'mCurrentFocus|mFocusedApp|topResumed'
+adb -s <serial> exec-out uiautomator dump /dev/tty
+```
+
+Use the package/activity from current focus as the flow `appId`. Do not reuse an
+unrelated YAML file just because it exists in the workspace.
+
+Flutter/Compose screens often expose visible labels as Android `content-desc`
+instead of `text`; prefer `accessibilityId`/`desc` when the XML shows
+`content-desc="..."`.
 
 ## Debugging Loop
 
@@ -180,6 +217,8 @@ Treat these as runtime/debug bugs:
 - Assertion timeout.
 - App crash event.
 - Screenshot/UI hierarchy mismatch.
+- Current focus or failure screenshot shows a different app than the expected
+  appId.
 
 ## Extra Reference
 

@@ -7,11 +7,14 @@ the smallest run.
 ## Fast Path
 
 1. Run `doctor` for the platform.
-2. Start from a skeleton flow with `launchApp`.
-3. Use Inspector if interactive discovery is possible.
-4. If Inspector is not available, run with `--snapshot` and inspect UI XML.
-5. Convert the target element into the highest-priority stable selector.
-6. Validate YAML, list indexes, then rerun only the command being tested.
+2. Confirm the target device and app. If the user asks for the current Android
+   app, read `mCurrentFocus`/`mFocusedApp` from that device before choosing
+   `appId`.
+3. Start from a skeleton flow with `launchApp`.
+4. Use Inspector if interactive discovery is possible.
+5. If Inspector is not available, run with `--snapshot` and inspect UI XML.
+6. Convert the target element into the highest-priority stable selector.
+7. Validate YAML, list indexes, then rerun only the command being tested.
 
 ## Selector Priority
 
@@ -30,18 +33,30 @@ Use the first stable selector available:
 Coordinates are allowed only when no semantic selector exists or when testing
 canvas/Android Auto/graphics-heavy UI.
 
+If a selector fails, do not immediately replace it with `point`. First inspect
+the failure XML and screenshot. If the element exists in XML, keep a semantic
+selector and disambiguate with `index`, `type`, or a relative anchor.
+
+For Flutter/Compose Android apps, visible text is often exposed as
+`content-desc` instead of `text`. In those cases use `accessibilityId`, `desc`,
+or `contentDesc`.
+
+If the failure screenshot/UI XML belongs to a different package than the
+expected `appId`, stop selector tuning and debug app launch, crash, or wrong
+target selection.
+
 ## Inspector Workflow
 
 Start Inspector from the CLI:
 
 ```bash
-lumi-tester inspector --platform android --app-id com.example.app --port 9333
+lumi-tester inspect --platform android --device <serial> --port 9333
 ```
 
 For Web:
 
 ```bash
-lumi-tester inspector --platform web --url https://example.com --port 9333
+lumi-tester inspect --platform web --port 9333
 ```
 
 With MCP, query a running Inspector:
@@ -89,6 +104,16 @@ In UI XML, look for:
 - Android: `resource-id`, `text`, `content-desc`, `class`, `clickable`, bounds.
 - iOS: accessibility identifier, label/name, value, type, visible state.
 - Web: use CSS/role/text where available.
+
+For current Android app discovery:
+
+```bash
+adb devices -l
+adb -s <serial> shell dumpsys window | rg -i 'mCurrentFocus|mFocusedApp|topResumed'
+adb -s <serial> exec-out uiautomator dump /dev/tty
+```
+
+Use `content-desc` values from the dump as `accessibilityId`/`desc` selectors.
 
 ## Android Selector Examples
 
@@ -220,17 +245,22 @@ When `Element not found` happens:
 
 1. Open the failure screenshot and confirm the element is visible.
 2. Open the failure XML and check whether the element is exposed natively.
-3. If visible in XML, replace selector with `id`, `desc`, or exact `text`.
-4. If visible only in screenshot, try `ocr` or `image`.
-5. If element appears after delay, add `waitUntilVisible` before interaction.
-6. If inside a list, use `scrollUntilVisible`.
-7. If duplicated, add `index`, `type`, or a relative anchor.
-8. Rerun only the failed command with `--command-index`.
+3. Confirm the XML package matches the flow `appId`.
+4. If visible in XML, replace selector with `id`, `desc`/`accessibilityId`, or
+   exact `text`.
+5. If selector is duplicated, add `index`, `type`, or a relative anchor.
+6. If visible only in screenshot, try `ocr` or `image`.
+7. If element appears after delay, add `waitUntilVisible` before interaction.
+8. If inside a list, use `scrollUntilVisible`.
+9. Rerun only the failed command with `--command-index`.
 
 ## Anti-Patterns
 
 - Do not start with `point` unless testing Android Auto/canvas.
+- Do not replace a native `content-desc`/`id` selector with coordinates.
 - Do not use translated text if stable ids/accessibility ids exist.
 - Do not use broad regex like `.*Login.*` when exact text is stable.
 - Do not fix selector failures by adding long `wait` first.
+- Do not reuse a YAML appId when the user asked for the current app; inspect
+  current focus first.
 - Do not count command indexes manually; use `list --json`.
