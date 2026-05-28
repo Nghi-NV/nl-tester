@@ -60,6 +60,8 @@ MCP_README = ROOT / "lumi-tester-mcp" / "README.md"
 README_MD = ROOT / "lumi-tester" / "README.md"
 WRITING_TESTS_MD = ROOT / "lumi-tester" / "docs" / "writing_tests.md"
 COMMANDS_MD = ROOT / "lumi-tester" / "docs" / "api" / "commands.md"
+FLOWS_MD = ROOT / "lumi-tester" / "docs" / "flows" / "test_execution_flow.md"
+DOCS_INDEX_HTML = ROOT / "lumi-tester" / "docs" / "index.html"
 DISTRIBUTION_MD = ROOT / "lumi-tester" / "docs" / "distribution.md"
 PACKAGE_MANIFEST_SCRIPT = ROOT / "lumi-tester" / "scripts" / "generate-package-manifests.sh"
 MAIN_RS = ROOT / "lumi-tester" / "src" / "main.rs"
@@ -1127,6 +1129,39 @@ def validate_desktop_clear_state_docs() -> list[str]:
     return errors
 
 
+def validate_docs_index_content() -> list[str]:
+    errors: list[str] = []
+    html = DOCS_INDEX_HTML.read_text(encoding="utf-8")
+    match = re.search(
+        r"const docs = (\{.*?\});\n\s*const pageNames",
+        html,
+        flags=re.DOTALL,
+    )
+    if not match:
+        return [f"{DOCS_INDEX_HTML}: could not find embedded docs block"]
+    embedded = json.loads(match.group(1))
+    expected = {
+        "commands": COMMANDS_MD.read_text(encoding="utf-8"),
+        "flows": FLOWS_MD.read_text(encoding="utf-8"),
+        "writing_tests": WRITING_TESTS_MD.read_text(encoding="utf-8"),
+    }
+    if set(embedded) != set(expected):
+        missing = sorted(set(expected).difference(embedded))
+        extra = sorted(set(embedded).difference(expected))
+        if missing:
+            errors.append(f"{DOCS_INDEX_HTML}: missing embedded docs: {', '.join(missing)}")
+        if extra:
+            errors.append(f"{DOCS_INDEX_HTML}: unknown embedded docs: {', '.join(extra)}")
+        return errors
+    for key, expected_text in expected.items():
+        if embedded[key] != expected_text:
+            errors.append(
+                f"{DOCS_INDEX_HTML}: embedded {key} docs are stale; "
+                "run lumi-tester/scripts/generate-docs-index.py"
+            )
+    return errors
+
+
 def validate_reference_examples() -> list[str]:
     stale_patterns = {
         "killApp command": r"\bkillApp\b",
@@ -1605,6 +1640,7 @@ def main() -> int:
     errors.extend(validate_desktop_reference())
     errors.extend(validate_desktop_platform_catalog())
     errors.extend(validate_desktop_clear_state_docs())
+    errors.extend(validate_docs_index_content())
     errors.extend(validate_reference_examples())
     errors.extend(validate_command_example_fields())
     errors.extend(validate_selector_catalog())

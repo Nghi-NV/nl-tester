@@ -46,7 +46,12 @@ jobs:
           bash -n lumi-tester/scripts/check-package-manifests.sh
 
       - name: Validate AI references
-        run: python3 lumi-tester/scripts/check-ai-reference.py
+        run: |
+          python3 -m py_compile \
+            lumi-tester/scripts/check-ai-reference.py \
+            lumi-tester/scripts/generate-docs-index.py \
+            lumi-tester/ai/codex-skill/lumi-tester-agent/scripts/lumi_agent.py
+          python3 lumi-tester/scripts/check-ai-reference.py
 
       - name: Validate package manifests
         run: bash lumi-tester/scripts/check-package-manifests.sh
