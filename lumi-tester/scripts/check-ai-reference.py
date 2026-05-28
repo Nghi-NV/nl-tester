@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import csv
+import importlib.util
+import io
 import json
 import re
 import sys
@@ -257,6 +260,84 @@ def validate_helper_script_reference() -> list[str]:
         errors.append(f"{SKILL_MD}: helper docs should explain repo-local cargo fallback")
     if "falls back to an installed" not in skill_text:
         errors.append(f"{SKILL_MD}: helper docs should explain installed binary fallback")
+    return errors
+
+
+def validate_helper_script_behavior() -> list[str]:
+    errors: list[str] = []
+    spec = importlib.util.spec_from_file_location("lumi_agent_reference", HELPER_SCRIPT)
+    if spec is None or spec.loader is None:
+        return [f"{HELPER_SCRIPT}: could not load helper module"]
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+
+    agent_run = helper.parse_agent_run(
+        [
+            "tests/generated/login",
+            "--platform",
+            "android",
+            "--device",
+            "emulator-5554",
+            "--output",
+            "./output/login",
+            "--command-index",
+            "4",
+            "--debug",
+        ]
+    )
+    expected_agent_run = [
+        "tests/generated/login",
+        "--platform",
+        "android",
+        "--report",
+        "--snapshot",
+        "--events-jsonl",
+        "--output",
+        "./output/login",
+        "--device",
+        "emulator-5554",
+        "--command-index",
+        "4",
+        "--debug",
+    ]
+    if agent_run != expected_agent_run:
+        errors.append(
+            f"{HELPER_SCRIPT}: agent-run parse output changed: {agent_run!r}"
+        )
+
+    agent_debug = helper.parse_agent_run(
+        ["tests/smoke.yaml", "--platform", "ios", "--command-index", "2"],
+        require_command_index=True,
+    )
+    if "--command-index" not in agent_debug or "2" not in agent_debug:
+        errors.append(f"{HELPER_SCRIPT}: agent-debug should require and forward command index")
+    for required in ("--report", "--snapshot", "--events-jsonl"):
+        if required not in agent_debug:
+            errors.append(f"{HELPER_SCRIPT}: agent-debug should include {required}")
+
+    with contextlib.redirect_stderr(io.StringIO()):
+        try:
+            helper.parse_agent_run(
+                ["tests/smoke.yaml", "--platform", "ios"],
+                require_command_index=True,
+            )
+        except SystemExit:
+            pass
+        else:
+            errors.append(f"{HELPER_SCRIPT}: agent-debug should fail without --command-index")
+
+    if helper.parse_agent_path_json(["tests/smoke.yaml"], "validate") != [
+        "tests/smoke.yaml",
+        "--json",
+    ]:
+        errors.append(f"{HELPER_SCRIPT}: agent-validate should append --json")
+    if helper.parse_agent_doctor(["--platform", "web"]) != ["--platform", "web", "--json"]:
+        errors.append(f"{HELPER_SCRIPT}: agent-doctor should append --json")
+    if helper.parse_passthrough(["run", "tests/smoke.yaml", "--platform", "web"]) != (
+        "run",
+        ["tests/smoke.yaml", "--platform", "web"],
+    ):
+        errors.append(f"{HELPER_SCRIPT}: raw run passthrough should preserve extra args")
     return errors
 
 
@@ -877,6 +958,7 @@ def main() -> int:
     errors.extend(validate_reference_navigation())
     errors.extend(validate_agents_metadata())
     errors.extend(validate_helper_script_reference())
+    errors.extend(validate_helper_script_behavior())
     errors.extend(validate_testcase_design_reference())
     errors.extend(validate_debug_artifacts_reference())
     errors.extend(validate_reference_examples())
