@@ -1298,6 +1298,13 @@ def validate_docs_index_content() -> list[str]:
         "commands": COMMANDS_MD.read_text(encoding="utf-8"),
         "flows": FLOWS_MD.read_text(encoding="utf-8"),
         "writing_tests": WRITING_TESTS_MD.read_text(encoding="utf-8"),
+        "ai_authoring": AI_AUTHORING_MD.read_text(encoding="utf-8"),
+    }
+    expected_page_names = {
+        "commands": "Commands Reference",
+        "flows": "Test Flows",
+        "writing_tests": "Writing Tests",
+        "ai_authoring": "AI Authoring",
     }
     if set(embedded) != set(expected):
         missing = sorted(set(expected).difference(embedded))
@@ -1313,6 +1320,23 @@ def validate_docs_index_content() -> list[str]:
                 f"{DOCS_INDEX_HTML}: embedded {key} docs are stale; "
                 "run lumi-tester/scripts/generate-docs-index.py"
             )
+        if f"loadPage('{key}')" not in html:
+            errors.append(f"{DOCS_INDEX_HTML}: missing nav item for {key}")
+
+    page_names_match = re.search(
+        r"const pageNames = (\{.*?\});\n\s*function loadPage",
+        html,
+        flags=re.DOTALL,
+    )
+    if not page_names_match:
+        errors.append(f"{DOCS_INDEX_HTML}: could not find pageNames block")
+        return errors
+    page_names = json.loads(page_names_match.group(1))
+    if page_names != expected_page_names:
+        errors.append(
+            f"{DOCS_INDEX_HTML}: pageNames are stale; "
+            "run lumi-tester/scripts/generate-docs-index.py"
+        )
     return errors
 
 
