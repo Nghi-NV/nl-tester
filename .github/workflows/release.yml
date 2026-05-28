@@ -194,3 +194,18 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           files: dist/*
           fail_on_unmatched_files: true
+
+      - name: Publish Homebrew and Scoop manifests
+        if: ${{ secrets.PACKAGE_MANAGER_TOKEN != '' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGE_MANAGER_TOKEN }}
+          HOMEBREW_TAP_REPO: ${{ vars.HOMEBREW_TAP_REPO || 'Nghi-NV/homebrew-tap' }}
+          SCOOP_BUCKET_REPO: ${{ vars.SCOOP_BUCKET_REPO || 'Nghi-NV/scoop-bucket' }}
+        run: bash lumi-tester/scripts/publish-package-manager-manifests.sh "$RELEASE_TAG" dist
+
+      - name: Skip package manager publish
+        if: ${{ secrets.PACKAGE_MANAGER_TOKEN == '' }}
+        shell: bash
+        run: |
+          echo "::notice::Set PACKAGE_MANAGER_TOKEN with repo scope to publish Homebrew/Scoop manifests automatically."

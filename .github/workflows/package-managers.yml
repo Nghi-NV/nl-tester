@@ -34,15 +34,19 @@ jobs:
             exit 1
           fi
 
-      - name: Require package manager token
+      - name: Check package manager token
+        id: token
         shell: bash
         run: |
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "Set repository secret PACKAGE_MANAGER_TOKEN with repo scope to publish Homebrew/Scoop manifests." >&2
-            exit 1
+            echo "::notice::Set repository secret PACKAGE_MANAGER_TOKEN with repo scope to publish Homebrew/Scoop manifests."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Download release assets
+        if: steps.token.outputs.available == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -51,9 +55,11 @@ jobs:
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir dist
 
       - name: Regenerate package manager manifests
+        if: steps.token.outputs.available == 'true'
         shell: bash
         run: bash lumi-tester/scripts/generate-package-manifests.sh "$RELEASE_TAG" dist
 
       - name: Publish Homebrew tap and Scoop bucket
+        if: steps.token.outputs.available == 'true'
         shell: bash
         run: bash lumi-tester/scripts/publish-package-manager-manifests.sh "$RELEASE_TAG" dist
