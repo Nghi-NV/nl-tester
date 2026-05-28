@@ -55,6 +55,9 @@ pub enum Platform {
     #[serde(alias = "iOS")]
     Ios,
     Web,
+    #[serde(alias = "macOS")]
+    Macos,
+    Windows,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,0 +1,12 @@
+platform: windows
+appId: C:\Windows\System32\notepad.exe
+---
+- launchApp
+- setClipboard: "lumi desktop windows smoke"
+- assertClipboard: "lumi desktop windows smoke"
+- getClipboard: desktop_clipboard
+- assertVar:
+    name: "desktop_clipboard"
+    expected: "lumi desktop windows smoke"
+- takeScreenshot: windows-native-smoke.png
+- stopApp

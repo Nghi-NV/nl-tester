@@ -1,0 +1,12 @@
+platform: windows
+appId: C:\Windows\System32\notepad.exe
+tags: [desktop, windows, uia, selectors]
+---
+- launchApp
+- wait: 1000
+- assertVisible:
+    type: Window
+- assertVisible:
+    text: Notepad
+- takeScreenshot: windows-uia-selector-smoke.png
+- stopApp

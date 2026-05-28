@@ -50,7 +50,11 @@ jobs:
       - name: Validate Windows install script
         shell: pwsh
         run: |
-          foreach ($script in @("lumi-tester/scripts/install.ps1", "lumi-tester/scripts/install-ai.ps1")) {
+          foreach ($script in @(
+            "lumi-tester/scripts/install.ps1",
+            "lumi-tester/scripts/install-ai.ps1",
+            "lumi-tester/scripts/run-windows-desktop-smoke.ps1"
+          )) {
             $errors = $null
             [System.Management.Automation.PSParser]::Tokenize((Get-Content $script -Raw), [ref]$errors) | Out-Null
             if ($errors) {

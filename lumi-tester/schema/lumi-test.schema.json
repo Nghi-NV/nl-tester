@@ -10,7 +10,7 @@
     "url": { "type": "string" },
     "platform": {
       "type": "string",
-      "enum": ["android", "android_auto", "ios", "iOS", "web"]
+      "enum": ["android", "android_auto", "ios", "iOS", "web", "macos", "macOS", "windows"]
     },
     "tags": {
       "type": "array",

@@ -117,7 +117,7 @@ enum Commands {
 
     /// Check local automation dependencies
     Doctor {
-        /// Target platform to check (android, ios, web, all)
+        /// Target platform to check (android, ios, web, macos, windows, all)
         #[arg(short, long, default_value = "android")]
         platform: String,
 
@@ -242,8 +242,30 @@ enum AiCommands {
     },
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
+    std::thread::Builder::new()
+        .name("lumi-main".to_string())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .thread_stack_size(16 * 1024 * 1024)
+                .build()?
+                .block_on(async_main())
+        })?
+        .join()
+        .map_err(|panic| {
+            if let Some(message) = panic.downcast_ref::<&str>() {
+                anyhow::anyhow!("lumi-tester panicked: {}", message)
+            } else if let Some(message) = panic.downcast_ref::<String>() {
+                anyhow::anyhow!("lumi-tester panicked: {}", message)
+            } else {
+                anyhow::anyhow!("lumi-tester panicked")
+            }
+        })?
+}
+
+async fn async_main() -> anyhow::Result<()> {
     env_logger::init();
     let cli = Cli::parse();
 
@@ -264,9 +286,9 @@ async fn main() -> anyhow::Result<()> {
             command_name,
         } => {
             let platform_val = if let Some(p) = platform {
-                p
+                normalize_platform(&p)
             } else {
-                detect_platform(&path).unwrap_or_else(|| "android".to_string())
+                detect_platform(&path)?.unwrap_or_else(|| "android".to_string())
             };
 
             println!(
@@ -332,7 +354,7 @@ async fn main() -> anyhow::Result<()> {
                 "🔍".to_string().blue(),
                 platform.cyan()
             );
-            driver::list_devices(&platform).await?;
+            driver::list_devices(&normalize_platform(&platform)).await?;
         }
 
         Commands::Report {
@@ -363,7 +385,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Commands::Doctor { platform, json } => {
-            let result = doctor_report(&platform);
+            let result = doctor_report(&normalize_platform(&platform));
             print_doctor_result(&result, json)?;
             if !result.ok {
                 anyhow::bail!("doctor found missing dependencies");
@@ -381,11 +403,14 @@ async fn main() -> anyhow::Result<()> {
                 platform.cyan()
             );
 
+            let platform = normalize_platform(&platform);
             let driver: Box<dyn driver::traits::PlatformDriver> = match platform.as_str() {
                 "android" => {
                     Box::new(driver::android::AndroidDriver::new(device.as_deref()).await?)
                 }
                 "ios" => Box::new(driver::ios::IosDriver::new(device.as_deref()).await?),
+                "macos" => Box::new(driver::macos::MacosDriver::new()),
+                "windows" => Box::new(driver::windows::WindowsDriver::new()),
                 _ => anyhow::bail!("Unknown platform: {}", platform),
             };
 
@@ -598,15 +623,46 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn detect_platform(path: &std::path::Path) -> Option<String> {
-    if !path.is_file() {
-        return None;
+fn normalize_platform(platform: &str) -> String {
+    platform
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .to_ascii_lowercase()
+}
+
+fn detect_platform(path: &std::path::Path) -> anyhow::Result<Option<String>> {
+    if path.is_file() {
+        return Ok(detect_platform_in_file(path));
     }
+
+    if !path.is_dir() {
+        return Ok(None);
+    }
+
+    let mut platforms = std::collections::BTreeSet::new();
+    for file in collect_test_files(path)? {
+        if let Some(platform) = detect_platform_in_file(&file) {
+            platforms.insert(platform);
+        }
+    }
+
+    match platforms.len() {
+        0 => Ok(None),
+        1 => Ok(platforms.into_iter().next()),
+        _ => anyhow::bail!(
+            "multiple platforms found under {}; pass --platform explicitly or run each platform directory separately: {}",
+            path.display(),
+            platforms.into_iter().collect::<Vec<_>>().join(", ")
+        ),
+    }
+}
+
+fn detect_platform_in_file(path: &std::path::Path) -> Option<String> {
     let content = std::fs::read_to_string(path).ok()?;
     for line in content.lines().take(20) {
         if let Some(rest) = line.trim().strip_prefix("platform:") {
-            let p = rest.trim().to_lowercase();
-            let p = p.trim_matches('"').trim_matches('\'').to_string();
+            let p = normalize_platform(rest);
             if !p.is_empty() {
                 return Some(p);
             }
@@ -846,6 +902,25 @@ fn doctor_report(platform: &str) -> DoctorReport {
                 lumi_tester::utils::binary_resolver::find_ffmpeg(),
             ));
         }
+        "macos" => {
+            checks.push(command_check("open"));
+            checks.push(command_check("osascript"));
+            checks.push(command_check("screencapture"));
+        }
+        "windows" => {
+            if cfg!(target_os = "windows") {
+                checks.push(command_check("powershell"));
+                checks.push(windows_powershell_check(
+                    "uia-automation",
+                    "Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes",
+                ));
+            } else {
+                checks.push(unsupported_host_check(
+                    "windows",
+                    "Windows desktop automation is only supported on Windows hosts",
+                ));
+            }
+        }
         "all" => {
             checks.push(binary_check(
                 "adb",
@@ -859,6 +934,18 @@ fn doctor_report(platform: &str) -> DoctorReport {
                 "ffmpeg",
                 lumi_tester::utils::binary_resolver::find_ffmpeg(),
             ));
+            if cfg!(target_os = "macos") {
+                checks.push(command_check("open"));
+                checks.push(command_check("osascript"));
+                checks.push(command_check("screencapture"));
+            }
+            if cfg!(target_os = "windows") {
+                checks.push(command_check("powershell"));
+                checks.push(windows_powershell_check(
+                    "uia-automation",
+                    "Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes",
+                ));
+            }
         }
         other => checks.push(DoctorCheck {
             name: "platform".to_string(),
@@ -891,6 +978,65 @@ fn binary_check(name: &str, result: anyhow::Result<std::path::PathBuf>) -> Docto
     }
 }
 
+fn command_check(name: &str) -> DoctorCheck {
+    binary_check(name, which::which(name).map_err(anyhow::Error::from))
+}
+
+fn windows_powershell_check(name: &str, script: &str) -> DoctorCheck {
+    if !cfg!(target_os = "windows") {
+        return unsupported_host_check(
+            name,
+            "Windows PowerShell checks are only supported on Windows hosts",
+        );
+    }
+
+    match std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ])
+        .output()
+    {
+        Ok(output) if output.status.success() => DoctorCheck {
+            name: name.to_string(),
+            ok: true,
+            path: Some("powershell".to_string()),
+            error: None,
+        },
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            DoctorCheck {
+                name: name.to_string(),
+                ok: false,
+                path: None,
+                error: Some(if stderr.is_empty() {
+                    format!("PowerShell check failed with status {}", output.status)
+                } else {
+                    stderr
+                }),
+            }
+        }
+        Err(error) => DoctorCheck {
+            name: name.to_string(),
+            ok: false,
+            path: None,
+            error: Some(error.to_string()),
+        },
+    }
+}
+
+fn unsupported_host_check(name: &str, message: &str) -> DoctorCheck {
+    DoctorCheck {
+        name: name.to_string(),
+        ok: false,
+        path: None,
+        error: Some(message.to_string()),
+    }
+}
+
 fn print_doctor_result(report: &DoctorReport, json: bool) -> anyhow::Result<()> {
     if json {
         println!("{}", serde_json::to_string_pretty(report)?);
@@ -916,6 +1062,79 @@ fn print_doctor_result(report: &DoctorReport, json: bool) -> anyhow::Result<()> 
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn detect_platform_reads_directory_when_all_flows_match() {
+        let dir = std::env::temp_dir().join(format!("lumi-platform-detect-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("a.yaml"),
+            "platform: macos\nappId: /Applications/Calculator.app\n---\n- launchApp\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("b.yaml"),
+            "platform: macOS\nappId: /Applications/TextEdit.app\n---\n- launchApp\n",
+        )
+        .unwrap();
+
+        let platform = detect_platform(&dir).unwrap();
+
+        assert_eq!(platform.as_deref(), Some("macos"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn detect_platform_rejects_mixed_platform_directory() {
+        let dir = std::env::temp_dir().join(format!("lumi-platform-mixed-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("mac.yaml"),
+            "platform: macos\nappId: /Applications/Calculator.app\n---\n- launchApp\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("web.yaml"),
+            "platform: web\nurl: https://example.com\n---\n- launchApp\n",
+        )
+        .unwrap();
+
+        let error = detect_platform(&dir).unwrap_err().to_string();
+
+        assert!(error.contains("multiple platforms found"));
+        assert!(error.contains("macos"));
+        assert!(error.contains("web"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn doctor_windows_fails_fast_on_non_windows_hosts() {
+        let report = doctor_report("windows");
+
+        assert!(!report.ok);
+        assert!(report.checks[0]
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("only supported on Windows hosts"));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn doctor_all_does_not_fail_on_windows_unsupported_host_check() {
+        let report = doctor_report("all");
+
+        assert!(report.checks.iter().all(|check| check.name != "windows"));
+    }
 }
 
 /// Find the primary touch input device from getevent -pl output

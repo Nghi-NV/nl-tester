@@ -1156,6 +1156,41 @@ steps:
     }
 
     #[test]
+    fn parses_desktop_platform_headers() {
+        let macos = r#"
+platform: macos
+appId: /Applications/Calculator.app
+---
+- launchApp
+"#;
+
+        let windows = r#"
+platform: windows
+appId: C:\Program Files\Example\Example.exe
+---
+- launchApp
+"#;
+
+        let macos_flow = parse_yaml_content(macos, Path::new("macos.yaml")).unwrap();
+        let windows_flow = parse_yaml_content(windows, Path::new("windows.yaml")).unwrap();
+
+        assert_eq!(macos_flow.platform, Some(Platform::Macos));
+        assert_eq!(windows_flow.platform, Some(Platform::Windows));
+    }
+
+    #[test]
+    fn bundled_schema_allows_desktop_platforms() {
+        let schema: serde_json::Value =
+            serde_json::from_str(include_str!("../../schema/lumi-test.schema.json")).unwrap();
+        let platforms = schema["properties"]["platform"]["enum"]
+            .as_array()
+            .expect("platform enum should be an array");
+
+        assert!(platforms.contains(&serde_json::Value::String("macos".to_string())));
+        assert!(platforms.contains(&serde_json::Value::String("windows".to_string())));
+    }
+
+    #[test]
     fn parses_performance_and_screenshot_commands_from_custom_parser() {
         let yaml = r#"
 platform: android
@@ -1177,8 +1212,14 @@ platform: android
         assert!(matches!(flow.commands[0], TestCommand::AssertScreenshot(_)));
         assert!(matches!(flow.commands[1], TestCommand::StartProfiling(_)));
         assert!(matches!(flow.commands[2], TestCommand::StopProfiling(_)));
-        assert!(matches!(flow.commands[3], TestCommand::AssertPerformance(_)));
+        assert!(matches!(
+            flow.commands[3],
+            TestCommand::AssertPerformance(_)
+        ));
         assert!(matches!(flow.commands[4], TestCommand::SetCpuThrottling(_)));
-        assert!(matches!(flow.commands[5], TestCommand::SetNetworkConditions(_)));
+        assert!(matches!(
+            flow.commands[5],
+            TestCommand::SetNetworkConditions(_)
+        ));
     }
 }
