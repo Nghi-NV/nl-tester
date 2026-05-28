@@ -55,6 +55,20 @@ def parser_commands() -> set[str]:
     return commands
 
 
+def cli_commands() -> set[str]:
+    text = (ROOT / "lumi-tester" / "src" / "main.rs").read_text(encoding="utf-8")
+    match = re.search(r"enum Commands\s*\{(.*?)\n\}", text, flags=re.DOTALL)
+    if not match:
+        return set()
+    variants: set[str] = set()
+    for line in match.group(1).splitlines():
+        match_line = re.match(r"^\s*([A-Z][A-Za-z0-9]*)\s*(?:\{|,)", line)
+        if match_line:
+            name = match_line.group(1)
+            variants.add(re.sub(r"(?<!^)([A-Z])", r"-\1", name).lower())
+    return variants
+
+
 def csv_command_names() -> set[str]:
     names: set[str] = set()
     with COMMANDS_CSV.open(newline="", encoding="utf-8") as fh:
@@ -194,6 +208,20 @@ def validate_selector_catalog() -> list[str]:
     return errors
 
 
+def validate_cli_catalog() -> list[str]:
+    errors: list[str] = []
+    source_names = cli_commands()
+    with CLI_CSV.open(newline="", encoding="utf-8") as fh:
+        csv_names = {row["command"].strip() for row in csv.DictReader(fh)}
+    missing = sorted(source_names.difference(csv_names))
+    if missing:
+        errors.append("cli.csv is missing top-level CLI commands: " + ", ".join(missing))
+    extra = sorted(csv_names.difference(source_names))
+    if extra:
+        errors.append("cli.csv contains commands not present in CLI: " + ", ".join(extra))
+    return errors
+
+
 def main() -> int:
     errors: list[str] = []
     errors.extend(
@@ -247,6 +275,7 @@ def main() -> int:
     errors.extend(validate_skill_references())
     errors.extend(validate_reference_examples())
     errors.extend(validate_selector_catalog())
+    errors.extend(validate_cli_catalog())
 
     parser_names = parser_commands()
     csv_names = csv_command_names()
