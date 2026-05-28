@@ -1201,6 +1201,8 @@ def validate_desktop_clear_state_docs() -> list[str]:
         ],
         COMMANDS_MD: [
             "Package name (Android) hoặc Bundle ID (iOS).",
+            "seconds: 5 # Đưa vào nền 5 giây",
+            "| `seconds`| - | Number | Số giây để ứng dụng ở trong nền. |",
         ],
         agent_command_catalog: [
             "Use `appId` for Android/iOS app tests",

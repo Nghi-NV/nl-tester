@@ -181,22 +181,6 @@ tap:
 
 ---
 
-### `backgroundApp`
-**Mô tả**: Đưa ứng dụng vào nền (Background) trong một khoảng thời gian rồi tự động quay lại.
-
-**Ví dụ**:
-```yaml
-- backgroundApp:
-    seconds: 5 # Đưa vào nền 5 giây
-```
-
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `seconds`| - | Number | Số giây để ứng dụng ở trong nền. |
-
----
-
 ### `clearAppData`
 **Mô tả**: Xóa dữ liệu và cache của ứng dụng Android. Không dùng lệnh này cho macOS/Windows; desktop cần `desktopState.clear` trong header và `launchApp: { clearState: true }`.
 
