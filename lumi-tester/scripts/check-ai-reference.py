@@ -126,6 +126,52 @@ def validate_reference_examples() -> list[str]:
     return errors
 
 
+def yaml_fence_bodies(text: str) -> list[str]:
+    return re.findall(r"```ya?ml\n(.*?)```", text, flags=re.DOTALL)
+
+
+def command_names_in_yaml_example(body: str) -> set[str]:
+    lines = body.splitlines()
+    if "---" in [line.strip() for line in lines]:
+        separator_index = next(i for i, line in enumerate(lines) if line.strip() == "---")
+        lines = lines[separator_index + 1 :]
+    elif not any(line.lstrip().startswith("- ") for line in lines):
+        return set()
+
+    names: set[str] = set()
+    for line in lines:
+        match = re.match(r"^\s*-\s+([A-Za-z][A-Za-z0-9_]*)\b", line)
+        if match:
+            names.add(match.group(1))
+    return names
+
+
+def validate_yaml_command_examples(parser_names: set[str]) -> list[str]:
+    errors: list[str] = []
+    paths = [SKILL_MD, *sorted((SKILL_DIR / "references").glob("*.md"))]
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        for idx, body in enumerate(yaml_fence_bodies(text), start=1):
+            unknown = sorted(command_names_in_yaml_example(body).difference(parser_names))
+            if unknown:
+                errors.append(
+                    f"{path}: YAML example block {idx} uses unknown command(s): "
+                    + ", ".join(unknown)
+                )
+
+    for path in (COMMANDS_CSV, CLI_CSV):
+        with path.open(newline="", encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                example = row.get("example", "")
+                unknown = sorted(command_names_in_yaml_example(example).difference(parser_names))
+                if unknown:
+                    errors.append(
+                        f"{path}: example for {row.get('command', '<unknown>')} "
+                        f"uses unknown command(s): {', '.join(unknown)}"
+                    )
+    return errors
+
+
 def main() -> int:
     errors: list[str] = []
     errors.extend(
@@ -182,6 +228,7 @@ def main() -> int:
     parser_names = parser_commands()
     csv_names = csv_command_names()
     schema_names = schema_command_names()
+    errors.extend(validate_yaml_command_examples(parser_names))
 
     missing = sorted(parser_names.difference(csv_names))
     if missing:
