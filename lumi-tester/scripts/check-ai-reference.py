@@ -721,10 +721,55 @@ def validate_desktop_platform_catalog() -> list[str]:
         rows = {row["command"].strip(): row for row in csv.DictReader(fh)}
     for command in required_cli:
         platforms = split_field_names(rows[command]["platforms"])
+        if "all" in platforms:
+            continue
         missing = sorted({"macos", "windows"}.difference(platforms))
         if missing:
             errors.append(
                 f"{CLI_CSV}: command {command} is missing desktop platform(s): "
+                + ", ".join(missing)
+            )
+
+    required_yaml_commands = {
+        "launchApp",
+        "stopApp",
+        "installApp",
+        "backgroundApp",
+        "back",
+        "pressHome",
+        "hideKeyboard",
+        "openLink",
+        "tapOn",
+        "longPressOn",
+        "doubleTapOn",
+        "rightClick",
+        "inputText",
+        "eraseText",
+        "swipe",
+        "scrollUntilVisible",
+        "assertVisible",
+        "assertNotVisible",
+        "waitUntilVisible",
+        "waitUntilNotVisible",
+        "extendedWaitUntil",
+        "screenshot",
+        "assertScreenshot",
+        "assertColor",
+        "press",
+        "setClipboard",
+        "getClipboard",
+        "assertClipboard",
+        "pasteText",
+    }
+    command_rows = command_catalog_rows()
+    for command in required_yaml_commands:
+        platforms = split_field_names(command_rows[command]["platforms"])
+        if "all" in platforms:
+            continue
+        missing = sorted({"macos", "windows"}.difference(platforms))
+        if missing:
+            errors.append(
+                f"{COMMANDS_CSV}: command {command} is missing desktop platform(s): "
                 + ", ".join(missing)
             )
     return errors
