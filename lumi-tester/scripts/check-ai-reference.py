@@ -471,6 +471,24 @@ def validate_skill_preflight() -> list[str]:
     return errors
 
 
+def validate_skill_app_identity_guidance() -> list[str]:
+    errors: list[str] = []
+    text = SKILL_MD.read_text(encoding="utf-8")
+    required_terms = {
+        "Android uses package name": "Android appId identity",
+        "iOS uses bundle id": "iOS appId identity",
+        "Web uses `url`": "Web URL identity",
+        "macOS uses a `.app` path or bundle id": "macOS app identity",
+        "Windows uses an executable path": "Windows app identity",
+        "mdls -name kMDItemCFBundleIdentifier": "macOS bundle id discovery command",
+        "Get-Item 'C:\\Program Files\\Example\\Example.exe'": "Windows executable discovery command",
+    }
+    for term, label in required_terms.items():
+        if term not in text:
+            errors.append(f"{SKILL_MD}: missing app identity guidance: {label}")
+    return errors
+
+
 def mcp_tool_names() -> set[str]:
     text = MCP_SERVER_JS.read_text(encoding="utf-8")
     return set(re.findall(r"server\.registerTool\(\s*\n\s*\"([^\"]+)\"", text))
@@ -1628,6 +1646,7 @@ def main() -> int:
     errors.extend(validate_helper_script_reference())
     errors.extend(validate_helper_script_behavior())
     errors.extend(validate_skill_preflight())
+    errors.extend(validate_skill_app_identity_guidance())
     errors.extend(validate_mcp_tool_references())
     errors.extend(validate_user_install_docs())
     errors.extend(validate_package_manager_ai_guidance())

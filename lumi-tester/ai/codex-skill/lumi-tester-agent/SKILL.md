@@ -256,6 +256,10 @@ Find the app identity before writing `launchApp`:
 - Android uses package name in `appId`, for example `com.example.app`.
 - iOS uses bundle id in `appId`, for example `com.example.app`.
 - Web uses `url` plus optional `browser`.
+- macOS uses a `.app` path or bundle id in `appId`, for example
+  `/Applications/MyApp.app` or `com.example.MyApp`.
+- Windows uses an executable path in `appId`, for example
+  `C:\Program Files\Example\Example.exe`.
 
 When a user or existing YAML already provides an `appId`, verify it is installed
 and launchable before debugging selectors:
@@ -264,6 +268,8 @@ and launchable before debugging selectors:
 adb -s <serial> shell pm path <appId>
 adb -s <serial> shell cmd package resolve-activity --brief <appId>
 xcrun simctl listapps <udid-or-booted> | rg '<bundleId>'
+mdls -name kMDItemCFBundleIdentifier /Applications/MyApp.app
+powershell -NoProfile -Command "Get-Item 'C:\Program Files\Example\Example.exe'"
 ```
 
 After launch, compare the foreground/frontmost app with the expected `appId`.
