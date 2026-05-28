@@ -785,9 +785,22 @@ function String-Property($element, $property) {
   }
 }
 
-function Dump-Element($element, [ref]$emitted, [int]$maxElements) {
-  if ($null -eq $element -or $emitted.Value -ge $maxElements) { return }
+function Element-Key($element) {
+  try {
+    $runtimeId = $element.GetRuntimeId()
+    if ($null -ne $runtimeId) {
+      return ($runtimeId -join ".")
+    }
+  } catch {
+  }
+  try {
+    return [string]$element.Current.NativeWindowHandle
+  } catch {
+    return ""
+  }
+}
 
+function Write-Element($element) {
   try {
     $rect = $element.Current.BoundingRectangle
     $type = String-Property $element "ControlType"
@@ -813,19 +826,46 @@ function Dump-Element($element, [ref]$emitted, [int]$maxElements) {
         [string][Math]::Round($rect.Width, 2),
         [string][Math]::Round($rect.Height, 2)
       ) -join "`t"
-      $emitted.Value += 1
-    }
-
-    $children = $element.FindAll(
-      [System.Windows.Automation.TreeScope]::Children,
-      [System.Windows.Automation.Condition]::TrueCondition
-    )
-    foreach ($child in $children) {
-      if ($emitted.Value -ge $maxElements) { return }
-      Dump-Element $child $emitted $maxElements
     }
   } catch {
     return
+  }
+}
+
+function Dump-Tree($root, [int]$maxElements, [int]$maxDepth) {
+  if ($null -eq $root) { return }
+
+  $queue = New-Object 'System.Collections.Generic.Queue[object]'
+  $seen = New-Object 'System.Collections.Generic.HashSet[string]'
+  $queue.Enqueue([pscustomobject]@{ Element = $root; Depth = 0 })
+  $emitted = 0
+
+  while ($queue.Count -gt 0 -and $emitted -lt $maxElements) {
+    $entry = $queue.Dequeue()
+    $element = $entry.Element
+    $depth = [int]$entry.Depth
+    if ($null -eq $element) { continue }
+
+    $key = Element-Key $element
+    if ($key -and -not $seen.Add($key)) { continue }
+
+    Write-Element $element
+    $emitted += 1
+
+    if ($depth -ge $maxDepth) { continue }
+
+    try {
+      $children = $element.FindAll(
+        [System.Windows.Automation.TreeScope]::Children,
+        [System.Windows.Automation.Condition]::TrueCondition
+      )
+      foreach ($child in $children) {
+        if ($queue.Count + $emitted -ge $maxElements) { break }
+        $queue.Enqueue([pscustomobject]@{ Element = $child; Depth = ($depth + 1) })
+      }
+    } catch {
+      continue
+    }
   }
 }
 
@@ -840,9 +880,7 @@ if ($handle -ne [IntPtr]::Zero) {
 if ($null -eq $root) {
   $root = [System.Windows.Automation.AutomationElement]::RootElement
 }
-
-$emitted = 0
-Dump-Element $root ([ref]$emitted) 700
+Dump-Tree $root 700 50
 "#;
 
 #[cfg(test)]
