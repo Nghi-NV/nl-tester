@@ -85,6 +85,21 @@ def csv_command_names() -> set[str]:
     return names
 
 
+def command_catalog_rows() -> dict[str, dict[str, str]]:
+    rows: dict[str, dict[str, str]] = {}
+    with COMMANDS_CSV.open(newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            names = [row["command"].strip()]
+            names.extend(
+                alias.strip()
+                for alias in re.split(r"[|,]", row.get("aliases", ""))
+                if alias.strip()
+            )
+            for name in names:
+                rows[name] = row
+    return rows
+
+
 def split_field_names(value: str) -> set[str]:
     return {item.strip() for item in re.split(r"[|,]", value) if item.strip()}
 
@@ -483,25 +498,101 @@ def command_example_param_keys(example: str) -> set[str]:
     return set()
 
 
+def command_entries_in_yaml_example(body: str) -> list[tuple[str, set[str]]]:
+    lines = body.splitlines()
+    if "---" in [line.strip() for line in lines]:
+        separator_index = next(i for i, line in enumerate(lines) if line.strip() == "---")
+        lines = lines[separator_index + 1 :]
+    elif not any(line.lstrip().startswith("- ") for line in lines):
+        return []
+
+    entries: list[tuple[str, set[str]]] = []
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx]
+        inline = re.match(r"^(\s*)-\s+([A-Za-z][A-Za-z0-9_]*)\s*:\s*\{(.*)\}\s*$", line)
+        if inline:
+            entries.append((inline.group(2), top_level_map_keys(inline.group(3))))
+            idx += 1
+            continue
+
+        scalar = re.match(r"^(\s*)-\s+([A-Za-z][A-Za-z0-9_]*)\s*:\s+\S.*$", line)
+        if scalar:
+            entries.append((scalar.group(2), set()))
+            idx += 1
+            continue
+
+        block = re.match(r"^(\s*)-\s+([A-Za-z][A-Za-z0-9_]*)\s*:\s*$", line)
+        if not block:
+            idx += 1
+            continue
+
+        base_indent = len(block.group(1))
+        child_lines: list[str] = []
+        idx += 1
+        while idx < len(lines):
+            next_line = lines[idx]
+            next_indent = len(next_line) - len(next_line.lstrip(" "))
+            if next_line.lstrip().startswith("- ") and next_indent <= base_indent:
+                break
+            child_lines.append(next_line)
+            idx += 1
+
+        key_matches: list[tuple[int, str]] = []
+        for child in child_lines:
+            match = re.match(r"^(\s+)([A-Za-z_][A-Za-z0-9_]*)\s*:", child)
+            if match:
+                key_matches.append((len(match.group(1)), match.group(2)))
+        if not key_matches:
+            entries.append((block.group(2), set()))
+            continue
+        top_indent = min(indent for indent, _ in key_matches)
+        entries.append(
+            (block.group(2), {key for indent, key in key_matches if indent == top_indent})
+        )
+    return entries
+
+
+def allowed_command_fields(row: dict[str, str], selector_names: set[str]) -> set[str]:
+    allowed = split_field_names(row["required_fields"]).union(
+        split_field_names(row["common_fields"])
+    )
+    if row["selector_supported"].strip().lower() in {"yes", "partial"}:
+        allowed.update(selector_names)
+    return allowed
+
+
 def validate_command_example_fields() -> list[str]:
     errors: list[str] = []
     selector_names = schema_selector_names()
+    rows = command_catalog_rows()
     with COMMANDS_CSV.open(newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
             example_keys = command_example_param_keys(row["example"])
             if not example_keys:
                 continue
-            allowed = split_field_names(row["required_fields"]).union(
-                split_field_names(row["common_fields"])
-            )
-            if row["selector_supported"].strip().lower() in {"yes", "partial"}:
-                allowed.update(selector_names)
+            allowed = allowed_command_fields(row, selector_names)
             unknown = sorted(example_keys.difference(allowed))
             if unknown:
                 errors.append(
                     f"{COMMANDS_CSV}: example for {row['command']} has fields "
                     "not declared in required/common fields: " + ", ".join(unknown)
                 )
+
+    for path in [SKILL_MD, *sorted((SKILL_DIR / "references").glob("*.md"))]:
+        text = path.read_text(encoding="utf-8")
+        for idx, body in enumerate(yaml_fence_bodies(text), start=1):
+            for command, example_keys in command_entries_in_yaml_example(body):
+                if command not in rows or not example_keys:
+                    continue
+                allowed = allowed_command_fields(rows[command], selector_names)
+                unknown = sorted(example_keys.difference(allowed))
+                if unknown:
+                    errors.append(
+                        f"{path}: YAML example block {idx} command {command} has "
+                        "fields not declared in commands.csv/schema: "
+                        + ", ".join(unknown)
+                    )
     return errors
 
 
