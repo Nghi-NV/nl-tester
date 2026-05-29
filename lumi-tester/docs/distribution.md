@@ -14,8 +14,8 @@
 Create a Git tag from the repository root:
 
 ```bash
-git tag v0.1.6
-git push origin v0.1.6
+git tag v0.1.7
+git push origin v0.1.7
 ```
 
 The GitHub Actions release workflow builds all targets, uploads the binaries, publishes `SHA256SUMS`, includes install scripts, and generates Homebrew/Scoop/Winget manifest files as release assets.
@@ -74,8 +74,8 @@ python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-check path
 Pin a release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.sh | LUMI_TESTER_VERSION=v0.1.6 bash
-lumi-tester ai install --version v0.1.6
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.sh | LUMI_TESTER_VERSION=v0.1.7 bash
+lumi-tester ai install --version v0.1.7
 ```
 
 ## One-line Install
@@ -95,7 +95,7 @@ iwr https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts
 Install a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | LUMI_TESTER_VERSION=v0.1.6 bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | LUMI_TESTER_VERSION=v0.1.7 bash
 ```
 
 Skip `system install --all`:

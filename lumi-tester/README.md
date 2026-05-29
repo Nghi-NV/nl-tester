@@ -64,8 +64,8 @@ Requirements:
 Pin a specific release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.sh | LUMI_TESTER_VERSION=v0.1.6 bash
-lumi-tester ai install --version v0.1.6
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.sh | LUMI_TESTER_VERSION=v0.1.7 bash
+lumi-tester ai install --version v0.1.7
 ```
 
 Quick checks:
@@ -101,7 +101,7 @@ The scripts detect OS/CPU, download the matching GitHub Release binary, add it t
 Install a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | LUMI_TESTER_VERSION=v0.1.6 bash
+curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.sh | LUMI_TESTER_VERSION=v0.1.7 bash
 ```
 
 Skip driver/browser initialization:
