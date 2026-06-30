@@ -1,0 +1,19 @@
+platform: android
+appId: com.lumi.lumilife
+name: Lumi Life permission and language smoke
+tags:
+  - lumi-life
+  - permission
+  - language
+defaultTimeout: 12000
+---
+- setLocale: "vi-VN"
+- runFlow: "subflows/launch_clean.yaml"
+- waitUntilVisible:
+    regex: "(Đăng nhập|Sign In)"
+- takeScreenshot: "lumi_life_vi_launch.png"
+- setLocale: "en-US"
+- runFlow: "subflows/launch_clean.yaml"
+- waitUntilVisible:
+    regex: "(Sign In|Đăng nhập)"
+- takeScreenshot: "lumi_life_en_launch.png"

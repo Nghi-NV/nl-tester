@@ -1,0 +1,28 @@
+platform: android
+appId: com.lumi.lumilife
+name: Fill Lumi Life login form
+tags:
+  - lumi-life
+  - login
+defaultTimeout: 10000
+env:
+  file: "../../../../../.env"
+---
+- waitUntilVisible:
+    regex: "(Sign In|Đăng nhập)"
+- tap:
+    type: "input"
+    index: 0
+- inputText:
+    text: "${USER}"
+    unicode: true
+- waitUntilVisible:
+    regex: ".+@.+\\..+"
+- tap:
+    type: "input"
+    index: 1
+- inputText:
+    text: "${PASS}"
+    unicode: true
+- hideKeyboard
+- takeScreenshot: "lumi_life_login_filled.png"

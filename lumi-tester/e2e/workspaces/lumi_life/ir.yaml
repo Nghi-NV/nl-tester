@@ -1,0 +1,18 @@
+platform: android
+appId: com.lumi.lumilife
+name: Lumi Life IR menu smoke
+tags:
+  - lumi-life
+  - menu
+  - ir
+defaultTimeout: 12000
+---
+- runFlow: "subflows/launch_clean.yaml"
+- runFlow: "subflows/fill_login_form.yaml"
+- runFlow: "subflows/submit_login.yaml"
+- runFlow: "subflows/select_home.yaml"
+- runFlow: "screens/main_menu.yaml"
+- runFlow: "screens/menu_devices.yaml"
+- waitUntilVisible:
+    regex: "(IR|Infrared|Hồng ngoại|Setup device|HC LIST)"
+- takeScreenshot: "lumi_life_ir_menu.png"

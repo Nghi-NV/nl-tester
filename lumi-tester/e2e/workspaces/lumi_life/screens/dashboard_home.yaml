@@ -1,0 +1,21 @@
+platform: android
+appId: com.lumi.lumilife
+name: Dashboard and home overview
+tags:
+  - lumi-life
+  - dashboard
+  - home
+defaultTimeout: 10000
+---
+- waitUntilVisible:
+    regex: "(Hc ssd|Scene|Devices & Groups|Camera Normal|Security)"
+- assertVisible:
+    text: "Nhà 3D"
+    exact: true
+- assertVisible:
+    regex: "(Scene|Ngữ cảnh)"
+- assertVisible:
+    regex: "(Devices & Groups|Thiết bị|Nhóm)"
+- assertVisible:
+    regex: "(BLE GROUP|Room|PHÒNG NGỦ|3D)"
+- takeScreenshot: "dashboard_home.png"

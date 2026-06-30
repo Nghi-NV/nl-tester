@@ -1,0 +1,16 @@
+platform: android
+appId: com.lumi.lumilife
+name: Lumi Life login smoke
+tags:
+  - lumi-life
+  - login
+  - smoke
+defaultTimeout: 20000
+env:
+  file: "../../../../.env"
+---
+- runFlow: "subflows/launch_clean.yaml"
+- runFlow: "subflows/fill_login_form.yaml"
+- runFlow: "subflows/submit_login.yaml"
+- runFlow: "subflows/select_home.yaml"
+- takeScreenshot: "lumi_life_home.png"

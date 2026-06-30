@@ -1,0 +1,13 @@
+platform: android
+appId: com.lumi.lumilife
+name: Floor and room screen
+tags:
+  - lumi-life
+  - floor-room
+defaultTimeout: 10000
+---
+- tap:
+    regex: "(Tab 2 of 5|Phòng|Room|Floor)"
+- waitUntilVisible:
+    regex: "(Floor|Room|Tầng|Phòng|Hc ssd)"
+- takeScreenshot: "floor_room.png"

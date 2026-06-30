@@ -1,0 +1,27 @@
+platform: android
+appId: com.lumi.lumilife
+name: Lumi Life full app smoke
+tags:
+  - lumi-life
+  - full-app
+  - smoke
+defaultTimeout: 15000
+env:
+  file: "../../../../.env"
+---
+- runFlow: "subflows/launch_clean.yaml"
+- runFlow: "subflows/fill_login_form.yaml"
+- runFlow: "subflows/submit_login.yaml"
+- runFlow: "subflows/select_home.yaml"
+- runFlow: "screens/dashboard_home.yaml"
+- runFlow: "screens/floor_room.yaml"
+- runFlow: "screens/main_menu.yaml"
+- runFlow: "screens/menu_devices.yaml"
+- back
+- runFlow: "screens/main_menu.yaml"
+- runFlow: "screens/menu_scenes.yaml"
+- runFlow: "screens/menu_rules.yaml"
+- back
+- runFlow: "screens/main_menu.yaml"
+- runFlow: "screens/home_settings.yaml"
+- takeScreenshot: "lumi_life_full_app_smoke.png"

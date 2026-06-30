@@ -435,7 +435,12 @@ impl TestExecutor {
 
         self.session.add_flow(flow_state);
 
-        if status == crate::runner::state::FlowStatus::Failed && !self.continue_on_failure {
+        if matches!(
+            status,
+            crate::runner::state::FlowStatus::Failed
+                | crate::runner::state::FlowStatus::PartiallyPassed { .. }
+        ) && !self.continue_on_failure
+        {
             anyhow::bail!("Flow failed: {}", flow_name);
         }
 
@@ -2341,38 +2346,16 @@ impl TestExecutor {
             }
 
             TestCommand::ExtendedWaitUntil(params) => {
-                // Wait with custom timeout for visible/notVisible conditions
                 let timeout_ms = params.timeout;
 
                 if let Some(visible_val) = &params.visible {
-                    // Parse the visible condition from serde_json::Value
-                    if let Some(obj) = visible_val.as_object() {
-                        if let Some(text_val) = obj.get("text") {
-                            if let Some(text) = text_val.as_str() {
-                                let selector = crate::driver::traits::Selector::Text(
-                                    text.to_string(),
-                                    0,
-                                    false,
-                                );
-                                self.driver.wait_for_element(&selector, timeout_ms).await?;
-                            }
-                        }
-                    }
+                    let selector = self.selector_from_extended_wait_value(visible_val)?;
+                    self.driver.wait_for_element(&selector, timeout_ms).await?;
                 }
 
                 if let Some(not_visible_val) = &params.not_visible {
-                    if let Some(obj) = not_visible_val.as_object() {
-                        if let Some(text_val) = obj.get("text") {
-                            if let Some(text) = text_val.as_str() {
-                                let selector = crate::driver::traits::Selector::Text(
-                                    text.to_string(),
-                                    0,
-                                    false,
-                                );
-                                self.driver.wait_for_absence(&selector, timeout_ms).await?;
-                            }
-                        }
-                    }
+                    let selector = self.selector_from_extended_wait_value(not_visible_val)?;
+                    self.driver.wait_for_absence(&selector, timeout_ms).await?;
                 }
 
                 Ok(())
@@ -3371,6 +3354,54 @@ impl TestExecutor {
         } else {
             Some(primary)
         }
+    }
+
+    fn selector_from_extended_wait_value(
+        &self,
+        value: &serde_json::Value,
+    ) -> Result<crate::driver::traits::Selector> {
+        if let Some(text) = value.as_str() {
+            return Ok(crate::driver::traits::Selector::Text(
+                self.context.substitute_vars(text),
+                0,
+                false,
+            ));
+        }
+
+        let Some(obj) = value.as_object() else {
+            anyhow::bail!("extendedWaitUntil expects visible/notVisible to be a string or selector object");
+        };
+
+        let string_field = |name: &str| {
+            obj.get(name)
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        };
+        let index = obj.get("index").and_then(|v| v.as_u64()).map(|i| i as u32);
+        let exact = obj.get("exact").and_then(|v| v.as_bool()).unwrap_or(false);
+        let description = string_field("accessibilityId")
+            .or_else(|| string_field("contentDesc"))
+            .or_else(|| string_field("desc"))
+            .or_else(|| string_field("description"));
+
+        self.build_selector(
+            &string_field("text"),
+            &string_field("regex"),
+            &string_field("id"),
+            &description,
+            &None,
+            &string_field("css"),
+            &string_field("xpath"),
+            &string_field("placeholder"),
+            &string_field("role"),
+            &string_field("type").or_else(|| string_field("elementType")),
+            &string_field("image"),
+            index,
+            &None,
+            exact,
+            &None,
+        )
+        .ok_or_else(|| anyhow::anyhow!("No selector specified for extendedWaitUntil"))
     }
 
     /// Handle command failure by dumping UI, screenshot, and recent logs.

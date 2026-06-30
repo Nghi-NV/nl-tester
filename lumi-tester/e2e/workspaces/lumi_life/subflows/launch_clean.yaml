@@ -1,0 +1,21 @@
+platform: android
+appId: com.lumi.lumilife
+name: Launch Lumi Life with permissions
+tags:
+  - lumi-life
+  - setup
+defaultTimeout: 15000
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: allow
+      android.permission.BLUETOOTH_CONNECT: allow
+      android.permission.BLUETOOTH_SCAN: allow
+- runFlow:
+    file: "accept_permission_prompts.yaml"
+    optional: true
+- waitUntilVisible:
+    regex: "(Sign In|Đăng nhập)"
+    timeout: 15000

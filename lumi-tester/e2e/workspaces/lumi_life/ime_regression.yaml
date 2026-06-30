@@ -1,0 +1,18 @@
+platform: android
+appId: com.lumi.lumilife
+name: Lumi Life credential IME regression
+tags:
+  - lumi-life
+  - ime
+  - regression
+defaultTimeout: 12000
+env:
+  file: "../../../../.env"
+---
+- runFlow: "subflows/launch_clean.yaml"
+- runFlow: "subflows/fill_login_form.yaml"
+- takeScreenshot: "ime_regression_filled_credentials.png"
+- runFlow: "subflows/submit_login.yaml"
+- waitUntilNotVisible:
+    regex: "(valid email|Email không hợp lệ|địa chỉ email)"
+    timeout: 1000

@@ -1,0 +1,26 @@
+platform: android
+appId: com.lumi.lumilife
+name: Accept Android permission prompts if shown
+tags:
+  - lumi-life
+  - permission
+defaultTimeout: 3000
+---
+- conditional:
+    condition:
+      visibleRegex: "(While using the app|Allow only while using the app|Cho phép khi dùng ứng dụng)"
+    then:
+      - tap:
+          regex: "(While using the app|Allow only while using the app|Cho phép khi dùng ứng dụng)"
+- conditional:
+    condition:
+      visibleRegex: "(Allow|Cho phép|OK)"
+    then:
+      - tap:
+          regex: "(Allow|Cho phép|OK)"
+- conditional:
+    condition:
+      visibleRegex: "(Allow|Cho phép|OK)"
+    then:
+      - tap:
+          regex: "(Allow|Cho phép|OK)"

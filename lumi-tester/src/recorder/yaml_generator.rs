@@ -354,8 +354,10 @@ mod tests {
             clickable: true,
             enabled: true,
             focusable: true,
+            focused: false,
             hint: String::new(),
             scrollable: false,
+            password: false,
             index: "0".to_string(),
             package: "com.example".to_string(),
         };

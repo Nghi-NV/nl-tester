@@ -1,0 +1,19 @@
+platform: android
+appId: com.lumi.lumilife
+name: Notification center
+tags:
+  - lumi-life
+  - notifications
+defaultTimeout: 10000
+---
+- tap:
+    regex: "(Notification|Thông báo)"
+- waitUntilVisible:
+    regex: "(Notifications|Thông báo)"
+- assertVisible:
+    regex: "(HOME|Nhà)"
+- assertVisible:
+    regex: "(LUMI|Lumi)"
+- assertVisible:
+    regex: "(WHAT'S NEW|Có gì mới|Tin mới)"
+- takeScreenshot: "notification_center.png"

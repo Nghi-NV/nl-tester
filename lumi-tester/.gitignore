@@ -20,5 +20,5 @@ output/
 Thumbs.db
 
 # Private Workspaces
-e2e/workspaces/lumi_life/
-
+!e2e/workspaces/lumi_life/
+!e2e/workspaces/lumi_life/**

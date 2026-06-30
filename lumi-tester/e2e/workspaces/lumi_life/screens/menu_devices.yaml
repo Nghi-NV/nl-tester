@@ -1,0 +1,15 @@
+platform: android
+appId: com.lumi.lumilife
+name: Menu devices screen
+tags:
+  - lumi-life
+  - devices
+defaultTimeout: 10000
+---
+- waitUntilVisible:
+    regex: "(Devices|Thiết bị)"
+- tap:
+    regex: "(Devices|Thiết bị)"
+- waitUntilVisible:
+    regex: "(Setup device|HC LIST|IR|CAMERA|devices)"
+- takeScreenshot: "menu_devices.png"

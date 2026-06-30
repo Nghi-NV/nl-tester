@@ -1,0 +1,15 @@
+platform: android
+appId: com.lumi.lumilife
+name: Menu scenes screen
+tags:
+  - lumi-life
+  - scenes
+defaultTimeout: 10000
+---
+- waitUntilVisible:
+    regex: "(Scenes|Ngữ cảnh)"
+- tap:
+    regex: "(Scenes|Ngữ cảnh)"
+- waitUntilVisible:
+    regex: "(Scenes|Ngữ cảnh|Add scene|Thêm ngữ cảnh)"
+- takeScreenshot: "menu_scenes.png"

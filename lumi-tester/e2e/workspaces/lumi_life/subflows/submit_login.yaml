@@ -1,0 +1,18 @@
+platform: android
+appId: com.lumi.lumilife
+name: Submit Lumi Life login
+tags:
+  - lumi-life
+  - login
+defaultTimeout: 30000
+---
+- tap:
+    regex: "(Sign In|Đăng nhập)"
+    index: 1
+- waitForAnimationToEnd
+- runFlow:
+    file: "accept_permission_prompts.yaml"
+    optional: true
+- waitUntilVisible:
+    regex: "(Select home|Chọn nhà|Chọn Home)"
+    timeout: 8000

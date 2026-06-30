@@ -784,11 +784,7 @@ fn collect_test_files(path: &std::path::Path) -> anyhow::Result<Vec<PathBuf>> {
                 .extension()
                 .map_or(false, |ext| ext == "yaml" || ext == "yml");
             let name = e.file_name().to_string_lossy();
-            let path_str = path.to_string_lossy();
-            let in_subflows = path_str.contains("/subflows/") || path_str.contains("\\subflows\\");
-
             is_yaml
-                && !in_subflows
                 && name != "setup.yaml"
                 && name != "setup.yml"
                 && name != "teardown.yaml"
@@ -1112,6 +1108,28 @@ mod tests {
         assert!(error.contains("multiple platforms found"));
         assert!(error.contains("macos"));
         assert!(error.contains("web"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn collect_test_files_includes_nested_subflows() {
+        let dir = std::env::temp_dir().join(format!("lumi-collect-subflows-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("subflows")).unwrap();
+        fs::write(dir.join("main.yaml"), "appId: com.example\n---\n- launchApp\n").unwrap();
+        fs::write(
+            dir.join("subflows").join("login.yaml"),
+            "appId: com.example\n---\n- tap: Login\n",
+        )
+        .unwrap();
+
+        let files = collect_test_files(&dir).unwrap();
+        let relative = files
+            .iter()
+            .map(|p| p.strip_prefix(&dir).unwrap().to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(relative, vec!["main.yaml", "subflows/login.yaml"]);
         let _ = fs::remove_dir_all(&dir);
     }
 

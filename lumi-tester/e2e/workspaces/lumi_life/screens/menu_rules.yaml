@@ -1,0 +1,15 @@
+platform: android
+appId: com.lumi.lumilife
+name: Menu rules screen
+tags:
+  - lumi-life
+  - rules
+defaultTimeout: 10000
+---
+- waitUntilVisible:
+    regex: "(Rule|Rules|Luật|Automation)"
+- tap:
+    regex: "(Rule|Rules|Luật)"
+- waitUntilVisible:
+    regex: "(Rule|Rules|Automation|Upcoming Automation|Tự động)"
+- takeScreenshot: "menu_rules.png"

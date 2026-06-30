@@ -1,0 +1,18 @@
+platform: android
+appId: com.lumi.lumilife
+name: Lumi Tester library regressions observed through Lumi Life
+tags:
+  - lumi-life
+  - library-regression
+defaultTimeout: 10000
+---
+- runFlow:
+    label: extendedWaitUntil accepts string visible
+    commands:
+      - launchApp:
+          clearState: true
+          permissions:
+            all: allow
+      - extendedWaitUntil:
+          visible: "Sign In"
+          timeout: 8000

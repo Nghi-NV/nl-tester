@@ -1,0 +1,67 @@
+platform: android
+appId: com.lumi.lumilife
+name: Lumi Life auth negative cases
+tags:
+  - lumi-life
+  - login
+  - negative
+defaultTimeout: 10000
+env:
+  file: "../../../../.env"
+---
+- runFlow: "subflows/launch_clean.yaml"
+- runFlow:
+    label: invalid email rejects quickly
+    commands:
+      - tap:
+          type: "input"
+          index: 0
+      - inputText:
+          text: "not-an-email"
+          unicode: true
+      - tap:
+          type: "input"
+          index: 1
+      - inputText:
+          text: "${PASS}"
+          unicode: true
+      - hideKeyboard
+      - tap:
+          regex: "(Sign In|Đăng nhập)"
+          index: 1
+      - waitUntilVisible:
+          regex: "(valid email|email address|Email không hợp lệ|địa chỉ email)"
+          timeout: 5000
+- runFlow: "subflows/launch_clean.yaml"
+- runFlow:
+    label: empty credentials show validation
+    commands:
+      - tap:
+          regex: "(Sign In|Đăng nhập)"
+          index: 1
+      - waitUntilVisible:
+          regex: "(required|Please enter|Vui lòng|bắt buộc|không được để trống|Username not be empty)"
+          timeout: 5000
+- runFlow: "subflows/launch_clean.yaml"
+- runFlow:
+    label: wrong password does not enter home
+    commands:
+      - tap:
+          type: "input"
+          index: 0
+      - inputText:
+          text: "${USER}"
+          unicode: true
+      - tap:
+          type: "input"
+          index: 1
+      - inputText:
+          text: "wrong-password-for-negative-test"
+          unicode: true
+      - hideKeyboard
+      - tap:
+          regex: "(Sign In|Đăng nhập)"
+          index: 1
+      - waitUntilVisible:
+          regex: "(Incorrect username or password|incorrect|wrong|Invalid|không đúng|Sai|thất bại|failed)"
+          timeout: 8000

@@ -1,0 +1,21 @@
+platform: android
+appId: com.lumi.lumilife
+name: Main menu
+tags:
+  - lumi-life
+  - menu
+defaultTimeout: 10000
+---
+- tap:
+    regex: "Tab 5 of 5"
+- waitUntilVisible:
+    regex: "(Devices|Scenes|Rules|Language|Settings|Thiết bị|Ngữ cảnh|Luật|Ngôn ngữ|Cài đặt)"
+- assertVisible:
+    regex: "(Devices|Thiết bị)"
+- assertVisible:
+    regex: "(Scenes|Ngữ cảnh)"
+- assertVisible:
+    regex: "(Rules|Luật)"
+- assertVisible:
+    regex: "(Home settings|Cài đặt nhà|Notification|Thông báo)"
+- takeScreenshot: "main_menu.png"

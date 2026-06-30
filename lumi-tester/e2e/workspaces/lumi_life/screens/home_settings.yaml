@@ -1,0 +1,17 @@
+platform: android
+appId: com.lumi.lumilife
+name: Home settings screen
+tags:
+  - lumi-life
+  - settings
+defaultTimeout: 10000
+---
+- tap:
+    regex: "(Home settings|Cài đặt nhà)"
+- waitUntilVisible:
+    regex: "(NAME|Tên|COVER|Ảnh bìa|LOCATION|Vị trí|TIME|Thời gian)"
+- assertVisible:
+    regex: "(NAME|Tên)"
+- assertVisible:
+    regex: "(COVER|Ảnh bìa)"
+- takeScreenshot: "home_settings.png"

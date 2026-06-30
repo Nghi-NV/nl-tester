@@ -1,0 +1,24 @@
+platform: android
+appId: com.lumi.lumilife
+name: Select Lumi Life home
+tags:
+  - lumi-life
+  - select-home
+defaultTimeout: 10000
+---
+- waitUntilVisible:
+    regex: "(Select home|Chọn nhà|Chọn Home)"
+- tap:
+    type: "input"
+    index: 0
+- inputText:
+    text: "Nhà 3D"
+    unicode: true
+- hideKeyboard
+- waitUntilVisible:
+    regex: "Online[\\s\\S]*Nhà 3D"
+- tap:
+    regex: "Online[\\s\\S]*Nhà 3D"
+- waitForAnimationToEnd
+- waitUntilVisible:
+    regex: "(Security|Devices & Groups|Scene|AI camera)"

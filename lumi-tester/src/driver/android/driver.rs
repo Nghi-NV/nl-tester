@@ -186,21 +186,34 @@ impl AndroidDriver {
         .trim()
         .to_string();
 
-        // Check if ADBKeyBoard is available, auto-install if not
+        // Check if ADBKeyBoard is available, auto-install/enable if not
         let ime_list = adb::shell(selected_serial.as_deref(), "ime list -s")
             .await
             .unwrap_or_default();
         let mut adbkeyboard_available = ime_list.contains("com.android.adbkeyboard");
 
-        // Auto-install ADBKeyBoard if not present
         if !adbkeyboard_available {
-            if let Some(apk_path) = crate::utils::binary_resolver::find_apk("ADBKeyboard.apk") {
+            let package_installed = adb::shell(
+                selected_serial.as_deref(),
+                "pm list packages com.android.adbkeyboard",
+            )
+            .await
+            .unwrap_or_default()
+            .contains("com.android.adbkeyboard");
+
+            if package_installed {
+                let _ = adb::shell(
+                    selected_serial.as_deref(),
+                    "ime enable com.android.adbkeyboard/.AdbIME",
+                )
+                .await;
+            } else if let Some(apk_path) = crate::utils::binary_resolver::find_apk("ADBKeyboard.apk")
+            {
                 println!(
                     "  {} Installing ADBKeyBoard for Unicode input support...",
                     "⏳".yellow()
                 );
 
-                // Install APK
                 let install_result = adb::install(
                     selected_serial.as_deref(),
                     apk_path.to_string_lossy().as_ref(),
@@ -208,14 +221,11 @@ impl AndroidDriver {
                 .await;
 
                 if install_result.is_ok() {
-                    // Enable the IME
                     let _ = adb::shell(
                         selected_serial.as_deref(),
                         "ime enable com.android.adbkeyboard/.AdbIME",
                     )
                     .await;
-
-                    adbkeyboard_available = true;
                     println!("  {} ADBKeyBoard installed successfully", "✓".green());
                 } else {
                     println!(
@@ -224,8 +234,12 @@ impl AndroidDriver {
                         install_result.err()
                     );
                 }
-            } else {
             }
+
+            let ime_list = adb::shell(selected_serial.as_deref(), "ime list -s")
+                .await
+                .unwrap_or_default();
+            adbkeyboard_available = ime_list.contains("com.android.adbkeyboard");
         } else {
             println!(
                 "  {} ADBKeyBoard detected, Unicode input enabled",
@@ -669,7 +683,7 @@ impl AndroidDriver {
                     false
                 }
             }
-            Selector::Type(t, _) => e.class.contains(t),
+            Selector::Type(t, _) => e.class.contains(map_android_type(t)),
             Selector::AccessibilityId(id) | Selector::Description(id, _) => e.content_desc == *id,
             Selector::DescriptionRegex(pattern, _) => {
                 if let Ok(re) = regex::Regex::new(pattern) {
@@ -692,7 +706,9 @@ impl AndroidDriver {
         index: u32,
     ) -> Result<Option<(i32, i32)>> {
         let elements = self.get_ui_hierarchy().await?;
-        if let Some(elem) = uiautomator::find_by_type_index(&elements, element_type, index) {
+        if let Some(elem) =
+            uiautomator::find_by_type_index(&elements, map_android_type(element_type), index)
+        {
             Ok(Some(elem.bounds.center()))
         } else {
             Ok(None)
@@ -964,6 +980,48 @@ impl AndroidDriver {
         result?;
         println!("    {} XAPK installed successfully", "✓".green());
         Ok(())
+    }
+
+    async fn focused_text_delivery_state(&self, expected: &str) -> Result<Option<bool>> {
+        self.invalidate_cache().await;
+        let elements = self.get_ui_hierarchy().await?;
+
+        if let Some(focused) = elements.iter().find(|e| {
+            e.focused
+                && (e.class.contains("EditText")
+                    || e.class.contains("TextField")
+                    || e.class.contains("TextInput"))
+        }) {
+            if focused.password {
+                return Ok(None);
+            }
+
+            let actual_text = focused.text.trim();
+            let actual_desc = focused.content_desc.trim();
+            return Ok(Some(actual_text == expected || actual_desc == expected));
+        }
+
+        Ok(None)
+    }
+
+    async fn wait_for_focused_text_delivery(
+        &self,
+        expected: &str,
+        timeout: Duration,
+    ) -> Result<Option<bool>> {
+        let start = Instant::now();
+        let mut saw_verifiable_field = false;
+
+        while start.elapsed() < timeout {
+            match self.focused_text_delivery_state(expected).await? {
+                Some(true) => return Ok(Some(true)),
+                Some(false) => saw_verifiable_field = true,
+                None => {}
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        Ok(if saw_verifiable_field { Some(false) } else { None })
     }
 }
 
@@ -1259,7 +1317,13 @@ impl PlatformDriver for AndroidDriver {
         }
 
         // Unicode path: use ADBKeyBoard for reliable input (slower but handles all keyboards)
-        if self.adbkeyboard_available {
+        if unicode {
+            if !self.adbkeyboard_available {
+                anyhow::bail!(
+                    "unicode input requested but ADBKeyBoard IME is unavailable or disabled"
+                );
+            }
+
             // Switch to ADBKeyBoard
             let _ = adb::shell(
                 self.serial.as_deref(),
@@ -1284,8 +1348,7 @@ impl PlatformDriver for AndroidDriver {
             }
 
             if !ime_ready {
-                // Fallback: wait a bit more
-                tokio::time::sleep(Duration::from_millis(200)).await;
+                anyhow::bail!("failed to switch to ADBKeyBoard IME for unicode input");
             }
 
             // Escape text for broadcast
@@ -1310,9 +1373,30 @@ impl PlatformDriver for AndroidDriver {
                 )
                 .await;
             }
+            result?;
 
-            // Small delay to let text appear before restoring IME
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            match self
+                .wait_for_focused_text_delivery(text, Duration::from_millis(900))
+                .await?
+            {
+                Some(true) | None => {}
+                Some(false) => {
+                    result = adb::shell(
+                        self.serial.as_deref(),
+                        &format!("am broadcast -a ADB_INPUT_TEXT --es msg \"{}\"", escaped),
+                    )
+                    .await;
+                    result?;
+
+                    if self
+                        .wait_for_focused_text_delivery(text, Duration::from_millis(900))
+                        .await?
+                        == Some(false)
+                    {
+                        anyhow::bail!("unicode input broadcast completed but focused field text did not update");
+                    }
+                }
+            }
 
             // Restore original IME (using cached value)
             if !self.original_ime.is_empty() && self.original_ime != "null" {
@@ -1365,9 +1449,7 @@ impl PlatformDriver for AndroidDriver {
                 }
             }
 
-            if result.is_ok() {
-                return Ok(());
-            }
+            return Ok(());
         }
 
         // Fallback: use standard input text

@@ -1,0 +1,16 @@
+platform: android
+appId: com.lumi.lumilife
+name: Expected fail - child runFlow failure propagates
+tags:
+  - lumi-life
+  - library-regression
+  - expected-fail
+defaultTimeout: 1000
+---
+- runFlow:
+    label: child partial failure must fail parent
+    commands:
+      - waitUntilVisible:
+          text: "__lumi_life_missing_text__"
+          timeout: 500
+      - takeScreenshot: "should_not_run_after_missing_text.png"

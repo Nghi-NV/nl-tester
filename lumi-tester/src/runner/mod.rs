@@ -70,13 +70,16 @@ pub async fn run_tests(
                     .map_or(false, |ext| ext == "yaml" || ext == "yml");
                 let name = e.file_name().to_string_lossy();
 
-                // Skip files in subflows or similar utility directories
+                // Skip files in utility directories that are meant to be called by scenario flows.
                 let path_str = path.to_string_lossy();
                 let in_subflows =
                     path_str.contains("/subflows/") || path_str.contains("\\subflows\\");
+                let in_screens =
+                    path_str.contains("/screens/") || path_str.contains("\\screens\\");
 
                 is_yaml
                     && !in_subflows
+                    && !in_screens
                     && name != "setup.yaml"
                     && name != "setup.yml"
                     && name != "teardown.yaml"
