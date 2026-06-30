@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lumi Camera — Hiệu chỉnh thiết bị</title>
+</head>
+<body>
+  <header id="topbar">
+    <div class="brand">
+      <span class="brand-mark">LC</span>
+      <span>Lumi Camera Lab</span>
+      <span id="mode-tag">Hiệu chỉnh</span>
+    </div>
+    <div id="status" class="status">Đang kết nối…</div>
+  </header>
+
+  <main class="lab-shell">
+    <aside class="panel lab-sidebar">
+      <div class="section-title tight">
+        <span>Lab profile</span>
+        <span id="lab-summary" class="muted">1 camera · 1 thiết bị</span>
+      </div>
+      <div class="device-list" id="device-list"></div>
+      <button id="btn-add-device" class="secondary compact">+ Thêm thiết bị</button>
+
+      <div class="sidebar-block">
+        <div class="label">Camera</div>
+        <select id="camera-select"></select>
+        <button id="btn-add-camera" class="secondary compact">+ Thêm camera</button>
+      </div>
+
+      <div class="sidebar-block">
+        <div class="label">Loại thiết bị</div>
+        <select id="template"></select>
+        <span id="grid-custom" class="custom-grid hidden">
+          <input type="number" id="rows" min="1" max="10" value="2" /> hàng ×
+          <input type="number" id="cols" min="1" max="10" value="2" /> cột
+        </span>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <section class="panel stage-card" id="panel-source">
+        <div class="stage-head">
+          <div>
+            <div class="label">Bước 1</div>
+            <h2>Khoanh thiết bị trong camera</h2>
+            <p class="hint">Click 4 góc ngoài cùng theo chiều kim đồng hồ. Kéo điểm xanh để căn lại khi camera lệch.</p>
+          </div>
+          <div class="stage-actions">
+            <button id="btn-clear" class="ghost">Căn lại 4 góc</button>
+            <span id="corner-count" class="progress-pill">0 / 4 góc</span>
+          </div>
+        </div>
+        <div class="canvas-wrap source-wrap">
+          <canvas id="src"></canvas>
+        </div>
+      </section>
+
+      <section class="panel stage-card" id="panel-config">
+        <div class="stage-head">
+          <div>
+            <div class="label">Bước 2</div>
+            <h2>Căn LED và học trạng thái</h2>
+            <p class="hint">Click ô LED trên ảnh để chọn nút, kéo ô vào đúng đèn, sau đó học màu đang hiển thị.</p>
+          </div>
+          <div class="selected-device" id="active-device-title">Thiết bị hiện tại</div>
+        </div>
+
+        <div class="work-grid">
+          <div>
+            <div class="canvas-wrap warp-wrap">
+              <canvas id="warp"></canvas>
+            </div>
+            <div class="row learn-row">
+              <button id="btn-auto-leds" class="learn">Tự tìm LED trong ảnh</button>
+              <button id="btn-learn-on" class="learn">Vùng đang chọn bật → Học ON</button>
+              <button id="btn-learn-off" class="learn">Vùng đang chọn tắt → Học OFF</button>
+            </div>
+            <div class="result-card state-panel" id="state-panel">
+              <div class="section-title">
+                <span>Học trạng thái theo vùng</span>
+                <span id="state-region-title" class="muted">Chưa chọn vùng</span>
+              </div>
+              <select id="learn-region"></select>
+              <div id="state-presets" class="state-presets"></div>
+              <div class="state-learn-row">
+                <input type="text" id="state-name" placeholder="Nhập state: WHITE, YELLOW, RED, BLUE, GREEN..." />
+                <button id="btn-learn-state" class="learn">Học từ ảnh hiện tại</button>
+              </div>
+              <div id="region-state-list" class="region-state-list"></div>
+            </div>
+          </div>
+
+          <div class="live-column">
+            <div class="result-card">
+              <div class="section-title">
+                <span>Trạng thái live</span>
+                <span id="live-summary" class="muted">Đang chờ dữ liệu</span>
+              </div>
+              <table id="results">
+                <thead>
+                  <tr>
+                    <th>Vùng</th>
+                    <th>State</th>
+                    <th>Độ tin cậy</th>
+                    <th class="advanced-col">Chi tiết</th>
+                    <th class="advanced-col">Next</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <details class="advanced-card">
+              <summary>Advanced: ID và loại vùng</summary>
+              <div class="region-editor">
+                <input type="text" id="region-id" placeholder="id vùng (vd: button_1)" />
+                <input type="text" id="region-label" placeholder="Nhãn hiển thị" />
+                <select id="region-kind">
+                  <option value="button_led">button_led</option>
+                  <option value="status_led">status_led</option>
+                  <option value="sensor_led">sensor_led</option>
+                  <option value="wifi_led">wifi_led</option>
+                  <option value="led">led</option>
+                </select>
+              </div>
+            </details>
+          </div>
+        </div>
+
+        <div id="states-info" class="states-info"></div>
+      </section>
+    </section>
+
+    <aside class="panel quality-panel">
+      <div class="decision-card" id="quality-decision">
+        <div class="decision-kicker">Kết luận</div>
+        <div class="decision-title">Chưa đủ dữ liệu</div>
+        <div class="decision-copy">Hãy khoanh đủ 4 góc và học trạng thái LED trước khi lưu.</div>
+      </div>
+
+      <div class="checklist" id="quality-checklist">
+        <div class="check-item" data-check="camera"><span></span><b>Camera có hình</b><em>Đang kiểm tra</em></div>
+        <div class="check-item" data-check="corners"><span></span><b>Đã khoanh thiết bị</b><em>0 / 4 góc</em></div>
+        <div class="check-item" data-check="regions"><span></span><b>LED đã được đánh dấu</b><em>Chưa có vùng</em></div>
+        <div class="check-item" data-check="learned"><span></span><b>Đã học trạng thái</b><em>Chưa học ON/OFF</em></div>
+        <div class="check-item" data-check="verified"><span></span><b>Đã verify</b><em>Cần verify 5s</em></div>
+      </div>
+
+      <div class="result-card">
+        <div class="section-title">
+          <span>Thiết bị đang chọn</span>
+        </div>
+        <div class="device-fields">
+          <input type="text" id="device-id" placeholder="device id: switch_4gang_wall" />
+          <input type="text" id="device-label" placeholder="Tên dễ nhớ" />
+        </div>
+        <p class="hint">Target test sẽ là <b id="target-preview">device.button_1</b>, nên nhiều thiết bị không bị trùng Nút 1.</p>
+      </div>
+
+      <div class="verify-card">
+        <div class="section-title">
+          <span>Kiểm chứng profile</span>
+          <span class="muted">Lấy mẫu 5 giây</span>
+        </div>
+        <button id="btn-verify" class="secondary">Kiểm chứng 5s</button>
+        <div id="verify-result" class="verify-result hidden"></div>
+      </div>
+      <div class="row save-row">
+        <input type="text" id="name" placeholder="Tên profile (vd: switch4)" />
+        <button id="btn-save" class="primary">💾 Lưu profile</button>
+      </div>
+      <div id="save-msg" class="muted"></div>
+    </aside>
+  </main>
+</body>
+</html>

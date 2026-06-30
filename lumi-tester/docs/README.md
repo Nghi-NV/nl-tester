@@ -17,6 +17,12 @@ Cách viết kịch bản test hiệu quả, sử dụng selector và tổ chứ
 ### [Tra cứu Lệnh (Command Reference)](api/commands.md)
 Chi tiết đầy đủ về tất cả các lệnh hỗ trợ (`tap`, `see`, `swipe`, `assert`, v.v.).
 
+### [Kiểm thử phần cứng bằng Camera](camera-hardware-testing.md)
+Dùng camera RTSP đọc trạng thái LED của thiết bị vật lý (công tắc, ổ cắm, home
+controller…) để verify phần cứng: lệnh `camera calibrate/detect` và các lệnh YAML
+`assertDeviceState`, `waitDeviceState`, `assertDeviceTransition`, `waitLedPattern`,
+`getDeviceState`.
+
 ### [Luồng thực thi Test](flows/test_execution_flow.md)
 Hiểu về vòng đời của một phiên test, từ lúc đọc file YAML đến khi tương tác thiết bị.
 

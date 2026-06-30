@@ -10,8 +10,10 @@ use crate::driver::traits::PlatformDriver;
 use crate::parser::types::TestCommand;
 use crate::parser::yaml::{parse_commands_from_value, parse_test_file};
 use serde_json;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::fs::File;
+use std::hash::{Hash, Hasher};
 
 pub struct TestExecutor {
     driver: Box<dyn PlatformDriver>,
@@ -35,6 +37,15 @@ pub struct TestExecutor {
     #[allow(dead_code)]
     snapshot_enabled: bool,
     report_enabled: bool,
+    /// Header-level camera configs by name (hardware verification).
+    camera_configs: HashMap<String, crate::parser::types::CameraFlowConfig>,
+    /// Lazily-started warm camera streams by name (reused across commands).
+    camera_sessions: HashMap<String, crate::camera::CameraSession>,
+    /// Observe web views already spawned, keyed by camera config identity and
+    /// valued by their assigned local port.
+    camera_observe_started: HashMap<String, u16>,
+    camera_observe_tasks: HashMap<String, tokio::task::JoinHandle<()>>,
+    camera_observe_next_port: u16,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -42,6 +53,21 @@ struct FailureArtifacts {
     screenshot_path: Option<String>,
     ui_hierarchy_path: Option<String>,
     log_path: Option<String>,
+}
+
+fn resolve_camera_config_vars(
+    context: &TestContext,
+    configs: HashMap<String, crate::parser::types::CameraFlowConfig>,
+) -> HashMap<String, crate::parser::types::CameraFlowConfig> {
+    configs
+        .into_iter()
+        .map(|(name, mut cfg)| {
+            cfg.rtsp = context.substitute_vars(&cfg.rtsp);
+            cfg.profile = cfg.profile.map(|p| context.substitute_vars(&p));
+            cfg.transport = cfg.transport.map(|t| context.substitute_vars(&t));
+            (name, cfg)
+        })
+        .collect()
 }
 
 impl TestExecutor {
@@ -118,6 +144,11 @@ impl TestExecutor {
             video_enabled: record,
             snapshot_enabled: snapshot,
             report_enabled: report,
+            camera_configs: HashMap::new(),
+            camera_sessions: HashMap::new(),
+            camera_observe_started: HashMap::new(),
+            camera_observe_tasks: HashMap::new(),
+            camera_observe_next_port: 9444,
         }
     }
 
@@ -160,6 +191,19 @@ impl TestExecutor {
 
         // Update context from flow header
         self.context.update_from_flow(&flow);
+
+        // Pick up camera (hardware verification) configs; reset prior streams
+        // when this flow declares its own cameras.
+        if let Some(cameras) = flow.cameras.clone() {
+            self.stop_observe_views();
+            self.camera_configs = resolve_camera_config_vars(&self.context, cameras.into_map());
+            self.camera_sessions.clear();
+            self.maybe_start_observe_views();
+        } else if self.depth == 0 {
+            self.stop_observe_views();
+            self.camera_configs.clear();
+            self.camera_sessions.clear();
+        }
         self.driver
             .set_desktop_state(flow.desktop_state.clone(), &self.context.base_dir)?;
 
@@ -660,6 +704,336 @@ impl TestExecutor {
     }
 
     /// Execute a single command
+    /// Open a read-only live web view for each camera whose config sets
+    /// `observe: true`. Best-effort and spawned once per session, so testers can
+    /// watch detection while the flow runs (off by default for CI/headless).
+    fn maybe_start_observe_views(&mut self) {
+        for (name, cfg) in self.camera_configs.clone() {
+            if !cfg.observe {
+                continue;
+            }
+            let Some(profile_rel) = cfg.profile.clone() else {
+                continue;
+            };
+            let profile_path = self.context.base_dir.join(&profile_rel);
+            let rtsp = cfg.rtsp.clone();
+            let transport = cfg.transport.clone();
+            let mut rtsp_hasher = DefaultHasher::new();
+            rtsp.hash(&mut rtsp_hasher);
+            let observe_key = format!(
+                "{}|{}|{}|{:016x}",
+                name,
+                profile_path.display(),
+                transport.as_deref().unwrap_or("tcp"),
+                rtsp_hasher.finish()
+            );
+            if let Some(port) = self.camera_observe_started.get(&observe_key) {
+                self.emitter.emit(TestEvent::Log {
+                    message: format!(
+                        "👁  Camera '{}' live view already running: http://localhost:{}",
+                        name, port
+                    ),
+                    depth: self.depth,
+                });
+                continue;
+            }
+            let this_port = self.camera_observe_next_port;
+            self.camera_observe_next_port = self.camera_observe_next_port.saturating_add(1);
+            self.camera_observe_started
+                .insert(observe_key.clone(), this_port);
+            self.emitter.emit(TestEvent::Log {
+                message: format!(
+                    "👁  Camera '{}' live view: http://localhost:{}",
+                    name, this_port
+                ),
+                depth: self.depth,
+            });
+            let emitter = self.emitter.clone();
+            let depth = self.depth;
+            let camera_name = name.clone();
+            let handle = tokio::spawn(async move {
+                let server = crate::camera::server::CalibrateServer::new(
+                    crate::camera::server::CalibrateConfig {
+                        rtsp,
+                        transport,
+                        profile_path,
+                        port: this_port,
+                        observe: true,
+                    },
+                );
+                if let Err(error) = server.start().await {
+                    emitter.emit(TestEvent::Log {
+                        message: format!(
+                            "⚠️  Camera '{}' live view stopped: {}",
+                            camera_name, error
+                        ),
+                        depth,
+                    });
+                }
+            });
+            self.camera_observe_tasks.insert(observe_key, handle);
+        }
+    }
+
+    fn stop_observe_views(&mut self) {
+        for (_, task) in self.camera_observe_tasks.drain() {
+            task.abort();
+        }
+        self.camera_observe_started.clear();
+    }
+
+    /// Resolve which named camera a command refers to. An explicit name wins;
+    /// otherwise "default", otherwise the sole camera if there is exactly one.
+    fn resolve_camera_key(&self, requested: Option<&str>) -> Result<String> {
+        if self.camera_configs.is_empty() {
+            anyhow::bail!(
+                "this flow uses a device command but declares no `camera:`/`cameras:` in its header"
+            );
+        }
+        if let Some(name) = requested {
+            if self.camera_configs.contains_key(name) {
+                return Ok(name.to_string());
+            }
+            anyhow::bail!(
+                "unknown camera '{}'; declared: {}",
+                name,
+                self.camera_configs
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        if self.camera_configs.contains_key("default") {
+            return Ok("default".to_string());
+        }
+        if self.camera_configs.len() == 1 {
+            return Ok(self.camera_configs.keys().next().unwrap().clone());
+        }
+        anyhow::bail!(
+            "multiple cameras declared ({}); specify `camera: <name>` on the command",
+            self.camera_configs
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+
+    fn capture_camera_evidence(
+        &self,
+        key: &str,
+        session: &crate::camera::CameraSession,
+        target_region: Option<&str>,
+    ) -> Result<std::path::PathBuf> {
+        let evidence = session.evidence()?;
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+        let uuid = Uuid::new_v4().to_string();
+        let safe_key = key
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>();
+        let dir = self.context.output_path(&format!(
+            "camera_evidence/{}_{}_{}",
+            safe_key,
+            timestamp,
+            &uuid[..8]
+        ));
+        std::fs::create_dir_all(&dir)
+            .with_context(|| format!("failed to create camera evidence dir: {}", dir.display()))?;
+
+        evidence
+            .raw
+            .save(dir.join("raw.png"))
+            .context("failed to save camera raw frame")?;
+        evidence
+            .warped
+            .save(dir.join("warped.png"))
+            .context("failed to save camera warped frame")?;
+        evidence
+            .annotated
+            .save(dir.join("annotated.png"))
+            .context("failed to save camera annotated frame")?;
+        let crop_artifact = target_region.and_then(|region| {
+            let button = session.profile().button(region)?;
+            let (iw, ih) = evidence.warped.dimensions();
+            let x = button.roi[0].min(iw.saturating_sub(1));
+            let y = button.roi[1].min(ih.saturating_sub(1));
+            let w = button.roi[2].min(iw.saturating_sub(x)).max(1);
+            let h = button.roi[3].min(ih.saturating_sub(y)).max(1);
+            let crop = image::imageops::crop_imm(&evidence.warped, x, y, w, h).to_image();
+            let safe_region = region
+                .chars()
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
+                .collect::<String>();
+            let file_name = format!("crop_{}.png", safe_region);
+            crop.save(dir.join(&file_name)).ok()?;
+            Some(file_name)
+        });
+        let captured_at_ms = evidence
+            .captured_at
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let frame_age_ms = evidence
+            .captured_at
+            .elapsed()
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let state = serde_json::to_string_pretty(&serde_json::json!({
+            "camera": key,
+            "capturedAtEpochMs": captured_at_ms,
+            "frameAgeMs": frame_age_ms,
+            "state": evidence.state,
+            "artifacts": {
+                "raw": "raw.png",
+                "warped": "warped.png",
+                "annotated": "annotated.png",
+                "crop": crop_artifact
+            }
+        }))?;
+        std::fs::write(dir.join("state.json"), state).context("failed to save camera state")?;
+
+        self.emitter.emit(TestEvent::Log {
+            message: format!("📷 Camera evidence saved: {}", dir.display()),
+            depth: self.depth,
+        });
+        Ok(dir)
+    }
+
+    fn with_camera_evidence(
+        &self,
+        key: &str,
+        session: &crate::camera::CameraSession,
+        target_region: Option<&str>,
+        error: anyhow::Error,
+    ) -> anyhow::Error {
+        match self.capture_camera_evidence(key, session, target_region) {
+            Ok(path) => anyhow::anyhow!("{}\ncamera evidence: {}", error, path.display()),
+            Err(evidence_error) => anyhow::anyhow!(
+                "{}\nfailed to capture camera evidence: {}",
+                error,
+                evidence_error
+            ),
+        }
+    }
+
+    async fn with_camera_timeline_evidence(
+        &self,
+        key: &str,
+        session: &crate::camera::CameraSession,
+        target_region: &str,
+        error: anyhow::Error,
+        pre_failure_timeline: Option<Vec<crate::camera::session::StateTimelineSample>>,
+    ) -> anyhow::Error {
+        match self.capture_camera_evidence(key, session, Some(target_region)) {
+            Ok(path) => {
+                let timeline_path = path.join("timeline.json");
+                match session
+                    .observe_state_timeline(target_region, 1_000, 150)
+                    .await
+                {
+                    Ok(post_failure_timeline) => {
+                        match serde_json::to_string_pretty(&serde_json::json!({
+                            "camera": key,
+                            "region": target_region,
+                            "preFailureSamples": pre_failure_timeline.unwrap_or_default(),
+                            "postFailureSamples": post_failure_timeline,
+                        }))
+                        .and_then(|json| {
+                            std::fs::write(&timeline_path, json).map_err(serde_json::Error::io)
+                        }) {
+                            Ok(()) => anyhow::anyhow!(
+                                "{}\ncamera evidence: {}\nstate timeline: {}",
+                                error,
+                                path.display(),
+                                timeline_path.display()
+                            ),
+                            Err(timeline_error) => anyhow::anyhow!(
+                                "{}\ncamera evidence: {}\nfailed to save state timeline: {}",
+                                error,
+                                path.display(),
+                                timeline_error
+                            ),
+                        }
+                    }
+                    Err(timeline_error) => anyhow::anyhow!(
+                        "{}\ncamera evidence: {}\nfailed to capture state timeline: {}",
+                        error,
+                        path.display(),
+                        timeline_error
+                    ),
+                }
+            }
+            Err(evidence_error) => anyhow::anyhow!(
+                "{}\nfailed to capture camera evidence: {}",
+                error,
+                evidence_error
+            ),
+        }
+    }
+
+    /// Lazily start (and cache) the warm camera stream for `requested`. Reused
+    /// by all hardware-verification commands so the RTSP handshake — and the
+    /// risk of missing an LED transition — only happens once per camera.
+    async fn ensure_camera(&mut self, requested: Option<&str>) -> Result<String> {
+        let key = self.resolve_camera_key(requested)?;
+        if self.camera_sessions.contains_key(&key) {
+            return Ok(key);
+        }
+        let cfg = self
+            .camera_configs
+            .get(&key)
+            .cloned()
+            .expect("config exists");
+        if cfg.rtsp.trim().is_empty() || cfg.rtsp.contains("${") {
+            anyhow::bail!(
+                "camera '{}' has no resolved RTSP url; set camera.rtsp or an env/var such as ${{CAMERA_RTSP}}",
+                key
+            );
+        }
+        let profile_rel = cfg.profile.clone().ok_or_else(|| {
+            anyhow::anyhow!(
+                "camera '{}' has no profile (path to a calibration JSON)",
+                key
+            )
+        })?;
+        if profile_rel.trim().is_empty() || profile_rel.contains("${") {
+            anyhow::bail!(
+                "camera '{}' has no resolved profile path (path to a calibration JSON)",
+                key
+            );
+        }
+        let profile_path = self.context.base_dir.join(&profile_rel);
+        let profile = crate::camera::CameraProfile::load(&profile_path)?;
+
+        self.emitter.emit(TestEvent::Log {
+            message: format!(
+                "📷 Connecting to camera '{}' ({})",
+                key,
+                crate::camera::redact_url(&cfg.rtsp)
+            ),
+            depth: self.depth,
+        });
+
+        let session =
+            crate::camera::CameraSession::start(&cfg.rtsp, cfg.transport.as_deref(), profile)?;
+        self.camera_sessions.insert(key.clone(), session);
+        Ok(key)
+    }
+
     pub async fn execute_command(&mut self, command: &TestCommand) -> Result<()> {
         match command {
             TestCommand::LaunchApp(params_input) => {
@@ -3079,6 +3453,137 @@ impl TestExecutor {
                 Ok(())
             }
 
+            TestCommand::AssertDeviceState(p) => {
+                let camera = p.camera.as_ref().map(|c| self.context.substitute_vars(c));
+                let button = self.context.substitute_vars(&p.button);
+                let expect = self.context.substitute_vars(&p.expect);
+                let key = self.ensure_camera(camera.as_deref()).await?;
+                let session = self.camera_sessions.get(&key).expect("camera session");
+                match session.assert_state_with_timeline(&button, &expect) {
+                    Ok(()) => Ok(()),
+                    Err((e, timeline)) => Err(self
+                        .with_camera_timeline_evidence(&key, session, &button, e, Some(timeline))
+                        .await),
+                }
+            }
+
+            TestCommand::WaitDeviceState(p) => {
+                let camera = p.camera.as_ref().map(|c| self.context.substitute_vars(c));
+                let button = self.context.substitute_vars(&p.button);
+                let expect = self.context.substitute_vars(&p.expect);
+                let key = self.ensure_camera(camera.as_deref()).await?;
+                let session = self.camera_sessions.get(&key).expect("camera session");
+                match session
+                    .wait_state_with_timeline(&button, &expect, p.timeout_ms, p.stable_frames)
+                    .await
+                {
+                    Ok(()) => Ok(()),
+                    Err((e, timeline)) => Err(self
+                        .with_camera_timeline_evidence(&key, session, &button, e, Some(timeline))
+                        .await),
+                }
+            }
+
+            TestCommand::AssertDeviceTransition(p) => {
+                let camera = p.camera.as_ref().map(|c| self.context.substitute_vars(c));
+                let button = self.context.substitute_vars(&p.button);
+                let from = self.context.substitute_vars(&p.from);
+                let to = self.context.substitute_vars(&p.to);
+                let key = self.ensure_camera(camera.as_deref()).await?;
+                let session = self.camera_sessions.get(&key).expect("camera session");
+                match session
+                    .assert_transition_with_timeline(
+                        &button,
+                        &from,
+                        &to,
+                        p.timeout_ms,
+                        p.stable_frames,
+                    )
+                    .await
+                {
+                    Ok(()) => Ok(()),
+                    Err((e, timeline)) => Err(self
+                        .with_camera_timeline_evidence(&key, session, &button, e, Some(timeline))
+                        .await),
+                }
+            }
+
+            TestCommand::WaitLedPattern(p) => {
+                let camera = p.camera.as_ref().map(|c| self.context.substitute_vars(c));
+                let button = self.context.substitute_vars(&p.button);
+                let expect = self.context.substitute_vars(&p.expect);
+                let key = self.ensure_camera(camera.as_deref()).await?;
+                let session = self.camera_sessions.get(&key).expect("camera session");
+                let pattern = crate::camera::pattern::BlinkPattern {
+                    state: expect.clone(),
+                    count: p.count.max(1),
+                    within_ms: p.within_ms,
+                    pulse_min_ms: p.pulse_min_ms,
+                    pulse_max_ms: p.pulse_max_ms,
+                };
+                let result = session
+                    .observe_blink_pattern(&button, pattern, p.timeout_ms, p.sample_ms)
+                    .await
+                    .map_err(|e| self.with_camera_evidence(&key, session, Some(&button), e))?;
+                if result.matched {
+                    Ok(())
+                } else {
+                    let evidence_dir = self
+                        .capture_camera_evidence(&key, session, Some(&button))
+                        .map_err(|e| anyhow::anyhow!("failed to capture camera evidence: {}", e))?;
+                    let pattern_path = evidence_dir.join("pattern.json");
+                    let pattern_json = serde_json::to_string_pretty(&result)?;
+                    std::fs::write(&pattern_path, pattern_json)
+                        .context("failed to save camera pattern timeline")?;
+                    anyhow::bail!(
+                        "timed out waiting for '{}' to blink '{}' {} time(s) within {}ms; observed {} pulse(s)\ncamera evidence: {}\npattern timeline: {}",
+                        button,
+                        expect,
+                        p.count,
+                        p.within_ms,
+                        result.observed_count,
+                        evidence_dir.display(),
+                        pattern_path.display()
+                    );
+                }
+            }
+
+            TestCommand::GetDeviceState(p) => {
+                let camera = p.camera.as_ref().map(|c| self.context.substitute_vars(c));
+                let save_as = self.context.substitute_vars(&p.save_as);
+                let key = self.ensure_camera(camera.as_deref()).await?;
+                let session = self.camera_sessions.get(&key).expect("camera session");
+                let state = session.read()?;
+                let json = serde_json::to_string(&state)?;
+                self.context.vars.insert(save_as.clone(), json);
+                let safe_name = save_as
+                    .chars()
+                    .map(|c| {
+                        if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                            c
+                        } else {
+                            '_'
+                        }
+                    })
+                    .collect::<String>();
+                let path = self
+                    .context
+                    .output_path(&format!("camera-state-{}.json", safe_name));
+                let payload = serde_json::to_string_pretty(&serde_json::json!({
+                    "camera": key,
+                    "saveAs": save_as,
+                    "state": state
+                }))?;
+                std::fs::write(&path, payload).with_context(|| {
+                    format!("failed to save camera state artifact: {}", path.display())
+                })?;
+                self.emitter.emit(TestEvent::Log {
+                    message: format!("📷 Camera state saved: {}", path.display()),
+                    depth: self.depth,
+                });
+                Ok(())
+            }
+
             // Unimplemented commands
             TestCommand::ExportReport(_)
             | TestCommand::Navigate(_)
@@ -3369,7 +3874,9 @@ impl TestExecutor {
         }
 
         let Some(obj) = value.as_object() else {
-            anyhow::bail!("extendedWaitUntil expects visible/notVisible to be a string or selector object");
+            anyhow::bail!(
+                "extendedWaitUntil expects visible/notVisible to be a string or selector object"
+            );
         };
 
         let string_field = |name: &str| {
@@ -3559,6 +4066,7 @@ impl TestExecutor {
 
     /// Finish the test session and generate reports
     pub async fn finish(&mut self) -> Result<()> {
+        self.stop_observe_views();
         self.session.finish();
 
         let summary = self.session.summary();
@@ -3672,5 +4180,41 @@ impl TestExecutor {
             return !self.driver.is_visible(&selector).await.unwrap_or(false);
         }
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_camera_config_vars;
+    use crate::parser::types::CameraFlowConfig;
+    use crate::runner::context::TestContext;
+    use std::collections::HashMap;
+    use std::path::Path;
+
+    #[test]
+    fn resolves_camera_rtsp_from_context_env() {
+        let mut context = TestContext::new(Path::new("."), None, false, None);
+        let rtsp = format!("{}{}:{}{}10.0.0.5/live", "rtsp://", "user", "pass", "@");
+        context.env.insert("CAMERA_RTSP".to_string(), rtsp.clone());
+
+        let mut configs = HashMap::new();
+        configs.insert(
+            "default".to_string(),
+            CameraFlowConfig {
+                rtsp: "${CAMERA_RTSP}".to_string(),
+                profile: Some("profiles/${PROFILE_NAME}.json".to_string()),
+                transport: Some("tcp".to_string()),
+                observe: false,
+            },
+        );
+        context
+            .env
+            .insert("PROFILE_NAME".to_string(), "switch4".to_string());
+
+        let resolved = resolve_camera_config_vars(&context, configs);
+        let cfg = resolved.get("default").unwrap();
+        assert_eq!(cfg.rtsp, rtsp);
+        assert_eq!(cfg.profile.as_deref(), Some("profiles/switch4.json"));
+        assert_eq!(cfg.transport.as_deref(), Some("tcp"));
     }
 }

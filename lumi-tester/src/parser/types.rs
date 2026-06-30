@@ -20,6 +20,9 @@ pub struct TestFlow {
     pub env: Option<HashMap<String, String>>,
 
     #[serde(default)]
+    pub vars: Option<HashMap<String, String>>,
+
+    #[serde(default)]
     pub data: Option<String>,
 
     #[serde(default, alias = "defaultTimeout")]
@@ -46,6 +49,164 @@ pub struct TestFlow {
     /// Desktop app state clearing configuration for macOS and Windows.
     #[serde(default)]
     pub desktop_state: Option<DesktopState>,
+
+    /// Camera(s) for hardware verification. Accepts a single camera or a map of
+    /// named cameras (for devices at different positions). The `camera:` keyword
+    /// is accepted as an alias for the single-camera form.
+    #[serde(default, alias = "camera")]
+    pub cameras: Option<CamerasConfig>,
+}
+
+/// Either a single camera (registered as "default") or several named cameras.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum CamerasConfig {
+    Single(CameraFlowConfig),
+    Named(HashMap<String, CameraFlowConfig>),
+}
+
+impl CamerasConfig {
+    /// Flatten into a name → config map; the single form becomes "default".
+    pub fn into_map(self) -> HashMap<String, CameraFlowConfig> {
+        match self {
+            CamerasConfig::Single(c) => {
+                let mut m = HashMap::new();
+                m.insert("default".to_string(), c);
+                m
+            }
+            CamerasConfig::Named(m) => m,
+        }
+    }
+}
+
+/// Header-level camera configuration. Declared once so every device-state
+/// command in the flow reuses one warm RTSP stream.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CameraFlowConfig {
+    /// RTSP url of the camera pointed at the physical device.
+    pub rtsp: String,
+    /// Path to the calibration profile JSON (relative to the test file).
+    #[serde(default)]
+    pub profile: Option<String>,
+    /// RTSP transport: "tcp" | "udp" | "auto" (default tcp).
+    #[serde(default)]
+    pub transport: Option<String>,
+    /// Open a live observation web view while the flow runs.
+    #[serde(default)]
+    pub observe: bool,
+}
+
+/// Parameters for `assertDeviceState` — read a region's LED state immediately.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceStateParams {
+    /// Region label as defined in the camera profile. For switches this is a
+    /// button (e.g. "Nút 1"); for a home controller it is a status LED.
+    #[serde(alias = "region", alias = "led")]
+    pub button: String,
+    /// Expected state/color name (e.g. "ON", "OFF", "GREEN").
+    pub expect: String,
+    /// Which named camera to use (optional when the flow has a single camera).
+    #[serde(default)]
+    pub camera: Option<String>,
+}
+
+/// Parameters for `waitDeviceState` — poll until a region reaches a state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WaitDeviceStateParams {
+    #[serde(alias = "region", alias = "led")]
+    pub button: String,
+    pub expect: String,
+    /// Max time to wait (ms). Default 8000.
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+    /// Consecutive matching reads required (anti-flicker). Default 3.
+    #[serde(default)]
+    pub stable_frames: Option<u32>,
+    #[serde(default)]
+    pub camera: Option<String>,
+}
+
+/// Parameters for `assertDeviceTransition` — verify a region changed states.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceTransitionParams {
+    #[serde(alias = "region", alias = "led")]
+    pub button: String,
+    /// Required starting state (precondition; catches false passes).
+    pub from: String,
+    /// Target state to wait for.
+    pub to: String,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+    #[serde(default)]
+    pub stable_frames: Option<u32>,
+    #[serde(default)]
+    pub camera: Option<String>,
+}
+
+/// Parameters for `getDeviceState` — read all regions into a variable.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetDeviceStateParams {
+    /// Variable name to store the device state JSON in.
+    #[serde(alias = "saveAs")]
+    pub save_as: String,
+    #[serde(default)]
+    pub camera: Option<String>,
+}
+
+/// Parameters for `waitLedPattern` / `assertDevicePattern`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LedPatternParams {
+    #[serde(alias = "region", alias = "led")]
+    pub button: String,
+    /// State/color to count as the active pulse, e.g. "PINK".
+    #[serde(alias = "color", alias = "state")]
+    pub expect: String,
+    /// Number of pulses required.
+    #[serde(default = "default_blink_count")]
+    pub count: u32,
+    /// Max span from first pulse start to Nth pulse end.
+    #[serde(default = "default_pattern_within_ms")]
+    pub within_ms: u64,
+    /// Max time to observe samples. Defaults to `withinMs`.
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+    /// Sampling interval. Defaults to 20ms.
+    #[serde(default = "default_pattern_sample_ms")]
+    pub sample_ms: u64,
+    /// Ignore pulses shorter than this. Defaults to 40ms.
+    #[serde(default = "default_pulse_min_ms")]
+    pub pulse_min_ms: u64,
+    /// Ignore pulses longer than this. Defaults to 250ms.
+    #[serde(default = "default_pulse_max_ms")]
+    pub pulse_max_ms: u64,
+    #[serde(default)]
+    pub camera: Option<String>,
+}
+
+fn default_blink_count() -> u32 {
+    1
+}
+
+fn default_pattern_within_ms() -> u64 {
+    800
+}
+
+fn default_pattern_sample_ms() -> u64 {
+    20
+}
+
+fn default_pulse_min_ms() -> u64 {
+    40
+}
+
+fn default_pulse_max_ms() -> u64 {
+    250
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -359,6 +520,16 @@ pub enum TestCommand {
 
     #[serde(rename = "sendLarkMessage", alias = "lark")]
     SendLarkMessage(SendLarkMessageParams),
+
+    // Hardware verification via camera (read physical device LED states)
+    #[serde(alias = "checkDevice")]
+    AssertDeviceState(DeviceStateParams),
+    WaitDeviceState(WaitDeviceStateParams),
+    #[serde(alias = "assertDeviceChange")]
+    AssertDeviceTransition(DeviceTransitionParams),
+    #[serde(alias = "assertDevicePattern")]
+    WaitLedPattern(LedPatternParams),
+    GetDeviceState(GetDeviceStateParams),
 
     // Control flow
     WaitForAnimationToEnd,
@@ -1887,6 +2058,29 @@ impl TestCommand {
             TestCommand::StartAudioCapture(p) => format!("startAudioCapture({}ms)", p.duration),
             TestCommand::StopAudioCapture => "stopAudioCapture".to_string(),
             TestCommand::VerifyAudioDucking(_) => "verifyAudioDucking".to_string(),
+            TestCommand::AssertDeviceState(p) => {
+                format!(
+                    "assertDeviceState(button: \"{}\", expect: \"{}\")",
+                    p.button, p.expect
+                )
+            }
+            TestCommand::WaitDeviceState(p) => {
+                format!(
+                    "waitDeviceState(button: \"{}\", expect: \"{}\")",
+                    p.button, p.expect
+                )
+            }
+            TestCommand::AssertDeviceTransition(p) => format!(
+                "assertDeviceTransition(button: \"{}\", {} → {})",
+                p.button, p.from, p.to
+            ),
+            TestCommand::WaitLedPattern(p) => format!(
+                "waitLedPattern(button: \"{}\", expect: \"{}\", count: {})",
+                p.button, p.expect, p.count
+            ),
+            TestCommand::GetDeviceState(p) => {
+                format!("getDeviceState(saveAs: \"{}\")", p.save_as)
+            }
         }
     }
 }

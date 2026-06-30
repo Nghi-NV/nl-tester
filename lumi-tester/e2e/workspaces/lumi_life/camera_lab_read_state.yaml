@@ -1,0 +1,21 @@
+platform: android
+appId: com.lumi.lumilife
+name: Lumi Life lab camera read state
+tags:
+  - lumi-life
+  - hardware
+  - camera
+  - lab
+defaultTimeout: 10000
+env:
+  file: "../../../../.env"
+vars:
+  CAMERA_PROFILE: "profiles/lab_switch4_camera.json"
+  STATE_VAR: "labSwitchState"
+camera:
+  rtsp: "${CAMERA_RTSP}"
+  profile: "${CAMERA_PROFILE}"
+  transport: "tcp"
+---
+- getDeviceState:
+    saveAs: "${STATE_VAR}"

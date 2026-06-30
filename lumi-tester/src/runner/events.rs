@@ -79,6 +79,7 @@ pub enum TestEvent {
 }
 
 /// Event emitter for broadcasting test events
+#[derive(Clone)]
 pub struct EventEmitter {
     sender: broadcast::Sender<TestEvent>,
 }

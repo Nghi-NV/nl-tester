@@ -1342,6 +1342,88 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     ]
   },
 
+  // Hardware Camera Verification
+  {
+    name: 'assertDeviceState',
+    aliases: ['checkDevice'],
+    category: 'Hardware',
+    description: 'Assert a physical device LED state from the configured camera',
+    hasParams: true,
+    snippet: 'assertDeviceState:\n    button: "${1:\\${TARGET_DEVICE}.button_1}"\n    expect: "${2:\\${STATE_PRIMARY}}"',
+    params: [
+      { name: 'button', type: 'string', description: 'Region id from the camera profile, preferably device-qualified such as ${TARGET_DEVICE}.button_1' },
+      { name: 'led', type: 'string', description: 'Alias for button' },
+      { name: 'region', type: 'string', description: 'Alias for button' },
+      { name: 'expect', type: 'string', description: 'Expected state/color' },
+      { name: 'camera', type: 'string', description: 'Named camera when using cameras:' }
+    ]
+  },
+  {
+    name: 'waitDeviceState',
+    category: 'Hardware',
+    description: 'Wait until a physical device LED reaches the expected state',
+    hasParams: true,
+    snippet: 'waitDeviceState:\n    button: "${1:\\${TARGET_DEVICE}.button_1}"\n    expect: "${2:\\${STATE_REST}}"',
+    params: [
+      { name: 'button', type: 'string', description: 'Region id from the camera profile, preferably device-qualified such as ${TARGET_DEVICE}.button_1' },
+      { name: 'led', type: 'string', description: 'Alias for button' },
+      { name: 'region', type: 'string', description: 'Alias for button' },
+      { name: 'expect', type: 'string', description: 'Expected state/color' },
+      { name: 'timeoutMs', type: 'number', description: 'Optional timeout override in ms' },
+      { name: 'stableFrames', type: 'number', description: 'Consecutive matching frames required' },
+      { name: 'camera', type: 'string', description: 'Named camera when using cameras:' }
+    ]
+  },
+  {
+    name: 'assertDeviceTransition',
+    aliases: ['assertDeviceChange'],
+    category: 'Hardware',
+    description: 'Assert a physical LED starts at one state and transitions to another',
+    hasParams: true,
+    snippet: 'assertDeviceTransition:\n    button: "${1:\\${TARGET_DEVICE}.button_1}"\n    from: "${2:OFF}"\n    to: "${3:\\${STATE_PRIMARY}}"',
+    params: [
+      { name: 'button', type: 'string', description: 'Region id from the camera profile, preferably device-qualified such as ${TARGET_DEVICE}.button_1' },
+      { name: 'led', type: 'string', description: 'Alias for button' },
+      { name: 'region', type: 'string', description: 'Alias for button' },
+      { name: 'from', type: 'string', description: 'Required starting state' },
+      { name: 'to', type: 'string', description: 'Target state' },
+      { name: 'timeoutMs', type: 'number', description: 'Optional timeout override in ms' },
+      { name: 'stableFrames', type: 'number', description: 'Consecutive matching frames required' },
+      { name: 'camera', type: 'string', description: 'Named camera when using cameras:' }
+    ]
+  },
+  {
+    name: 'waitLedPattern',
+    aliases: ['assertDevicePattern'],
+    category: 'Hardware',
+    description: 'Wait for a blink/reset pattern from camera frame timestamps',
+    hasParams: true,
+    snippet: 'waitLedPattern:\n    button: "${1:\\${TARGET_DEVICE}.status}"\n    expect: "${2:PINK}"\n    count: ${3:3}\n    withinMs: ${4:800}',
+    params: [
+      { name: 'button', type: 'string', description: 'Region id from the camera profile, preferably device-qualified such as ${TARGET_DEVICE}.status' },
+      { name: 'led', type: 'string', description: 'Alias for button' },
+      { name: 'region', type: 'string', description: 'Alias for button' },
+      { name: 'expect', type: 'string', description: 'Pulse state/color' },
+      { name: 'count', type: 'number', description: 'Required pulse count' },
+      { name: 'withinMs', type: 'number', description: 'Max pattern duration in ms' },
+      { name: 'pulseMinMs', type: 'number', description: 'Optional minimum pulse duration' },
+      { name: 'pulseMaxMs', type: 'number', description: 'Optional maximum pulse duration' },
+      { name: 'sampleMs', type: 'number', description: 'Camera sampling interval' },
+      { name: 'camera', type: 'string', description: 'Named camera when using cameras:' }
+    ]
+  },
+  {
+    name: 'getDeviceState',
+    category: 'Hardware',
+    description: 'Read all camera profile regions into a JSON variable and artifact',
+    hasParams: true,
+    snippet: 'getDeviceState:\n    saveAs: "${1:deviceState}"',
+    params: [
+      { name: 'saveAs', type: 'string', description: 'Variable name for the JSON device state' },
+      { name: 'camera', type: 'string', description: 'Named camera when using cameras:' }
+    ]
+  },
+
   // Audio Test Commands
   {
     name: 'playMedia',

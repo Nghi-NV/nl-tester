@@ -1484,6 +1484,56 @@ impl PlatformDriver for AndroidDriver {
     }
 
     async fn erase_text(&self, char_count: Option<u32>) -> Result<()> {
+        const ADBKEYBOARD_IME: &str = "com.android.adbkeyboard/.AdbIME";
+
+        if char_count.is_none() && self.adbkeyboard_available {
+            let _ = adb::shell(
+                self.serial.as_deref(),
+                &format!("ime set {}", ADBKEYBOARD_IME),
+            )
+            .await;
+
+            let mut ime_ready = false;
+            for _ in 0..5 {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                let current_ime = adb::shell(
+                    self.serial.as_deref(),
+                    "settings get secure default_input_method",
+                )
+                .await
+                .unwrap_or_default();
+                if current_ime.contains("adbkeyboard") {
+                    ime_ready = true;
+                    break;
+                }
+            }
+
+            if ime_ready {
+                let clear_result =
+                    adb::shell(self.serial.as_deref(), "am broadcast -a ADB_CLEAR_TEXT").await;
+                let clear_verified = if clear_result.is_ok() {
+                    self.wait_for_focused_text_delivery("", Duration::from_millis(900))
+                        .await?
+                        != Some(false)
+                } else {
+                    false
+                };
+
+                if !self.original_ime.is_empty() && self.original_ime != "null" {
+                    let _ = adb::shell(
+                        self.serial.as_deref(),
+                        &format!("ime set {}", self.original_ime),
+                    )
+                    .await;
+                }
+
+                if clear_verified {
+                    self.invalidate_cache().await;
+                    return Ok(());
+                }
+            }
+        }
+
         let count = char_count.unwrap_or(100);
 
         // Send DEL key multiple times

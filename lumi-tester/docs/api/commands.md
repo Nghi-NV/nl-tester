@@ -1585,6 +1585,89 @@ If `secret` is provided, the message will be signed (HMAC-SHA256).
 
 ---
 
+## 📷 Camera Hardware Testing
+
+Các lệnh này dùng camera RTSP để đọc LED/trạng thái thiết bị thật. Camera profile
+chỉ mô tả visual model của thiết bị; không lưu home, room, account hoặc logic app.
+
+Khai báo camera trong YAML header:
+
+```yaml
+camera:
+  rtsp: "${CAMERA_RTSP}"
+  profile: "${CAMERA_PROFILE}"
+  transport: "tcp"
+vars:
+  CAMERA_PROFILE: "profiles/switch_4_wall_left.json"
+  TARGET_DEVICE: "switch_4_wall_left"
+  STATE_ON: "ON"
+  STATE_OFF: "OFF"
+```
+
+### `assertDeviceState`
+**Mô tả**: Đọc ngay một region LED và assert state hiện tại.
+
+```yaml
+- assertDeviceState:
+    button: "${TARGET_DEVICE}.button_1"
+    expect: "${STATE_OFF}"
+```
+
+### `waitDeviceState`
+**Mô tả**: Chờ một region đạt state mong muốn, có chống flicker bằng stable frames.
+
+```yaml
+- waitDeviceState:
+    button: "${TARGET_DEVICE}.button_1"
+    expect: "${STATE_ON}"
+```
+
+### `assertDeviceTransition`
+**Mô tả**: Bắt buộc region bắt đầu ở `from`, sau đó chờ sang `to`.
+
+```yaml
+- assertDeviceTransition:
+    button: "${TARGET_DEVICE}.button_1"
+    from: "${STATE_OFF}"
+    to: "${STATE_ON}"
+```
+
+### `waitLedPattern` / `assertDevicePattern`
+**Mô tả**: Đọc pattern nhấp nháy bằng frame timestamp, phù hợp reset/pairing blink.
+
+```yaml
+- waitLedPattern:
+    button: "${TARGET_DEVICE}.status"
+    expect: "PINK"
+    count: 3
+    withinMs: 800
+    sampleMs: 20
+    pulseMinMs: 40
+    pulseMaxMs: 250
+```
+
+### `getDeviceState`
+**Mô tả**: Đọc toàn bộ regions vào biến JSON và lưu artifact `camera-state-*.json`.
+
+```yaml
+- getDeviceState:
+    saveAs: "switchState"
+```
+
+**Tham số chung**:
+| Trường | Kiểu dữ liệu | Mô tả |
+| :--- | :--- | :--- |
+| `button` / `led` / `region` | String | Id region trong profile. Ưu tiên target đầy đủ như `${TARGET_DEVICE}.button_1` khi profile có nhiều thiết bị. |
+| `expect` | String | State cần match, ví dụ `ON`, `OFF`, `RED`, `PINK`. |
+| `camera` | String | Tên camera khi header dùng `cameras:` nhiều camera. |
+| `timeoutMs` | Number | Override timeout cho lệnh chờ. Không cần đặt nếu default profile/runner đủ. |
+| `stableFrames` | Number | Số frame liên tiếp cần match cho `waitDeviceState`/transition. |
+
+Khi assert/wait fail, runner lưu evidence camera gồm raw frame, warped frame,
+annotated frame, crop region, state JSON và timeline ngắn.
+
+---
+
 ## 🔊 Audio Testing (Kiểm thử Âm thanh)
 
 ### `playMedia`

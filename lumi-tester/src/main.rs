@@ -182,6 +182,12 @@ enum Commands {
         include_comments: bool,
     },
 
+    /// Camera-based hardware verification (read device LED states over RTSP)
+    Camera {
+        #[command(subcommand)]
+        command: CameraCommands,
+    },
+
     /// Start web-based inspector for visual test creation
     Inspect {
         /// Target platform (android, ios, web)
@@ -199,6 +205,66 @@ enum Commands {
         /// Output YAML file (optional, can be selected in UI)
         #[arg(short, long)]
         output: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum CameraCommands {
+    /// Open the web UI to pick device corners, choose a layout, and learn LED colors
+    Calibrate {
+        /// RTSP url of the camera pointed at the device
+        #[arg(short, long)]
+        rtsp: String,
+
+        /// Profile file to create or edit (saved as JSON)
+        #[arg(short, long, default_value = "camera-profile.json")]
+        profile: PathBuf,
+
+        /// Web UI port
+        #[arg(long, default_value = "9444")]
+        port: u16,
+
+        /// RTSP transport: tcp, udp, or auto (default tcp)
+        #[arg(long)]
+        transport: Option<String>,
+
+        /// Read-only live view of an existing profile (no editing)
+        #[arg(long, default_value = "false")]
+        observe: bool,
+    },
+
+    /// Capture a single frame to a file (to aim the camera)
+    Snapshot {
+        /// RTSP url
+        #[arg(short, long)]
+        rtsp: String,
+
+        /// Output image path (.jpg/.png)
+        #[arg(short, long, default_value = "snapshot.jpg")]
+        output: PathBuf,
+
+        /// RTSP transport: tcp, udp, or auto
+        #[arg(long)]
+        transport: Option<String>,
+    },
+
+    /// Read device button states from a saved profile
+    Detect {
+        /// Profile file (JSON) produced by `camera calibrate`
+        #[arg(short, long)]
+        profile: PathBuf,
+
+        /// RTSP url (defaults to the one stored in the profile)
+        #[arg(short, long)]
+        rtsp: Option<String>,
+
+        /// RTSP transport: tcp, udp, or auto
+        #[arg(long)]
+        transport: Option<String>,
+
+        /// Continuously print state transitions until interrupted
+        #[arg(long, default_value = "false")]
+        watch: bool,
     },
 }
 
@@ -599,6 +665,33 @@ async fn async_main() -> anyhow::Result<()> {
             println!("\n{} Recording complete!", "✅".green().bold());
             println!("   Output: {}", output.display().to_string().cyan());
         }
+
+        Commands::Camera { command } => match command {
+            CameraCommands::Calibrate {
+                rtsp,
+                profile,
+                port,
+                transport,
+                observe,
+            } => {
+                lumi_tester::camera::run_calibrate(rtsp, profile, port, transport, observe).await?;
+            }
+            CameraCommands::Snapshot {
+                rtsp,
+                output,
+                transport,
+            } => {
+                lumi_tester::camera::run_snapshot(&rtsp, &output, transport.as_deref())?;
+            }
+            CameraCommands::Detect {
+                profile,
+                rtsp,
+                transport,
+                watch,
+            } => {
+                lumi_tester::camera::run_detect(rtsp, &profile, transport, watch).await?;
+            }
+        },
 
         Commands::Inspect {
             platform,
@@ -1113,10 +1206,15 @@ mod tests {
 
     #[test]
     fn collect_test_files_includes_nested_subflows() {
-        let dir = std::env::temp_dir().join(format!("lumi-collect-subflows-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("lumi-collect-subflows-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(dir.join("subflows")).unwrap();
-        fs::write(dir.join("main.yaml"), "appId: com.example\n---\n- launchApp\n").unwrap();
+        fs::write(
+            dir.join("main.yaml"),
+            "appId: com.example\n---\n- launchApp\n",
+        )
+        .unwrap();
         fs::write(
             dir.join("subflows").join("login.yaml"),
             "appId: com.example\n---\n- tap: Login\n",

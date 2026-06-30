@@ -1,3 +1,4 @@
+pub mod camera;
 pub mod commands;
 pub mod driver;
 pub mod inspector;

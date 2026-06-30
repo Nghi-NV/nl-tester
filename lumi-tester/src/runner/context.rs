@@ -79,6 +79,11 @@ impl TestContext {
                 self.env.insert(k.clone(), v.clone());
             }
         }
+        if let Some(ref vars) = flow.vars {
+            for (k, v) in vars {
+                self.set_var(k, v);
+            }
+        }
         if let Some(timeout) = flow.default_timeout_ms {
             self.default_timeout_ms = timeout;
         }

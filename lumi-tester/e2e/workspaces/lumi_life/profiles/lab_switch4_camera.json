@@ -1,0 +1,544 @@
+{
+  "name": "lab_switch4_camera",
+  "camera": {
+    "rtsp": null,
+    "transport": null
+  },
+  "lab": {
+    "name": "lab_switch4_camera",
+    "cameras": [
+      {
+        "id": "camera_1",
+        "label": "Camera 1",
+        "rtsp": null,
+        "transport": null
+      }
+    ],
+    "devices": [
+      {
+        "id": "switch_4gang",
+        "label": "lab_switch4_camera",
+        "camera_id": "camera_1",
+        "kind": "switch_4",
+        "regions": [
+          {
+            "device_id": "switch_4gang",
+            "id": "button_1",
+            "label": "Nút 1",
+            "kind": "button_led",
+            "roi": [
+              35,
+              36,
+              44,
+              44
+            ],
+            "search_roi": null,
+            "mask": "ellipse",
+            "expected_center": null,
+            "max_center_drift": null,
+            "allowed_states": [
+              "BLUE",
+              "RED",
+              "OFF"
+            ]
+          },
+          {
+            "device_id": "switch_4gang",
+            "id": "button_2",
+            "label": "Nút 2",
+            "kind": "button_led",
+            "roi": [
+              419,
+              37,
+              44,
+              44
+            ],
+            "search_roi": null,
+            "mask": "ellipse",
+            "expected_center": null,
+            "max_center_drift": null,
+            "allowed_states": [
+              "BLUE",
+              "RED",
+              "OFF"
+            ]
+          },
+          {
+            "device_id": "switch_4gang",
+            "id": "button_3",
+            "label": "Nút 3",
+            "kind": "button_led",
+            "roi": [
+              38,
+              423,
+              44,
+              44
+            ],
+            "search_roi": null,
+            "mask": "ellipse",
+            "expected_center": null,
+            "max_center_drift": null,
+            "allowed_states": [
+              "BLUE",
+              "RED",
+              "OFF"
+            ]
+          },
+          {
+            "device_id": "switch_4gang",
+            "id": "button_4",
+            "label": "Nút 4",
+            "kind": "button_led",
+            "roi": [
+              418,
+              425,
+              44,
+              44
+            ],
+            "search_roi": null,
+            "mask": "ellipse",
+            "expected_center": null,
+            "max_center_drift": null,
+            "allowed_states": [
+              "BLUE",
+              "RED",
+              "OFF"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "device_2",
+        "label": "Thiết bị 2",
+        "camera_id": "camera_1",
+        "kind": "công_tắc_4_nút_22",
+        "regions": [
+          {
+            "device_id": "device_2",
+            "id": "button_1",
+            "label": "Nút 1",
+            "kind": "button_led",
+            "roi": [
+              41,
+              41,
+              35,
+              37
+            ],
+            "search_roi": [
+              3,
+              4,
+              111,
+              111
+            ],
+            "mask": "ellipse",
+            "expected_center": null,
+            "max_center_drift": null,
+            "allowed_states": [
+              "ON",
+              "OFF",
+              "BLUE"
+            ]
+          },
+          {
+            "device_id": "device_2",
+            "id": "button_2",
+            "label": "Nút 2",
+            "kind": "button_led",
+            "roi": [
+              422,
+              36,
+              42,
+              42
+            ],
+            "search_roi": [
+              374,
+              0,
+              126,
+              126
+            ],
+            "mask": "ellipse",
+            "expected_center": null,
+            "max_center_drift": null,
+            "allowed_states": [
+              "ON",
+              "OFF",
+              "RED"
+            ]
+          },
+          {
+            "device_id": "device_2",
+            "id": "button_3",
+            "label": "Nút 3",
+            "kind": "button_led",
+            "roi": [
+              37,
+              422,
+              44,
+              47
+            ],
+            "search_roi": [
+              0,
+              359,
+              141,
+              141
+            ],
+            "mask": "ellipse",
+            "expected_center": null,
+            "max_center_drift": null,
+            "allowed_states": [
+              "ON",
+              "OFF",
+              "RED"
+            ]
+          },
+          {
+            "device_id": "device_2",
+            "id": "button_4",
+            "label": "Nút 4",
+            "kind": "button_led",
+            "roi": [
+              413,
+              422,
+              48,
+              44
+            ],
+            "search_roi": [
+              356,
+              356,
+              144,
+              144
+            ],
+            "mask": "ellipse",
+            "expected_center": null,
+            "max_center_drift": null,
+            "allowed_states": [
+              "ON",
+              "OFF",
+              "RED"
+            ]
+          }
+        ]
+      }
+    ],
+    "active_camera_id": "camera_1",
+    "active_device_id": "device_2"
+  },
+  "active_camera_id": "camera_1",
+  "active_device_id": "device_2",
+  "geometry": {
+    "corners": [
+      [
+        694.66095,
+        135.96567
+      ],
+      [
+        1752.7211,
+        155.7425
+      ],
+      [
+        1698.3347,
+        1152.0
+      ],
+      [
+        719.38196,
+        1139.6395
+      ]
+    ],
+    "warp": [
+      500,
+      500
+    ]
+  },
+  "layout": {
+    "type": "custom"
+  },
+  "buttons": [
+    {
+      "device_id": "device_2",
+      "id": "button_1",
+      "label": "Nút 1",
+      "kind": "button_led",
+      "roi": [
+        41,
+        41,
+        35,
+        37
+      ],
+      "search_roi": [
+        3,
+        4,
+        111,
+        111
+      ],
+      "mask": "ellipse",
+      "expected_center": [
+        59,
+        60
+      ],
+      "max_center_drift": 12,
+      "allowed_states": [
+        "ON",
+        "OFF",
+        "BLUE"
+      ]
+    },
+    {
+      "device_id": "device_2",
+      "id": "button_2",
+      "label": "Nút 2",
+      "kind": "button_led",
+      "roi": [
+        422,
+        36,
+        42,
+        42
+      ],
+      "search_roi": [
+        374,
+        0,
+        126,
+        126
+      ],
+      "mask": "ellipse",
+      "expected_center": [
+        443,
+        57
+      ],
+      "max_center_drift": 15,
+      "allowed_states": [
+        "ON",
+        "OFF",
+        "RED"
+      ]
+    },
+    {
+      "device_id": "device_2",
+      "id": "button_3",
+      "label": "Nút 3",
+      "kind": "button_led",
+      "roi": [
+        37,
+        422,
+        44,
+        47
+      ],
+      "search_roi": [
+        0,
+        359,
+        141,
+        141
+      ],
+      "mask": "ellipse",
+      "expected_center": [
+        59,
+        446
+      ],
+      "max_center_drift": 15,
+      "allowed_states": [
+        "ON",
+        "OFF",
+        "RED"
+      ]
+    },
+    {
+      "device_id": "device_2",
+      "id": "button_4",
+      "label": "Nút 4",
+      "kind": "button_led",
+      "roi": [
+        413,
+        422,
+        48,
+        44
+      ],
+      "search_roi": [
+        356,
+        356,
+        144,
+        144
+      ],
+      "mask": "ellipse",
+      "expected_center": [
+        437,
+        444
+      ],
+      "max_center_drift": 15,
+      "allowed_states": [
+        "ON",
+        "OFF",
+        "RED"
+      ]
+    }
+  ],
+  "states": [
+    {
+      "name": "BLUE",
+      "type": null,
+      "hsv": [
+        {
+          "lower": [
+            95,
+            80,
+            70
+          ],
+          "upper": [
+            135,
+            255,
+            255
+          ]
+        }
+      ],
+      "dark_max_v": null,
+      "white_max_s": null,
+      "white_min_v": null,
+      "source": "lab_seed"
+    },
+    {
+      "name": "RED",
+      "type": null,
+      "hsv": [
+        {
+          "lower": [
+            0,
+            70,
+            70
+          ],
+          "upper": [
+            12,
+            255,
+            255
+          ]
+        },
+        {
+          "lower": [
+            168,
+            70,
+            70
+          ],
+          "upper": [
+            179,
+            255,
+            255
+          ]
+        }
+      ],
+      "dark_max_v": null,
+      "white_max_s": null,
+      "white_min_v": null,
+      "source": "lab_seed"
+    },
+    {
+      "name": "OFF",
+      "type": "dark",
+      "hsv": [],
+      "dark_max_v": 45,
+      "white_max_s": null,
+      "white_min_v": null,
+      "source": "lab_seed"
+    }
+  ],
+  "stateModels": {
+    "device_2.button_1.BLUE": {
+      "name": null,
+      "type": null,
+      "hsv": [
+        {
+          "lower": [
+            94,
+            92,
+            57
+          ],
+          "upper": [
+            133,
+            250,
+            255
+          ]
+        }
+      ],
+      "dark_max_v": null,
+      "white_max_s": null,
+      "white_min_v": null,
+      "source": "learned"
+    },
+    "device_2.button_2.RED": {
+      "name": null,
+      "type": null,
+      "hsv": [
+        {
+          "lower": [
+            0,
+            58,
+            32
+          ],
+          "upper": [
+            35,
+            208,
+            252
+          ]
+        },
+        {
+          "lower": [
+            153,
+            58,
+            32
+          ],
+          "upper": [
+            179,
+            208,
+            252
+          ]
+        }
+      ],
+      "dark_max_v": null,
+      "white_max_s": null,
+      "white_min_v": null,
+      "source": "learned"
+    },
+    "device_2.button_3.RED": {
+      "name": null,
+      "type": null,
+      "hsv": [
+        {
+          "lower": [
+            0,
+            33,
+            54
+          ],
+          "upper": [
+            23,
+            185,
+            255
+          ]
+        }
+      ],
+      "dark_max_v": null,
+      "white_max_s": null,
+      "white_min_v": null,
+      "source": "learned"
+    },
+    "device_2.button_4.RED": {
+      "name": null,
+      "type": null,
+      "hsv": [
+        {
+          "lower": [
+            0,
+            33,
+            46
+          ],
+          "upper": [
+            26,
+            189,
+            255
+          ]
+        }
+      ],
+      "dark_max_v": null,
+      "white_max_s": null,
+      "white_min_v": null,
+      "source": "learned"
+    }
+  },
+  "min_ratio": 0.05,
+  "min_margin": 0.05
+}

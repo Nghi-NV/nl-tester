@@ -1,0 +1,33 @@
+platform: android
+appId: com.lumi.lumilife
+name: Lumi Life lab camera assert current state
+tags:
+  - lumi-life
+  - hardware
+  - camera
+  - lab
+defaultTimeout: 10000
+env:
+  file: "../../../../.env"
+vars:
+  CAMERA_PROFILE: "profiles/lab_switch4_camera.json"
+  TARGET_DEVICE: "device_2"
+  STATE_PRIMARY: "BLUE"
+  STATE_REST: "RED"
+camera:
+  rtsp: "${CAMERA_RTSP}"
+  profile: "${CAMERA_PROFILE}"
+  transport: "tcp"
+---
+- assertDeviceState:
+    button: "${TARGET_DEVICE}.button_1"
+    expect: "${STATE_PRIMARY}"
+- assertDeviceState:
+    button: "${TARGET_DEVICE}.button_2"
+    expect: "${STATE_REST}"
+- assertDeviceState:
+    button: "${TARGET_DEVICE}.button_3"
+    expect: "${STATE_REST}"
+- assertDeviceState:
+    button: "${TARGET_DEVICE}.button_4"
+    expect: "${STATE_REST}"

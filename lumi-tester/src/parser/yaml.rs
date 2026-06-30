@@ -6,6 +6,7 @@ use super::types::{
     TapParams, TapParamsInput, TestCommand, TestFlow, WaitParams, WaitParamsInput,
 };
 use anyhow::{Context, Result};
+use std::collections::HashMap;
 use std::path::Path;
 
 /// Parse a YAML test file into a TestFlow
@@ -36,6 +37,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
                 url: None,
                 platform: Some(Platform::default()),
                 env: None,
+                vars: None,
                 data: None,
                 default_timeout_ms: None,
                 commands: Vec::new(),
@@ -44,6 +46,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
                 browser: None,
                 close_when_finish: None,
                 desktop_state: None,
+                cameras: None,
             }
         };
         // Parse commands
@@ -58,6 +61,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
             url: None,
             platform: Some(Platform::default()),
             env: None,
+            vars: None,
             data: None,
             default_timeout_ms: None,
             commands,
@@ -66,6 +70,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
             browser: None,
             close_when_finish: None,
             desktop_state: None,
+            cameras: None,
         });
     }
 
@@ -89,6 +94,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
             url: None,
             platform: Some(Platform::default()),
             env: None,
+            vars: None,
             data: None,
             default_timeout_ms: None,
             commands: Vec::new(),
@@ -97,6 +103,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
             browser: None,
             close_when_finish: None,
             desktop_state: None,
+            cameras: None,
         };
 
         if let Some(val) = map.get(&serde_yaml::Value::String("data".to_string())) {
@@ -151,12 +158,25 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
             flow.desktop_state = Some(serde_yaml::from_value(val.clone())?);
         }
 
-        let env_val = map
-            .get(&serde_yaml::Value::String("env".to_string()))
-            .or_else(|| map.get(&serde_yaml::Value::String("vars".to_string())))
-            .or_else(|| map.get(&serde_yaml::Value::String("var".to_string())));
+        if let Some(val) = map
+            .get(&serde_yaml::Value::String("cameras".to_string()))
+            .or_else(|| map.get(&serde_yaml::Value::String("camera".to_string())))
+        {
+            flow.cameras = Some(
+                serde_yaml::from_value(val.clone())
+                    .context("Failed to parse camera/cameras header")?,
+            );
+        }
+
+        let env_val = map.get(&serde_yaml::Value::String("env".to_string()));
         if let Some(val) = env_val {
             flow.env = serde_yaml::from_value(val.clone()).ok();
+        }
+        let vars_val = map
+            .get(&serde_yaml::Value::String("vars".to_string()))
+            .or_else(|| map.get(&serde_yaml::Value::String("var".to_string())));
+        if let Some(val) = vars_val {
+            flow.vars = serde_yaml::from_value(val.clone()).ok();
         }
 
         if let Some(val) = map.get(&serde_yaml::Value::String("commands".to_string())) {
@@ -199,8 +219,10 @@ fn parse_header(header: &str, base_path: &Path) -> Result<TestFlow> {
         url: Option<String>,
         #[serde(default)]
         platform: Option<Platform>,
-        #[serde(default, alias = "vars", alias = "var")]
+        #[serde(default)]
         env: Option<serde_yaml::Value>,
+        #[serde(default, alias = "var")]
+        vars: Option<HashMap<String, String>>,
         #[serde(default)]
         data: Option<String>,
         #[serde(default, alias = "defaultTimeout")]
@@ -215,6 +237,8 @@ fn parse_header(header: &str, base_path: &Path) -> Result<TestFlow> {
         close_when_finish: Option<bool>,
         #[serde(default)]
         desktop_state: Option<crate::parser::types::DesktopState>,
+        #[serde(default, alias = "camera")]
+        cameras: Option<crate::parser::types::CamerasConfig>,
     }
 
     let parsed: Header = serde_yaml::from_str(header).context("Failed to parse YAML header")?;
@@ -240,16 +264,7 @@ fn parse_header(header: &str, base_path: &Path) -> Result<TestFlow> {
                             format!("Failed to read env file: {}", env_path.display())
                         })?;
 
-                        // Parse .env content (simple KEY=VAL)
-                        for line in content.lines() {
-                            let line = line.trim();
-                            if line.is_empty() || line.starts_with('#') {
-                                continue;
-                            }
-                            if let Some((key, val)) = line.split_once('=') {
-                                env_map.insert(key.trim().to_string(), val.trim().to_string());
-                            }
-                        }
+                        env_map.extend(parse_env_file_content(&content));
                     }
                 } else {
                     // Normal map syntax
@@ -279,6 +294,7 @@ fn parse_header(header: &str, base_path: &Path) -> Result<TestFlow> {
         url: parsed.url,
         platform: parsed.platform,
         env,
+        vars: parsed.vars,
         data: parsed.data,
         default_timeout_ms: parsed.default_timeout,
         commands: Vec::new(),
@@ -287,7 +303,46 @@ fn parse_header(header: &str, base_path: &Path) -> Result<TestFlow> {
         browser: parsed.browser,
         close_when_finish: parsed.close_when_finish,
         desktop_state: parsed.desktop_state,
+        cameras: parsed.cameras,
     })
+}
+
+fn parse_env_file_content(content: &str) -> std::collections::HashMap<String, String> {
+    let mut env = std::collections::HashMap::new();
+    for raw_line in content.lines() {
+        let mut line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("export ") {
+            line = rest.trim_start();
+        }
+        let Some((key, raw_value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        if key.is_empty() || key.chars().any(char::is_whitespace) {
+            continue;
+        }
+        env.insert(key.to_string(), parse_env_value(raw_value));
+    }
+    env
+}
+
+fn parse_env_value(raw: &str) -> String {
+    let value = raw.trim();
+    if value.len() >= 2 {
+        let first = value.as_bytes()[0] as char;
+        let last = value.as_bytes()[value.len() - 1] as char;
+        if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
+            return value[1..value.len() - 1].to_string();
+        }
+    }
+    if let Some(idx) = value.find(" #") {
+        value[..idx].trim_end().to_string()
+    } else {
+        value.to_string()
+    }
 }
 
 /// Parse the commands section of a YAML test file
@@ -1097,6 +1152,19 @@ fn parse_command_with_params(
             TestCommand::VerifyAudioDucking(p)
         }
 
+        // Hardware verification via camera
+        "assertDeviceState" | "checkDevice" => {
+            TestCommand::AssertDeviceState(serde_yaml::from_value(params.clone())?)
+        }
+        "waitDeviceState" => TestCommand::WaitDeviceState(serde_yaml::from_value(params.clone())?),
+        "assertDeviceTransition" | "assertDeviceChange" => {
+            TestCommand::AssertDeviceTransition(serde_yaml::from_value(params.clone())?)
+        }
+        "waitLedPattern" | "assertDevicePattern" => {
+            TestCommand::WaitLedPattern(serde_yaml::from_value(params.clone())?)
+        }
+        "getDeviceState" => TestCommand::GetDeviceState(serde_yaml::from_value(params.clone())?),
+
         _ => return Ok(None),
     };
 
@@ -1320,5 +1388,53 @@ platform: android
             flow.commands[5],
             TestCommand::SetNetworkConditions(_)
         ));
+    }
+
+    #[test]
+    fn invalid_camera_header_fails_clearly() {
+        let yaml = r#"
+platform: android
+camera:
+  rtsp:
+    nested: invalid
+  profile: switch4.json
+commands:
+  - launchApp
+"#;
+
+        let err = parse_yaml_content(yaml, Path::new("camera.yaml")).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Failed to parse camera/cameras header")
+                || format!("{err:#}").contains("Failed to parse camera/cameras header"),
+            "unexpected error: {err:#}"
+        );
+    }
+
+    #[test]
+    fn env_file_parser_handles_non_shell_safe_values() {
+        let camera_rtsp_key = format!("{}{}", "CAMERA_", "RTSP");
+        let content = format!(
+            r#"
+# comments are ignored
+export {}="{}{}:{}{}10.0.0.5/live"
+HOME==Nhà 3D
+INLINE=value # comment
+PASSWORD='abc#123'
+not a shell assignment
+            "#,
+            camera_rtsp_key, "rtsp://", "user", "pass", "@"
+        );
+        let parsed = parse_env_file_content(&content);
+
+        let expected_rtsp = format!("{}{}:{}{}10.0.0.5/live", "rtsp://", "user", "pass", "@");
+        assert_eq!(
+            parsed.get(&camera_rtsp_key).map(String::as_str),
+            Some(expected_rtsp.as_str())
+        );
+        assert_eq!(parsed.get("HOME").map(String::as_str), Some("=Nhà 3D"));
+        assert_eq!(parsed.get("INLINE").map(String::as_str), Some("value"));
+        assert_eq!(parsed.get("PASSWORD").map(String::as_str), Some("abc#123"));
+        assert!(!parsed.contains_key("not a shell assignment"));
     }
 }

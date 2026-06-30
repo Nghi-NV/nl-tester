@@ -1,0 +1,25 @@
+platform: android
+appId: com.lumi.lumilife
+name: Lumi Life camera-only manual hardware probe
+tags:
+  - lumi-life
+  - hardware
+  - camera
+  - manual-probe
+defaultTimeout: 10000
+env:
+  file: "../../../../.env"
+vars:
+  CAMERA_PROFILE: "profiles/lab_switch4_camera.json"
+  BEFORE_STATE_VAR: "beforeManualControl"
+  AFTER_STATE_VAR: "afterManualControl"
+camera:
+  rtsp: "${CAMERA_RTSP}"
+  profile: "${CAMERA_PROFILE}"
+  transport: "tcp"
+---
+- getDeviceState:
+    saveAs: "${BEFORE_STATE_VAR}"
+- wait: 5000
+- getDeviceState:
+    saveAs: "${AFTER_STATE_VAR}"
