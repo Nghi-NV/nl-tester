@@ -1,0 +1,47 @@
+name: VS Code Extension
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["extension-v*"]
+    paths:
+      - "lumi-tester-vscode/**"
+      - ".github/workflows/vscode-extension.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lumi-tester-vscode
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: lumi-tester-vscode/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run package
+      - name: Verify extension tag matches package version
+        if: startsWith(github.ref, 'refs/tags/extension-v')
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          test "${GITHUB_REF_NAME}" = "extension-v${version}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lumi-tester-vsix
+          path: lumi-tester-vscode/lumi-tester-*.vsix
+      - name: Attach VSIX to extension release
+        if: startsWith(github.ref, 'refs/tags/extension-v')
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: lumi-tester-vscode/lumi-tester-*.vsix
+          fail_on_unmatched_files: true

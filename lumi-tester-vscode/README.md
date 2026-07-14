@@ -22,27 +22,49 @@ VSCode extension for [lumi-tester](https://github.com/lumi/lumi-tester) - A powe
 
 ## Installation
 
-1. Open VSCode Extensions (Ctrl+Shift+X)
-2. Search for "Lumi Tester"
-3. Click Install
+Install the native Lumi Tester CLI first. The installer downloads the Windows
+binary plus common Android/Web dependencies; Rust and Cargo are not required.
 
-Or install from VSIX:
-```bash
-code --install-extension lumi-tester-0.1.0.vsix
+```powershell
+iwr https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.ps1 -UseB | iex
 ```
+
+Then install the extension VSIX:
+
+```powershell
+code --install-extension lumi-tester-0.1.17.vsix
+```
+
+Reload VS Code after installation. The extension automatically checks `PATH`
+and `%USERPROFILE%\.lumi-tester\bin\lumi-tester.exe`.
 
 ## Configuration
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `lumi-tester.lumiTesterPath` | Path to lumi-tester project directory | Auto-detect |
+| `lumi-tester.lumiTesterPath` | Optional CLI executable or source directory | Auto-detect |
 | `lumi-tester.outputDirectory` | Output directory for artifacts | `./output` |
+
+The default CLI installation needs no setting. For an explicit override, use an
+absolute executable path:
+
+```json
+{
+  "lumi-tester.lumiTesterPath": "C:\\Users\\QueDT\\.lumi-tester\\bin\\lumi-tester.exe"
+}
+```
+
+`${workspaceFolder}` and `${userHome}` are supported. Unresolved variables are
+reported as configuration errors instead of being resolved relative to the VS
+Code installation directory.
 
 ## Requirements
 
-- [lumi-tester](https://github.com/lumi/lumi-tester) installed
-- Rust/Cargo (for building lumi-tester)
-- Node.js 18+ (for development)
+- [lumi-tester](https://github.com/Nghi-NV/nl-tester) native CLI installed
+- A connected Android device with USB debugging enabled for Android tests
+
+Rust, Cargo, and Node.js are required only for extension development, not for
+installed-extension use.
 
 ## Development
 
@@ -65,6 +87,14 @@ npm run compile
 | `Lumi: Run Test File` | Run all commands in current YAML file |
 | `Lumi: Run Single Command` | Run command at current line |
 | `Lumi: Stop Test` | Stop running test |
+| `Lumi: Open Element Inspector` | Start Inspector through the installed CLI |
+| `Lumi: Select Device` | Select an Android, iOS, or Web target |
+| `Lumi: Diagnose Setup` | Show resolved CLI/ADB paths and versions |
+
+## Troubleshooting
+
+Run `Lumi: Diagnose Setup` from the Command Palette. It reports the CLI runtime,
+version, resolved ADB path, and Android device count.
 
 ## License
 
