@@ -1,5 +1,9 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
+import * as fs from 'fs';
+import * as os from 'os';
+import { parseAdbDevices } from './deviceDiscovery';
+import { resolveAdbExecutable, RuntimeResolverOptions } from './runtimeResolver';
 
 export interface Device {
   id: string;
@@ -18,6 +22,7 @@ export class DeviceManager {
   private lastRefresh: number = 0;
   private cacheTimeout = 10000;
   private initialized = false;
+  private androidDiscoveryError: string | undefined;
 
   private constructor() {
     // Device selector status bar
@@ -139,51 +144,46 @@ export class DeviceManager {
 
   private fetchAndroidDevices(): Promise<Device[]> {
     return new Promise((resolve) => {
-      cp.exec('adb devices -l', { timeout: 10000 }, (error, stdout) => {
+      const adb = this.resolveAdb();
+      if (!adb) {
+        this.androidDiscoveryError = 'ADB not found in PATH or ~/.lumi-tester/platform-tools';
+        resolve([]);
+        return;
+      }
+
+      cp.execFile(adb, ['devices', '-l'], { timeout: 10000, windowsHide: true }, (error, stdout) => {
         if (error) {
+          this.androidDiscoveryError = error.message;
           resolve([]);
           return;
         }
-
-        const devices: Device[] = [];
-        const lines = stdout.split('\n').slice(1);
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-
-          const match = line.match(/^(\S+)\s+(device|offline|unauthorized).*?model:(\S+)/);
-          if (match) {
-            const id = match[1];
-            const state = match[2];
-            const model = match[3].replace(/_/g, ' ');
-            const isEmulator = id.startsWith('emulator-');
-
-            devices.push({
-              id: id,
-              name: model,
-              platform: 'android',
-              state: state,
-              type: isEmulator ? 'emulator' : 'physical'
-            });
-          } else {
-            const simpleMatch = line.match(/^(\S+)\s+(device|offline)/);
-            if (simpleMatch) {
-              const id = simpleMatch[1];
-              const state = simpleMatch[2];
-              devices.push({
-                id: id,
-                name: id,
-                platform: 'android',
-                state: state,
-                type: id.startsWith('emulator-') ? 'emulator' : 'physical'
-              });
-            }
-          }
-        }
-
-        resolve(devices);
+        this.androidDiscoveryError = undefined;
+        resolve(parseAdbDevices(stdout));
       });
     });
+  }
+
+  private resolveAdb(): string | undefined {
+    const pathLookup = (name: string): string | undefined => {
+      const executable = process.platform === 'win32' ? 'where.exe' : 'which';
+      try {
+        return cp.execFileSync(executable, [name], { encoding: 'utf8', windowsHide: true })
+          .split(/\r?\n/)
+          .map(value => value.trim())
+          .find(Boolean);
+      } catch {
+        return undefined;
+      }
+    };
+    const options: RuntimeResolverOptions = {
+      platform: process.platform,
+      homeDir: os.homedir(),
+      pathLookup,
+      exists: fs.existsSync,
+      isFile: value => fs.existsSync(value) && fs.statSync(value).isFile(),
+      isLumiSourceDirectory: () => false
+    };
+    return resolveAdbExecutable(options);
   }
 
   private fetchIOSDevices(): Promise<Device[]> {
@@ -276,6 +276,13 @@ export class DeviceManager {
   public async showDevicePicker(): Promise<Device | undefined> {
     // Use cached devices first for fast display, then refresh in background
     let devices = this.cachedDevices.length > 0 ? this.cachedDevices : await this.refreshDevices(true);
+
+    if (this.androidDiscoveryError && devices.every(device => device.platform === 'web')) {
+      void vscode.window.showWarningMessage(
+        `Android devices unavailable: ${this.androidDiscoveryError}. `
+        + 'Run “Lumi: Diagnose Setup” for resolved paths.'
+      );
+    }
 
     // Refresh in background for next time
     this.refreshDevices(true);
