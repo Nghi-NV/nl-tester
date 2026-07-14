@@ -102,7 +102,7 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "test": "npm run compile && node --test out/commandInvocation.test.js",
+    "test": "npm run compile && node --test out/commandInvocation.test.js out/runtimeResolver.test.js",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "package": "vsce package"
