@@ -1,18 +1,21 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildRunInvocation } from './commandInvocation';
+import { buildInspectInvocation, buildRunInvocation } from './commandInvocation';
 
 test('runs a configured Windows executable directly', () => {
   const invocation = buildRunInvocation({
-    lumiPath: 'C:\\Users\\buith\\.lumi-tester\\bin\\lumi-tester.exe',
-    lumiPathIsFile: true,
+    runtime: {
+      kind: 'binary',
+      executable: 'C:\\Users\\QueDT\\.lumi-tester\\bin\\lumi-tester.exe',
+      argsPrefix: []
+    },
     testFilePath: 'C:\\tests\\login.yaml',
     commandIndex: 3,
     device: { platform: 'android', id: 'emulator-5554' }
   });
 
   assert.deepEqual(invocation, {
-    executable: 'C:\\Users\\buith\\.lumi-tester\\bin\\lumi-tester.exe',
+    executable: 'C:\\Users\\QueDT\\.lumi-tester\\bin\\lumi-tester.exe',
     args: [
       'run',
       'C:\\tests\\login.yaml',
@@ -26,16 +29,57 @@ test('runs a configured Windows executable directly', () => {
   });
 });
 
-test('runs cargo from a source directory', () => {
+test('keeps cargo only for a source runtime', () => {
   const invocation = buildRunInvocation({
-    lumiPath: '/workspace/lumi-tester',
-    lumiPathIsFile: false,
+    runtime: {
+      kind: 'source',
+      executable: 'cargo',
+      argsPrefix: ['run', '--'],
+      cwd: '/workspace/lumi-tester'
+    },
     testFilePath: '/workspace/tests/login.yaml'
   });
 
   assert.deepEqual(invocation, {
     executable: 'cargo',
     args: ['run', '--', 'run', '/workspace/tests/login.yaml'],
+    cwd: '/workspace/lumi-tester'
+  });
+});
+
+test('builds inspector arguments for an installed binary', () => {
+  const invocation = buildInspectInvocation({
+    runtime: {
+      kind: 'binary',
+      executable: 'C:\\Users\\QueDT\\.lumi-tester\\bin\\lumi-tester.exe',
+      argsPrefix: []
+    },
+    platform: 'android',
+    port: 9333,
+    deviceId: 'R5CT123'
+  });
+
+  assert.deepEqual(invocation, {
+    executable: 'C:\\Users\\QueDT\\.lumi-tester\\bin\\lumi-tester.exe',
+    args: ['inspect', '--platform', 'android', '--port', '9333', '--device', 'R5CT123']
+  });
+});
+
+test('builds inspector arguments for a source runtime', () => {
+  const invocation = buildInspectInvocation({
+    runtime: {
+      kind: 'source',
+      executable: 'cargo',
+      argsPrefix: ['run', '--'],
+      cwd: '/workspace/lumi-tester'
+    },
+    platform: 'ios',
+    port: 9334
+  });
+
+  assert.deepEqual(invocation, {
+    executable: 'cargo',
+    args: ['run', '--', 'inspect', '--platform', 'ios', '--port', '9334'],
     cwd: '/workspace/lumi-tester'
   });
 });

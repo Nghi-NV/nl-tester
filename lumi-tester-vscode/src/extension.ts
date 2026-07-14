@@ -1,5 +1,6 @@
-import { exec } from 'child_process';
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { LumiCodeLensProvider } from './codeLensProvider';
@@ -9,6 +10,11 @@ import { LumiDecorationProvider } from './decorationProvider';
 import { DeviceManager } from './deviceManager';
 import { InspectorPanel } from './inspectorPanel';
 import { MockLocationPanel } from './mockLocationPanel';
+import {
+  LumiRuntime,
+  resolveLumiRuntime,
+  RuntimeResolverOptions
+} from './runtimeResolver';
 import { LumiTestRunner } from './testRunner';
 
 let taskExecution: vscode.TaskExecution | undefined;
@@ -84,11 +90,13 @@ export function activate(context: vscode.ExtensionContext) {
   // Mock location event handlers
   testRunner.onMockLocationStarted((data) => {
     const editor = vscode.window.activeTextEditor;
-    const filePath = editor?.document.uri.fsPath || '';
-    const lumiPath = findLumiTesterPath(filePath);
+    const uri = editor?.document.uri;
 
-    if (lumiPath) {
-      MockLocationPanel.show(context, lumiPath, 60);
+    if (uri) {
+      const runtime = resolveRuntimeOrShow(uri);
+      if (runtime) {
+        MockLocationPanel.show(context, runtime.cwd ?? runtime.executable, 60);
+      }
       vscode.window.showInformationMessage(`🛰️ GPS Mock started with ${data.pointCount} points`);
     }
   });
@@ -148,20 +156,20 @@ export function activate(context: vscode.ExtensionContext) {
       console.log('Lumi: openInspector command triggered');
 
       const editor = vscode.window.activeTextEditor;
-      const filePath = editor?.document.uri.fsPath || '';
-      console.log('Lumi: Active file path:', filePath);
+      const uri = editor?.document.uri;
+      console.log('Lumi: Active file path:', uri?.fsPath || '');
 
-      const lumiPath = findLumiTesterPath(filePath);
-      console.log('Lumi: Found lumi-tester path:', lumiPath);
-
-      if (!lumiPath) {
-        vscode.window.showErrorMessage('Could not find lumi-tester. Please set lumi-tester.lumiTesterPath in settings.');
+      if (!uri) {
+        vscode.window.showErrorMessage('Open a YAML file before starting Lumi Inspector.');
         return;
       }
+      const runtime = resolveRuntimeOrShow(uri);
+      if (!runtime) return;
+      console.log('Lumi: Found lumi-tester runtime:', runtime);
 
       try {
         const device = deviceManager?.getSelectedDevice() || undefined;
-        await InspectorPanel.show(context, lumiPath, device);
+        await InspectorPanel.show(context, runtime.cwd ?? runtime.executable, device);
         console.log('Lumi: InspectorPanel.show() completed');
       } catch (error) {
         console.error('Lumi: Error showing inspector panel:', error);
@@ -174,92 +182,71 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('lumi-tester.openGpsControl', async () => {
       const editor = vscode.window.activeTextEditor;
-      const filePath = editor?.document.uri.fsPath || '';
-      const lumiPath = findLumiTesterPath(filePath);
-
-      if (!lumiPath) {
-        vscode.window.showErrorMessage('Could not find lumi-tester. Please set lumi-tester.lumiTesterPath in settings.');
+      const uri = editor?.document.uri;
+      if (!uri) {
+        vscode.window.showErrorMessage('Open a YAML file before opening GPS Control.');
         return;
       }
+      const runtime = resolveRuntimeOrShow(uri);
+      if (!runtime) return;
 
-      MockLocationPanel.show(context, lumiPath, 60);
+      MockLocationPanel.show(context, runtime.cwd ?? runtime.executable, 60);
     })
   );
 
   console.log('Lumi Tester extension activated successfully');
 }
 
-function findLumiTesterPath(testFilePath: string): string | null {
-  // Check configuration first
-  const config = vscode.workspace.getConfiguration('lumi-tester');
-  const configPath = config.get<string>('lumiTesterPath');
-  if (configPath && configPath.length > 0) {
-    return configPath;
+function lookupCommand(name: string): string | undefined {
+  const executable = process.platform === 'win32' ? 'where.exe' : 'which';
+  try {
+    return execFileSync(executable, [name], { encoding: 'utf8', windowsHide: true })
+      .split(/\r?\n/)
+      .map(value => value.trim())
+      .find(Boolean);
+  } catch {
+    return undefined;
   }
+}
 
-  // Try to find lumi-tester in parent directories
-  let dir = path.dirname(testFilePath);
-  const fs = require('fs');
-
-  for (let i = 0; i < 10; i++) {
-    const cargoPath = path.join(dir, 'Cargo.toml');
-    try {
-      if (fs.existsSync(cargoPath)) {
-        const content = fs.readFileSync(cargoPath, 'utf8');
-        if (content.includes('lumi-tester')) {
-          return dir;
-        }
-      }
-    } catch {
-      // Ignore
+function resolverOptions(uri: vscode.Uri): RuntimeResolverOptions {
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri)?.uri.fsPath
+    ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  return {
+    platform: process.platform,
+    homeDir: os.homedir(),
+    workspaceFolder,
+    configuredPath: vscode.workspace
+      .getConfiguration('lumi-tester', uri)
+      .get<string>('lumiTesterPath'),
+    pathLookup: lookupCommand,
+    exists: fs.existsSync,
+    isFile: value => fs.existsSync(value) && fs.statSync(value).isFile(),
+    isLumiSourceDirectory: value => {
+      const manifest = path.join(value, 'Cargo.toml');
+      return fs.existsSync(manifest)
+        && fs.readFileSync(manifest, 'utf8').includes('lumi-tester');
     }
+  };
+}
 
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
+function resolveRuntime(uri: vscode.Uri): LumiRuntime {
+  return resolveLumiRuntime(resolverOptions(uri));
+}
+
+function resolveRuntimeOrShow(uri: vscode.Uri): LumiRuntime | undefined {
+  try {
+    return resolveRuntime(uri);
+  } catch (error) {
+    vscode.window.showErrorMessage(`Could not resolve Lumi Tester CLI: ${error}`);
+    return undefined;
   }
-
-  // 3. Check global PATH
-  const checkGlobal = new Promise<string>((resolve, reject) => {
-    const command = process.platform === 'win32' ? 'where lumi-tester' : 'which lumi-tester';
-    exec(command, (err: Error | null, stdout: string) => {
-      if (err || !stdout) {
-        reject(err);
-      } else {
-        resolve(stdout.split('\n')[0].trim());
-      }
-    });
-  });
-
-  // Fallback: assume relative to workspace
-  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-  if (workspaceFolder) {
-    const possiblePaths = [
-      path.join(workspaceFolder.uri.fsPath, 'lumi-tester'),
-      workspaceFolder.uri.fsPath
-    ];
-    for (const p of possiblePaths) {
-      try {
-        if (fs.existsSync(path.join(p, 'Cargo.toml'))) {
-          return p;
-        }
-      } catch {
-        // Ignore
-      }
-    }
-  }
-
-  return null;
 }
 
 async function runTestFile(uri: vscode.Uri): Promise<void> {
   const filePath = uri.fsPath;
-  const lumiPath = findLumiTesterPath(filePath);
-
-  if (!lumiPath) {
-    vscode.window.showErrorMessage('Could not find lumi-tester. Please set lumi-tester.lumiTesterPath in settings.');
-    return;
-  }
+  const runtime = resolveRuntimeOrShow(uri);
+  if (!runtime) return;
 
   // Check if YAML contains mockLocation/gps command and auto-show GPS Control panel
   try {
@@ -270,7 +257,7 @@ async function runTestFile(uri: vscode.Uri): Promise<void> {
       const speedMatch = content.match(/speed:\s*([\d.]+)/i);
       const initialSpeed = speedMatch ? parseFloat(speedMatch[1]) : 60;
 
-      MockLocationPanel.show(extensionContext, lumiPath, initialSpeed);
+      MockLocationPanel.show(extensionContext, runtime.cwd ?? runtime.executable, initialSpeed);
     }
   } catch (e) {
     // Ignore read errors
@@ -279,29 +266,23 @@ async function runTestFile(uri: vscode.Uri): Promise<void> {
   // Ensure device is selected (auto-select if only 1, prompt if multiple)
   await deviceManager?.ensureDeviceSelected();
 
-  await executeRunTask(uri, lumiPath);
+  await executeRunTask(uri, runtime);
 }
 
 async function runSingleCommand(uri: vscode.Uri, commandIndex: number): Promise<void> {
-  const filePath = uri.fsPath;
-  const lumiPath = findLumiTesterPath(filePath);
-
-  if (!lumiPath) {
-    vscode.window.showErrorMessage('Could not find lumi-tester. Please set lumi-tester.lumiTesterPath in settings.');
-    return;
-  }
+  const runtime = resolveRuntimeOrShow(uri);
+  if (!runtime) return;
 
   // Ensure device is selected (auto-select if only 1, prompt if multiple)
   await deviceManager?.ensureDeviceSelected();
 
-  await executeRunTask(uri, lumiPath, commandIndex);
+  await executeRunTask(uri, runtime, commandIndex);
 }
 
-async function executeRunTask(uri: vscode.Uri, lumiPath: string, commandIndex?: number): Promise<void> {
+async function executeRunTask(uri: vscode.Uri, runtime: LumiRuntime, commandIndex?: number): Promise<void> {
   try {
     const invocation = buildRunInvocation({
-      lumiPath,
-      lumiPathIsFile: fs.statSync(lumiPath).isFile(),
+      runtime,
       testFilePath: uri.fsPath,
       commandIndex,
       device: deviceManager?.getSelectedDevice() ?? undefined

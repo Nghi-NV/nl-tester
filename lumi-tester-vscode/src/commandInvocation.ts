@@ -1,6 +1,13 @@
+import { LumiRuntime } from './runtimeResolver';
+
+export interface Invocation {
+  executable: string;
+  args: string[];
+  cwd?: string;
+}
+
 export interface RunInvocationOptions {
-  lumiPath: string;
-  lumiPathIsFile: boolean;
+  runtime: LumiRuntime;
   testFilePath: string;
   commandIndex?: number;
   device?: {
@@ -9,32 +16,36 @@ export interface RunInvocationOptions {
   };
 }
 
-export interface RunInvocation {
-  executable: string;
-  args: string[];
-  cwd?: string;
+export interface InspectInvocationOptions {
+  runtime: LumiRuntime;
+  platform: string;
+  port: number;
+  deviceId?: string;
 }
 
-export function buildRunInvocation(options: RunInvocationOptions): RunInvocation {
-  const args = ['run', options.testFilePath];
+function buildCommand(runtime: LumiRuntime, name: string, args: string[]): Invocation {
+  return {
+    executable: runtime.executable,
+    args: [...runtime.argsPrefix, name, ...args],
+    ...(runtime.cwd ? { cwd: runtime.cwd } : {})
+  };
+}
 
+export function buildRunInvocation(options: RunInvocationOptions): Invocation {
+  const args = [options.testFilePath];
   if (options.commandIndex !== undefined) {
     args.push('--command-index', options.commandIndex.toString());
   }
   if (options.device) {
     args.push('--platform', options.device.platform, '--device', options.device.id);
   }
+  return buildCommand(options.runtime, 'run', args);
+}
 
-  if (options.lumiPathIsFile) {
-    return {
-      executable: options.lumiPath,
-      args
-    };
+export function buildInspectInvocation(options: InspectInvocationOptions): Invocation {
+  const args = ['--platform', options.platform, '--port', options.port.toString()];
+  if (options.deviceId) {
+    args.push('--device', options.deviceId);
   }
-
-  return {
-    executable: 'cargo',
-    args: ['run', '--', ...args],
-    cwd: options.lumiPath
-  };
+  return buildCommand(options.runtime, 'inspect', args);
 }
