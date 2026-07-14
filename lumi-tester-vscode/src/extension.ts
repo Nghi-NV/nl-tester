@@ -7,18 +7,18 @@ import { LumiCodeLensProvider } from './codeLensProvider';
 import { buildRunInvocation } from './commandInvocation';
 import { LumiCompletionProvider } from './completionProvider';
 import { LumiDecorationProvider } from './decorationProvider';
+import { parseAdbDevices } from './deviceDiscovery';
 import { DeviceManager } from './deviceManager';
 import { InspectorPanel } from './inspectorPanel';
 import { MockLocationPanel } from './mockLocationPanel';
 import {
   LumiRuntime,
+  resolveAdbExecutable,
   resolveLumiRuntime,
   RuntimeResolverOptions
 } from './runtimeResolver';
-import { LumiTestRunner } from './testRunner';
 
 let taskExecution: vscode.TaskExecution | undefined;
-let testRunner: LumiTestRunner | undefined;
 let decorationProvider: LumiDecorationProvider | undefined;
 let deviceManager: DeviceManager | undefined;
 let gpsStatusBarItem: vscode.StatusBarItem | undefined;
@@ -81,31 +81,6 @@ export function activate(context: vscode.ExtensionContext) {
     dispose: () => decorationProvider?.dispose()
   });
 
-  // Initialize test runner
-  testRunner = new LumiTestRunner();
-  testRunner.onStatusChange((status) => {
-    decorationProvider?.updateDecorations(status);
-  });
-
-  // Mock location event handlers
-  testRunner.onMockLocationStarted((data) => {
-    const editor = vscode.window.activeTextEditor;
-    const uri = editor?.document.uri;
-
-    if (uri) {
-      const runtime = resolveRuntimeOrShow(uri);
-      if (runtime) {
-        MockLocationPanel.show(context, runtime.cwd ?? runtime.executable, 60);
-      }
-      vscode.window.showInformationMessage(`🛰️ GPS Mock started with ${data.pointCount} points`);
-    }
-  });
-
-  // Note: Auto-hide disabled - panel persists until manually closed
-  // testRunner.onMockLocationStopped(() => {
-  //   MockLocationPanel.hide();
-  // });
-
   // Register commands
   context.subscriptions.push(
     vscode.commands.registerCommand('lumi-tester.runFile', async () => {
@@ -126,9 +101,6 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('lumi-tester.stopTest', () => {
-      if (testRunner) {
-        testRunner.stop();
-      }
       if (taskExecution) {
         taskExecution.terminate();
         taskExecution = undefined;
@@ -169,7 +141,7 @@ export function activate(context: vscode.ExtensionContext) {
 
       try {
         const device = deviceManager?.getSelectedDevice() || undefined;
-        await InspectorPanel.show(context, runtime.cwd ?? runtime.executable, device);
+        await InspectorPanel.show(context, runtime, device);
         console.log('Lumi: InspectorPanel.show() completed');
       } catch (error) {
         console.error('Lumi: Error showing inspector panel:', error);
@@ -191,6 +163,51 @@ export function activate(context: vscode.ExtensionContext) {
       if (!runtime) return;
 
       MockLocationPanel.show(context, runtime.cwd ?? runtime.executable, 60);
+    })
+  );
+
+  const diagnostics = vscode.window.createOutputChannel('Lumi Setup');
+  context.subscriptions.push(diagnostics);
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lumi-tester.diagnoseSetup', () => {
+      diagnostics.clear();
+      diagnostics.show(true);
+      const uri = vscode.window.activeTextEditor?.document.uri
+        ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+      if (!uri) {
+        diagnostics.appendLine('No workspace or active file.');
+        return;
+      }
+
+      try {
+        const options = resolverOptions(uri);
+        const runtime = resolveLumiRuntime(options);
+        diagnostics.appendLine(`CLI kind: ${runtime.kind}`);
+        diagnostics.appendLine(`CLI path: ${runtime.executable}`);
+        const version = execFileSync(
+          runtime.executable,
+          [...runtime.argsPrefix, '--version'],
+          {
+            encoding: 'utf8',
+            cwd: runtime.cwd,
+            windowsHide: true
+          }
+        );
+        diagnostics.appendLine(`CLI version: ${version.trim()}`);
+
+        const adb = resolveAdbExecutable(options);
+        diagnostics.appendLine(`ADB path: ${adb ?? 'not found'}`);
+        if (adb) {
+          const adbOutput = execFileSync(
+            adb,
+            ['devices', '-l'],
+            { encoding: 'utf8', windowsHide: true }
+          );
+          diagnostics.appendLine(`Android devices: ${parseAdbDevices(adbOutput).length}`);
+        }
+      } catch (error) {
+        diagnostics.appendLine(`ERROR: ${error}`);
+      }
     })
   );
 

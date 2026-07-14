@@ -1,7 +1,9 @@
 import * as child_process from 'child_process';
 import * as net from 'net';
 import * as vscode from 'vscode';
+import { buildInspectInvocation } from './commandInvocation';
 import { Device } from './deviceManager';
+import { LumiRuntime } from './runtimeResolver';
 
 export class InspectorPanel {
   public static currentPanel: InspectorPanel | undefined;
@@ -14,11 +16,12 @@ export class InspectorPanel {
   private _selectedDevice: Device | undefined;
   private _outputChannel: vscode.OutputChannel;
 
-  public static async show(context: vscode.ExtensionContext, lumiTesterPath: string, device?: Device) {
+  public static async show(context: vscode.ExtensionContext, runtime: LumiRuntime, device?: Device) {
     const column = vscode.ViewColumn.Beside;
 
     // If we already have a panel, show it
     if (InspectorPanel.currentPanel) {
+      InspectorPanel.currentPanel._runtime = runtime;
       if (device) {
         InspectorPanel.currentPanel.setDevice(device);
       }
@@ -38,13 +41,13 @@ export class InspectorPanel {
       }
     );
 
-    InspectorPanel.currentPanel = new InspectorPanel(panel, context, lumiTesterPath, device);
+    InspectorPanel.currentPanel = new InspectorPanel(panel, context, runtime, device);
   }
 
   private constructor(
     panel: vscode.WebviewPanel,
     private context: vscode.ExtensionContext,
-    private lumiTesterPath: string,
+    private _runtime: LumiRuntime,
     device?: Device
   ) {
     this._panel = panel;
@@ -89,22 +92,26 @@ export class InspectorPanel {
     const platform = this._selectedDevice?.platform || 'android';
     const deviceId = this._selectedDevice?.id;
 
-    // Build command
-    const args = ['run', '--', 'inspect', '--platform', platform, '--port', this._port.toString()];
-    if (deviceId) {
-      args.push('--device', deviceId);
-    }
+    const invocation = buildInspectInvocation({
+      runtime: this._runtime,
+      platform,
+      port: this._port,
+      deviceId
+    });
 
     this._outputChannel.appendLine(`Starting inspector on port ${this._port}...`);
-    this._outputChannel.appendLine(`Command: cargo ${args.join(' ')}`);
-    this._outputChannel.appendLine(`CWD: ${this.lumiTesterPath}`);
+    this._outputChannel.appendLine(
+      `Command: ${invocation.executable} ${invocation.args.join(' ')}`
+    );
+    this._outputChannel.appendLine(`CWD: ${invocation.cwd ?? '(inherited)'}`);
 
     try {
       this._panel.webview.html = this._getLoadingHtml("Starting Inspector Server...");
 
-      this._inspectorProcess = child_process.spawn('cargo', args, {
-        cwd: this.lumiTesterPath,
-        shell: true,
+      this._inspectorProcess = child_process.spawn(invocation.executable, invocation.args, {
+        cwd: invocation.cwd,
+        shell: false,
+        windowsHide: true,
         env: { ...process.env, RUST_BACKTRACE: '1' }
       });
 

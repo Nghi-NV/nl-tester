@@ -67,6 +67,11 @@
         "command": "lumi-tester.openGpsControl",
         "title": "Lumi: GPS Speed Control",
         "icon": "$(compass)"
+      },
+      {
+        "command": "lumi-tester.diagnoseSetup",
+        "title": "Lumi: Diagnose Setup",
+        "icon": "$(pulse)"
       }
     ],
     "configuration": {
