@@ -190,7 +190,8 @@ export function activate(context: vscode.ExtensionContext) {
           {
             encoding: 'utf8',
             cwd: runtime.cwd,
-            windowsHide: true
+            windowsHide: true,
+            timeout: 10000
           }
         );
         diagnostics.appendLine(`CLI version: ${version.trim()}`);
@@ -201,7 +202,7 @@ export function activate(context: vscode.ExtensionContext) {
           const adbOutput = execFileSync(
             adb,
             ['devices', '-l'],
-            { encoding: 'utf8', windowsHide: true }
+            { encoding: 'utf8', windowsHide: true, timeout: 10000 }
           );
           diagnostics.appendLine(`Android devices: ${parseAdbDevices(adbOutput).length}`);
         }

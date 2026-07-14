@@ -58,6 +58,17 @@ test('resolves relative configured paths against workspace', () => {
   assert.deepEqual(runtime, { kind: 'binary', executable: binary, argsPrefix: [] });
 });
 
+test('keeps an absolute Windows UNC configured path', () => {
+  assert.equal(
+    expandRuntimePath(
+      '\\\\server\\share\\lumi-tester.exe',
+      undefined,
+      'C:\\Users\\QueDT'
+    ),
+    '\\\\server\\share\\lumi-tester.exe'
+  );
+});
+
 test('uses PATH before the default Windows install location', () => {
   const binary = 'C:\\tools\\lumi-tester.exe';
   const runtime = resolveLumiRuntime(options({

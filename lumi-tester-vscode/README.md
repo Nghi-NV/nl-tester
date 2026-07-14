@@ -1,6 +1,6 @@
 # Lumi Tester - VSCode Extension
 
-VSCode extension for [lumi-tester](https://github.com/lumi/lumi-tester) - A powerful mobile and web UI testing framework.
+VSCode extension for [lumi-tester](https://github.com/Nghi-NV/nl-tester) - A powerful mobile and web UI testing framework.
 
 ## Features
 
@@ -57,6 +57,10 @@ absolute executable path:
 `${workspaceFolder}` and `${userHome}` are supported. Unresolved variables are
 reported as configuration errors instead of being resolved relative to the VS
 Code installation directory.
+
+If an older extension version configured
+`${workspaceFolder}\\tools\\lumi-inspector-shim`, clear that setting and reload
+VS Code. The installed CLI is detected automatically.
 
 ## Requirements
 

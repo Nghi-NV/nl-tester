@@ -167,8 +167,7 @@ export class InspectorPanel {
     if (this._inspectorProcess) {
       this._outputChannel.appendLine('Stopping inspector process...');
       this._inspectorProcess.kill();
-      // Note: In some environments 'kill' might not kill the entire tree (cargo -> binary).
-      // But we change ports anyway.
+      // Inspector is the direct child, so this targets the CLI process itself.
       this._inspectorProcess = undefined;
     }
   }

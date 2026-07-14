@@ -35,7 +35,9 @@ export function expandRuntimePath(value: string, workspace: string | undefined, 
   }
 
   const usesWindowsPaths = /^[A-Za-z]:[\\/]/.test(expanded)
-    || /^[A-Za-z]:[\\/]/.test(workspace ?? '');
+    || /^\\\\/.test(expanded)
+    || /^[A-Za-z]:[\\/]/.test(workspace ?? '')
+    || /^\\\\/.test(workspace ?? '');
   const pathApi = usesWindowsPaths ? path.win32 : path.posix;
   if (!pathApi.isAbsolute(expanded)) {
     if (!workspace) {
