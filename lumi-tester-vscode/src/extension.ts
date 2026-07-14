@@ -1,7 +1,9 @@
 import { exec } from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { LumiCodeLensProvider } from './codeLensProvider';
+import { buildRunInvocation } from './commandInvocation';
 import { LumiCompletionProvider } from './completionProvider';
 import { LumiDecorationProvider } from './decorationProvider';
 import { DeviceManager } from './deviceManager';
@@ -9,7 +11,7 @@ import { InspectorPanel } from './inspectorPanel';
 import { MockLocationPanel } from './mockLocationPanel';
 import { LumiTestRunner } from './testRunner';
 
-let terminal: vscode.Terminal | undefined;
+let taskExecution: vscode.TaskExecution | undefined;
 let testRunner: LumiTestRunner | undefined;
 let decorationProvider: LumiDecorationProvider | undefined;
 let deviceManager: DeviceManager | undefined;
@@ -119,8 +121,9 @@ export function activate(context: vscode.ExtensionContext) {
       if (testRunner) {
         testRunner.stop();
       }
-      if (terminal) {
-        terminal.sendText('\x03'); // Send Ctrl+C
+      if (taskExecution) {
+        taskExecution.terminate();
+        taskExecution = undefined;
       }
     })
   );
@@ -186,16 +189,6 @@ export function activate(context: vscode.ExtensionContext) {
   console.log('Lumi Tester extension activated successfully');
 }
 
-function getOrCreateTerminal(): vscode.Terminal {
-  if (!terminal || terminal.exitStatus !== undefined) {
-    terminal = vscode.window.createTerminal({
-      name: 'Lumi Tester',
-      iconPath: new vscode.ThemeIcon('beaker')
-    });
-  }
-  return terminal;
-}
-
 function findLumiTesterPath(testFilePath: string): string | null {
   // Check configuration first
   const config = vscode.workspace.getConfiguration('lumi-tester');
@@ -259,14 +252,6 @@ function findLumiTesterPath(testFilePath: string): string | null {
   return null;
 }
 
-function buildDeviceArgs(): string {
-  const device = deviceManager?.getSelectedDevice();
-  if (!device) {
-    return '';
-  }
-  return `--platform ${device.platform} --device "${device.id}"`;
-}
-
 async function runTestFile(uri: vscode.Uri): Promise<void> {
   const filePath = uri.fsPath;
   const lumiPath = findLumiTesterPath(filePath);
@@ -294,15 +279,7 @@ async function runTestFile(uri: vscode.Uri): Promise<void> {
   // Ensure device is selected (auto-select if only 1, prompt if multiple)
   await deviceManager?.ensureDeviceSelected();
 
-  const term = getOrCreateTerminal();
-  term.show(true);
-
-  const deviceArgs = buildDeviceArgs();
-  const command = deviceArgs
-    ? `cd "${lumiPath}" && cargo run -- run "${filePath}" ${deviceArgs}`
-    : `cd "${lumiPath}" && cargo run -- run "${filePath}"`;
-
-  term.sendText(command);
+  await executeRunTask(uri, lumiPath);
 }
 
 async function runSingleCommand(uri: vscode.Uri, commandIndex: number): Promise<void> {
@@ -317,20 +294,46 @@ async function runSingleCommand(uri: vscode.Uri, commandIndex: number): Promise<
   // Ensure device is selected (auto-select if only 1, prompt if multiple)
   await deviceManager?.ensureDeviceSelected();
 
-  const term = getOrCreateTerminal();
-  term.show(true);
+  await executeRunTask(uri, lumiPath, commandIndex);
+}
 
-  const deviceArgs = buildDeviceArgs();
-  const command = deviceArgs
-    ? `cd "${lumiPath}" && cargo run -- run "${filePath}" --command-index ${commandIndex} ${deviceArgs}`
-    : `cd "${lumiPath}" && cargo run -- run "${filePath}" --command-index ${commandIndex}`;
-
-  term.sendText(command);
+async function executeRunTask(uri: vscode.Uri, lumiPath: string, commandIndex?: number): Promise<void> {
+  try {
+    const invocation = buildRunInvocation({
+      lumiPath,
+      lumiPathIsFile: fs.statSync(lumiPath).isFile(),
+      testFilePath: uri.fsPath,
+      commandIndex,
+      device: deviceManager?.getSelectedDevice() ?? undefined
+    });
+    const execution = new vscode.ProcessExecution(
+      invocation.executable,
+      invocation.args,
+      invocation.cwd ? { cwd: invocation.cwd } : undefined
+    );
+    const scope = vscode.workspace.getWorkspaceFolder(uri) ?? vscode.TaskScope.Workspace;
+    const task = new vscode.Task(
+      { type: 'lumi-tester' },
+      scope,
+      commandIndex === undefined ? 'Run Test File' : `Run Command ${commandIndex}`,
+      'Lumi Tester',
+      execution
+    );
+    task.presentationOptions = {
+      reveal: vscode.TaskRevealKind.Always,
+      panel: vscode.TaskPanelKind.Dedicated,
+      clear: true
+    };
+    taskExecution?.terminate();
+    taskExecution = await vscode.tasks.executeTask(task);
+  } catch (error) {
+    vscode.window.showErrorMessage(`Failed to run Lumi Tester: ${error}`);
+  }
 }
 
 export function deactivate() {
-  if (terminal) {
-    terminal.dispose();
+  if (taskExecution) {
+    taskExecution.terminate();
   }
   if (decorationProvider) {
     decorationProvider.dispose();
@@ -342,4 +345,3 @@ export function deactivate() {
     gpsStatusBarItem.dispose();
   }
 }
-
