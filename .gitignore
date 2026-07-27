@@ -13,6 +13,7 @@ node_modules/
 target/
 dist/
 output/
+hardware_control_services/
 
 # Logs
 *.log

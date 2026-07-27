@@ -11,6 +11,7 @@ defaultTimeout: 10000
 - tap:
     type: "input"
     index: 0
+- eraseText
 - inputText:
     text: "Nhà 3D"
     unicode: true
@@ -18,7 +19,7 @@ defaultTimeout: 10000
 - waitUntilVisible:
     regex: "Online[\\s\\S]*Nhà 3D"
 - tap:
-    regex: "Online[\\s\\S]*Nhà 3D"
+    point: "50%,37%"
 - waitForAnimationToEnd
 - waitUntilVisible:
     regex: "(Security|Devices & Groups|Scene|AI camera)"

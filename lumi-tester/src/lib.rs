@@ -1,6 +1,7 @@
 pub mod camera;
 pub mod commands;
 pub mod driver;
+pub mod hardware;
 pub mod inspector;
 pub mod parser;
 pub mod recorder;

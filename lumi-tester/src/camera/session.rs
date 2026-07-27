@@ -4,9 +4,12 @@
 //! device-state command in a flow reuses one RTSP connection (the handshake is
 //! slow, ~1-2s, and reconnecting per command would miss LED transitions).
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use image::RgbImage;
-use std::time::Duration;
+use std::io::{Read, Write};
+use std::net::TcpStream;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use crate::camera::detect::{self, DeviceState};
 use crate::camera::pattern::{self, BlinkPattern, PatternMatch, PatternSample};
@@ -19,8 +22,19 @@ const DEFAULT_STABLE_FRAMES: u32 = 3;
 const MAX_FRAME_AGE_MS: u128 = 3000;
 
 pub struct CameraSession {
-    grabber: FfmpegGrabber,
+    source: CameraSource,
     profile: CameraProfile,
+}
+
+enum CameraSource {
+    Rtsp {
+        grabber: Mutex<FfmpegGrabber>,
+        rtsp: String,
+        transport: Option<String>,
+    },
+    Server {
+        base_url: String,
+    },
 }
 
 pub struct CameraEvidence {
@@ -49,7 +63,26 @@ impl CameraSession {
     /// Connect, probe and start the warm stream. Blocking (RTSP handshake).
     pub fn start(rtsp: &str, transport: Option<&str>, profile: CameraProfile) -> Result<Self> {
         let grabber = FfmpegGrabber::start(rtsp, transport)?;
-        Ok(Self { grabber, profile })
+        Ok(Self {
+            source: CameraSource::Rtsp {
+                grabber: Mutex::new(grabber),
+                rtsp: rtsp.to_string(),
+                transport: transport.map(str::to_string),
+            },
+            profile,
+        })
+    }
+
+    /// Use an existing camera calibration web server as the frame source.
+    pub fn start_server(server_url: &str, profile: CameraProfile) -> Result<Self> {
+        let base_url = server_url.trim().trim_end_matches('/').to_string();
+        if base_url.is_empty() {
+            anyhow::bail!("camera server URL is empty");
+        }
+        Ok(Self {
+            source: CameraSource::Server { base_url },
+            profile,
+        })
     }
 
     pub fn profile(&self) -> &CameraProfile {
@@ -57,24 +90,148 @@ impl CameraSession {
     }
 
     fn camera_frame(&self) -> Result<CameraFrame> {
+        match &self.source {
+            CameraSource::Rtsp { .. } => self.rtsp_frame(),
+            CameraSource::Server { base_url } => Self::server_frame(base_url),
+        }
+    }
+
+    fn rtsp_frame(&self) -> Result<CameraFrame> {
         let frame = self
-            .grabber
-            .latest_frame()
+            .latest_rtsp_frame()
+            .or_else(|| self.restart_rtsp_and_latest().ok().flatten())
             .ok_or_else(|| anyhow!("no camera frame available yet"))?;
-        let age_ms = frame
-            .captured_at
-            .elapsed()
-            .map(|d| d.as_millis())
-            .unwrap_or(MAX_FRAME_AGE_MS + 1);
-        if age_ms > MAX_FRAME_AGE_MS {
-            anyhow::bail!(
-                "camera frame is stale ({}ms old); check RTSP connection or camera stream",
-                age_ms
-            );
+        if !Self::is_fresh(&frame) {
+            return self
+                .restart_rtsp_and_latest()?
+                .filter(Self::is_fresh)
+                .ok_or_else(|| stale_frame_error(&frame));
         }
         Ok(frame)
     }
 
+    fn latest_rtsp_frame(&self) -> Option<CameraFrame> {
+        match &self.source {
+            CameraSource::Rtsp { grabber, .. } => {
+                grabber.lock().ok().and_then(|grabber| grabber.latest_frame())
+            }
+            CameraSource::Server { .. } => None,
+        }
+    }
+
+    fn restart_rtsp_and_latest(&self) -> Result<Option<CameraFrame>> {
+        let CameraSource::Rtsp {
+            grabber,
+            rtsp,
+            transport,
+        } = &self.source
+        else {
+            return Ok(None);
+        };
+        let next = FfmpegGrabber::start(rtsp, transport.as_deref())?;
+        let frame = next.latest_frame();
+        if let Ok(mut slot) = grabber.lock() {
+            *slot = next;
+        }
+        Ok(frame)
+    }
+
+    fn server_frame(base_url: &str) -> Result<CameraFrame> {
+        let bytes = get_http_bytes(
+            base_url,
+            &format!(
+                "/api/frame.jpg?ts={}",
+                chrono::Utc::now().timestamp_millis()
+            ),
+        )
+        .with_context(|| {
+            format!(
+                "camera live view at {} is not reachable; check earlier logs for RTSP startup errors",
+                base_url
+            )
+        })?;
+        let image = image::load_from_memory(&bytes)
+            .context("failed to decode camera server JPEG frame")?
+            .to_rgb8();
+        Ok(CameraFrame {
+            image,
+            captured_at: std::time::SystemTime::now(),
+        })
+    }
+
+    fn is_fresh(frame: &CameraFrame) -> bool {
+        frame
+            .captured_at
+            .elapsed()
+            .map(|d| d.as_millis() <= MAX_FRAME_AGE_MS)
+            .unwrap_or(false)
+    }
+}
+
+fn get_http_bytes(base_url: &str, request_path: &str) -> Result<Vec<u8>> {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut last_error: Option<anyhow::Error> = None;
+    while Instant::now() < deadline {
+        match try_get_http_bytes(base_url, request_path) {
+            Ok(bytes) => return Ok(bytes),
+            Err(error) => {
+                last_error = Some(error);
+                std::thread::sleep(Duration::from_millis(250));
+            }
+        }
+    }
+    Err(last_error.unwrap_or_else(|| anyhow!("camera server did not return a frame")))
+}
+
+fn try_get_http_bytes(base_url: &str, request_path: &str) -> Result<Vec<u8>> {
+    let without_scheme = base_url
+        .strip_prefix("http://")
+        .ok_or_else(|| anyhow!("camera.server currently supports http:// URLs only"))?;
+    let (host_port, base_path) = without_scheme
+        .split_once('/')
+        .map(|(host, path)| (host, format!("/{}", path.trim_end_matches('/'))))
+        .unwrap_or((without_scheme, String::new()));
+    let path = format!("{}{}", base_path, request_path);
+    let mut stream = TcpStream::connect(host_port)
+        .with_context(|| format!("failed to connect to camera server {}", host_port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(10))).ok();
+    stream.set_write_timeout(Some(Duration::from_secs(10))).ok();
+    write!(
+        stream,
+        "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nAccept: image/jpeg\r\n\r\n",
+        path, host_port
+    )
+    .context("failed to request camera server frame")?;
+
+    let mut response = Vec::new();
+    stream
+        .read_to_end(&mut response)
+        .context("failed to read camera server response")?;
+    let header_end = response
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .ok_or_else(|| anyhow!("camera server returned an invalid HTTP response"))?;
+    let headers = String::from_utf8_lossy(&response[..header_end]);
+    if !headers.starts_with("HTTP/1.1 200") && !headers.starts_with("HTTP/1.0 200") {
+        let status = headers.lines().next().unwrap_or("unknown status");
+        anyhow::bail!("camera server frame request failed: {}", status);
+    }
+    Ok(response[header_end + 4..].to_vec())
+}
+
+fn stale_frame_error(frame: &CameraFrame) -> anyhow::Error {
+    let age_ms = frame
+        .captured_at
+        .elapsed()
+        .map(|d| d.as_millis())
+        .unwrap_or(MAX_FRAME_AGE_MS + 1);
+    anyhow!(
+        "camera frame is stale ({}ms old); check RTSP connection or camera stream",
+        age_ms
+    )
+}
+
+impl CameraSession {
     /// Read all button states from the current frame.
     pub fn read(&self) -> Result<DeviceState> {
         let frame = self.camera_frame()?;

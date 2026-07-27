@@ -1,0 +1,23 @@
+platform: android
+appId: com.lumi.lifenext
+tags:
+  - hardware
+  - cicd
+defaultTimeout: 10000
+
+# 🔌 Cấu hình Jig Nâng cao cho môi trường CI/CD tự động
+jig:
+  port: "${JIG_PORT:-COM5}"     # Tự động lấy biến môi trường $JIG_PORT trên CI server
+  baudrate: 115200             # Tốc độ Baud
+  autoPowerOff: true           # Tự động ngắt toàn bộ nguồn rơ-le khi test kết thúc
+  timeoutMs: 4000              # Custom timeout truyền nhận 4 giây
+
+---
+# 1. Bật nguồn thiết bị
+- turnOn: 1
+
+# 2. Bấm nút đơn
+- clickButton: 1
+
+# 3. Kiểm tra trạng thái LED phản hồi
+- seeLedColor: "GREEN"

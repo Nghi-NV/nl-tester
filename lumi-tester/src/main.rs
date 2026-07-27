@@ -1,3 +1,4 @@
+use anyhow::Context;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use serde::Serialize;
@@ -210,6 +211,77 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum CameraCommands {
+    /// Open the camera profile editor using discovered defaults
+    Profile {
+        /// RTSP url of the camera pointed at the device
+        #[arg(short, long)]
+        rtsp: Option<String>,
+
+        /// Profile file to create or edit (saved as JSON)
+        #[arg(short, long)]
+        profile: Option<PathBuf>,
+
+        /// Web UI port
+        #[arg(long, default_value = "9444")]
+        port: u16,
+
+        /// RTSP transport: tcp, udp, or auto
+        #[arg(long)]
+        transport: Option<String>,
+    },
+
+    /// Open read-only live camera observe UI using discovered defaults
+    Observe {
+        /// RTSP url of the camera pointed at the device
+        #[arg(short, long)]
+        rtsp: Option<String>,
+
+        /// Profile file to observe
+        #[arg(short, long)]
+        profile: Option<PathBuf>,
+
+        /// Web UI port
+        #[arg(long, default_value = "9444")]
+        port: u16,
+
+        /// RTSP transport: tcp, udp, or auto
+        #[arg(long)]
+        transport: Option<String>,
+    },
+
+    /// Read current camera/device state using discovered defaults
+    Check {
+        /// RTSP url of the camera pointed at the device
+        #[arg(short, long)]
+        rtsp: Option<String>,
+
+        /// Profile file to read
+        #[arg(short, long)]
+        profile: Option<PathBuf>,
+
+        /// RTSP transport: tcp, udp, or auto
+        #[arg(long)]
+        transport: Option<String>,
+
+        /// Continuously print state transitions until interrupted
+        #[arg(long, default_value = "false")]
+        watch: bool,
+    },
+
+    /// Validate and run the discovered camera YAML with reports enabled
+    Test {
+        /// Camera YAML test path
+        #[arg(short, long)]
+        path: Option<PathBuf>,
+
+        /// Output directory for reports and artifacts
+        #[arg(short, long, default_value = "./output/camera-test")]
+        output: PathBuf,
+    },
+
+    /// Show discovered camera defaults and short commands
+    Doctor,
+
     /// Open the web UI to pick device corners, choose a layout, and learn LED colors
     Calibrate {
         /// RTSP url of the camera pointed at the device
@@ -667,6 +739,87 @@ async fn async_main() -> anyhow::Result<()> {
         }
 
         Commands::Camera { command } => match command {
+            CameraCommands::Profile {
+                rtsp,
+                profile,
+                port,
+                transport,
+            } => {
+                let discovered = lumi_tester::camera::launcher::CameraLauncherConfig::discover(
+                    &std::env::current_dir()?,
+                )?;
+                let rtsp = rtsp.or(discovered.rtsp).with_context(|| {
+                    "Missing CAMERA_RTSP. Add it to .env or pass --rtsp rtsp://..."
+                })?;
+                let profile = profile
+                    .or(discovered.profile)
+                    .unwrap_or_else(|| PathBuf::from("camera-profile.json"));
+                lumi_tester::camera::run_calibrate(rtsp, profile, port, transport, false).await?;
+            }
+            CameraCommands::Observe {
+                rtsp,
+                profile,
+                port,
+                transport,
+            } => {
+                let discovered = lumi_tester::camera::launcher::CameraLauncherConfig::discover(
+                    &std::env::current_dir()?,
+                )?;
+                let rtsp = match rtsp {
+                    Some(rtsp) => rtsp,
+                    None => discovered.require_rtsp("observe")?,
+                };
+                let profile = match profile {
+                    Some(profile) => profile,
+                    None => discovered.require_profile("observe")?,
+                };
+                lumi_tester::camera::run_calibrate(rtsp, profile, port, transport, true).await?;
+            }
+            CameraCommands::Check {
+                rtsp,
+                profile,
+                transport,
+                watch,
+            } => {
+                let discovered = lumi_tester::camera::launcher::CameraLauncherConfig::discover(
+                    &std::env::current_dir()?,
+                )?;
+                let profile = match profile {
+                    Some(profile) => profile,
+                    None => discovered.require_profile("check")?,
+                };
+                let rtsp = rtsp.or(discovered.rtsp);
+                lumi_tester::camera::run_detect(rtsp, &profile, transport, watch).await?;
+            }
+            CameraCommands::Test { path, output } => {
+                let discovered = lumi_tester::camera::launcher::CameraLauncherConfig::discover(
+                    &std::env::current_dir()?,
+                )?;
+                let path = match path {
+                    Some(path) => path,
+                    None => discovered.require_test_yaml()?,
+                };
+                println!(
+                    "{} Camera test shortcut: validate + run with report/snapshot/events",
+                    "▶".green().bold()
+                );
+                let validation = validate_test_files(&path);
+                print_validation_result(&validation, false)?;
+                if !validation.valid {
+                    anyhow::bail!("validation failed");
+                }
+                runner::run_tests(
+                    &path, "android", None, &output, false, false, false, true, true, true, None,
+                    None, None,
+                )
+                .await?;
+            }
+            CameraCommands::Doctor => {
+                let discovered = lumi_tester::camera::launcher::CameraLauncherConfig::discover(
+                    &std::env::current_dir()?,
+                )?;
+                println!("{}", discovered.render_doctor_summary());
+            }
             CameraCommands::Calibrate {
                 rtsp,
                 profile,
@@ -1157,6 +1310,71 @@ fn print_doctor_result(report: &DoctorReport, json: bool) -> anyhow::Result<()> 
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn camera_shortcuts_are_available_in_help() {
+        use clap::CommandFactory;
+
+        let mut help = Vec::new();
+        Cli::command()
+            .find_subcommand_mut("camera")
+            .unwrap()
+            .write_long_help(&mut help)
+            .unwrap();
+        let help = String::from_utf8(help).unwrap();
+
+        assert!(help.contains("profile"));
+        assert!(help.contains("observe"));
+        assert!(help.contains("check"));
+        assert!(help.contains("test"));
+        assert!(help.contains("doctor"));
+    }
+
+    #[test]
+    fn camera_doctor_shortcut_parses_without_required_flags() {
+        let cli = Cli::try_parse_from(["lumi-tester", "camera", "doctor"]).unwrap();
+
+        match cli.command {
+            Commands::Camera {
+                command: CameraCommands::Doctor,
+            } => {}
+            _ => panic!("expected camera doctor command"),
+        }
+    }
+
+    #[test]
+    fn camera_profile_shortcut_accepts_optional_overrides() {
+        let cli = Cli::try_parse_from([
+            "lumi-tester",
+            "camera",
+            "profile",
+            "--rtsp",
+            "rtsp://10.0.0.5/live",
+            "--profile",
+            "profiles/lab_switch4_camera.json",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Camera {
+                command:
+                    CameraCommands::Profile {
+                        rtsp,
+                        profile,
+                        port,
+                        ..
+                    },
+            } => {
+                assert_eq!(rtsp.as_deref(), Some("rtsp://10.0.0.5/live"));
+                assert_eq!(
+                    profile.unwrap(),
+                    PathBuf::from("profiles/lab_switch4_camera.json")
+                );
+                assert_eq!(port, 9444);
+            }
+            _ => panic!("expected camera profile command"),
+        }
+    }
 
     #[test]
     fn detect_platform_reads_directory_when_all_flows_match() {

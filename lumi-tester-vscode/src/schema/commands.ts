@@ -1475,5 +1475,211 @@ export const LUMI_COMMANDS: LumiCommand[] = [
       { name: 'volumeDropThreshold', type: 'number', description: 'Minimum volume drop percentage (default: 30)' }
     ],
     platforms: ['android']
+  },
+
+  // Hardware Automation (Native RS485/Serial)
+  {
+    name: 'connectJig',
+    category: 'Hardware Automation',
+    description: 'Connect to hardware Jig controller via serial port',
+    hasParams: true,
+    snippet: 'connectJig: "${1:COM5}"'
+  },
+  {
+    name: 'disconnectJig',
+    category: 'Hardware Automation',
+    description: 'Disconnect hardware Jig controller',
+    hasParams: false
+  },
+  {
+    name: 'turnOn',
+    category: 'Hardware Automation',
+    description: 'Turn ON relay power channel',
+    hasParams: true,
+    snippet: 'turnOn: ${1:1}'
+  },
+  {
+    name: 'turnOff',
+    category: 'Hardware Automation',
+    description: 'Turn OFF relay power channel',
+    hasParams: true,
+    snippet: 'turnOff: ${1:1}'
+  },
+  {
+    name: 'turnOffAll',
+    category: 'Hardware Automation',
+    description: 'Turn OFF all relay power channels',
+    hasParams: false
+  },
+  {
+    name: 'powerCycle',
+    category: 'Hardware Automation',
+    description: 'Hard Power Reboot (Turn off -> wait -> Turn on)',
+    hasParams: true,
+    snippet: 'powerCycle: ${1:1}'
+  },
+  {
+    name: 'clickButton',
+    category: 'Hardware Automation',
+    description: 'Click physical button via servo motor',
+    hasParams: true,
+    snippet: 'clickButton: ${1:1}'
+  },
+  {
+    name: 'repeatClick',
+    category: 'Hardware Automation',
+    description: 'Click physical button N times (Multi-tap)',
+    hasParams: true,
+    snippet: 'repeatClick:\n    channel: ${1:1}\n    count: ${2:3}'
+  },
+  {
+    name: 'holdButton',
+    category: 'Hardware Automation',
+    description: 'Press and hold physical button (Pairing/Reset)',
+    hasParams: true,
+    snippet: 'holdButton: ${1:1}'
+  },
+  {
+    name: 'releaseButton',
+    category: 'Hardware Automation',
+    description: 'Release held physical button',
+    hasParams: true,
+    snippet: 'releaseButton: ${1:1}'
+  },
+  {
+    name: 'releaseAllButtons',
+    aliases: ['releaseAll'],
+    category: 'Hardware Automation',
+    description: 'Release all servo buttons to idle position',
+    hasParams: false
+  },
+  {
+    name: 'startRepeatClick',
+    category: 'Hardware Automation',
+    description: 'Start continuous button click repeat on STM32',
+    hasParams: true,
+    snippet: 'startRepeatClick:\n    channel: ${1:1}\n    periodMs: ${2:1500}'
+  },
+  {
+    name: 'stopRepeatClick',
+    category: 'Hardware Automation',
+    description: 'Stop continuous button click repeat on STM32',
+    hasParams: true,
+    snippet: 'stopRepeatClick: ${1:1}'
+  },
+  {
+    name: 'configureServo',
+    aliases: ['setServoConfig'],
+    category: 'Hardware Automation',
+    description: 'Configure servo channel angles and motion durations',
+    hasParams: true,
+    snippet: 'configureServo:\n    channel: ${1:1}\n    pressAngle: ${2:75}\n    releaseAngle: ${3:15}'
+  },
+  {
+    name: 'seeLedColor',
+    category: 'Hardware Automation',
+    description: 'Assert/Wait for LED color reading from TCS sensor',
+    hasParams: true,
+    snippet: 'seeLedColor: "${1:GREEN}"'
+  },
+  {
+    name: 'seeLedBlink',
+    category: 'Hardware Automation',
+    description: 'Assert/Wait for LED blink pattern detection',
+    hasParams: true,
+    snippet: 'seeLedBlink: ${1:1}'
+  },
+  {
+    name: 'seeLedOff',
+    category: 'Hardware Automation',
+    description: 'Assert/Wait for LED to turn completely OFF',
+    hasParams: true,
+    snippet: 'seeLedOff: ${1:1}'
+  },
+  {
+    name: 'setSensorLight',
+    aliases: ['sensorLight'],
+    category: 'Hardware Automation',
+    description: 'Turn color sensor illumination light ON or OFF',
+    hasParams: true,
+    snippet: 'setSensorLight: "${1|on,off|}"'
+  },
+  {
+    name: 'setBrightnessThresholds',
+    category: 'Hardware Automation',
+    description: 'Configure brightness thresholds and blink detection window',
+    hasParams: true,
+    snippet: 'setBrightnessThresholds:\n    channel: ${1:1}\n    offBelowPercent: ${2:30}\n    onAbovePercent: ${3:70}'
+  },
+  {
+    name: 'waitForBrightness',
+    category: 'Hardware Automation',
+    description: 'Wait for brightness percentage in range',
+    hasParams: true,
+    snippet: 'waitForBrightness:\n    channel: ${1:1}\n    minPercent: ${2:70}'
+  },
+  {
+    name: 'waitForCct',
+    category: 'Hardware Automation',
+    description: 'Wait for CCT color temperature in Kelvin',
+    hasParams: true,
+    snippet: 'waitForCct:\n    channel: ${1:1}\n    minKelvin: ${2:2700}\n    maxKelvin: ${3:6500}'
+  },
+  {
+    name: 'calibrateColor',
+    category: 'Hardware Automation',
+    description: 'Calibrate reference color (RED, GREEN, BLUE, YELLOW, CYAN, MAGENTA, PINK, WHITE)',
+    hasParams: true,
+    snippet: 'calibrateColor:\n    channel: ${1:1}\n    color: "${2|RED,GREEN,BLUE,YELLOW,CYAN,MAGENTA,PINK,WHITE|}"'
+  },
+  {
+    name: 'calibrateBrightness',
+    category: 'Hardware Automation',
+    description: 'Calibrate reference brightness (dark or on)',
+    hasParams: true,
+    snippet: 'calibrateBrightness:\n    channel: ${1:1}\n    mode: "${2|dark,on|}"'
+  },
+  {
+    name: 'addCctPoint',
+    category: 'Hardware Automation',
+    description: 'Add CCT calibration point in Kelvin',
+    hasParams: true,
+    snippet: 'addCctPoint:\n    channel: ${1:1}\n    knownKelvin: ${2:4000}'
+  },
+  {
+    name: 'saveCalibration',
+    category: 'Hardware Automation',
+    description: 'Save calibration data to MCU Flash memory',
+    hasParams: false
+  },
+  {
+    name: 'loadCalibration',
+    category: 'Hardware Automation',
+    description: 'Load calibration data from MCU Flash memory',
+    hasParams: false
+  },
+  {
+    name: 'resetCalibration',
+    category: 'Hardware Automation',
+    description: 'Reset calibration data to factory defaults',
+    hasParams: false
+  },
+  {
+    name: 'eraseCalibration',
+    category: 'Hardware Automation',
+    description: 'Erase MCU Flash calibration data',
+    hasParams: false
+  },
+  {
+    name: 'enterSafeState',
+    category: 'Hardware Automation',
+    description: 'Trigger hardware safety shutdown (relays off, servos released, sensor light off)',
+    hasParams: false
+  },
+  {
+    name: 'systemDiagnostics',
+    category: 'Hardware Automation',
+    description: 'Query hardware diagnostics from MCU',
+    hasParams: false
   }
 ];

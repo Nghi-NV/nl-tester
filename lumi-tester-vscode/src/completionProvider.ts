@@ -28,6 +28,7 @@ const HEADER_FIELDS: HeaderField[] = [
   { name: 'locale', description: 'Device locale setting', type: 'string', snippet: 'locale: "${1:en_US}"' },
   { name: 'device', description: 'Target device ID', type: 'string', snippet: 'device: "$1"' },
   { name: 'platform', description: 'Target platform (android/ios/web)', type: 'string', snippet: 'platform: "${1|android,ios,web|}"' },
+  { name: 'jig', description: 'Hardware Jig serial port configuration (e.g. COM5, /dev/ttyUSB0, or struct)', type: 'object', snippet: 'jig: "${1:COM5}"' },
 ];
 
 export class LumiCompletionProvider implements vscode.CompletionItemProvider {

@@ -98,6 +98,7 @@ impl CalibrateServer {
 
         let app = Router::new()
             .route("/", get(serve_index))
+            .route("/view", get(serve_view))
             .route("/api/info", get(api_info))
             .route("/api/frame.jpg", get(api_frame))
             .route("/api/detect", post(api_detect))
@@ -131,6 +132,44 @@ async fn serve_index() -> impl IntoResponse {
     html = html.replace("</head>", &format!("<style>{}</style></head>", css));
     html = html.replace("</body>", &format!("<script>{}</script></body>", js));
     Html(html)
+}
+
+async fn serve_view() -> impl IntoResponse {
+    Html(
+        r#"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lumi Camera View</title>
+  <style>
+    body { margin: 0; background: #111; color: #eee; font-family: system-ui, sans-serif; }
+    header { height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; background: #181818; border-bottom: 1px solid #333; }
+    main { height: calc(100vh - 45px); display: grid; place-items: center; overflow: hidden; }
+    img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    a { color: #8ab4ff; text-decoration: none; }
+    .muted { color: #aaa; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>Camera View</strong>
+    <span class="muted">Live frame · <a href="/">Profile</a></span>
+  </header>
+  <main><img id="frame" alt="Camera live frame" /></main>
+  <script>
+    const frame = document.getElementById("frame");
+    function refresh() {
+      const next = new Image();
+      next.onload = () => { frame.src = next.src; setTimeout(refresh, 250); };
+      next.onerror = () => setTimeout(refresh, 1000);
+      next.src = "/api/frame.jpg?ts=" + Date.now();
+    }
+    refresh();
+  </script>
+</body>
+</html>"#,
+    )
 }
 
 async fn api_info(State(state): State<Arc<AppState>>) -> impl IntoResponse {

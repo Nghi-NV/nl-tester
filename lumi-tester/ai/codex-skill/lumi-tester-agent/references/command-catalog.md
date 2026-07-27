@@ -281,6 +281,39 @@ workflow commands. Use for visual bug reports, not normal assertions.
 Use visual assertions only when accessibility/native selectors cannot express
 the expected state.
 
+## Hardware Automation (Native RS485/Serial)
+
+`jig`: declare serial port connection in header.
+
+```yaml
+jig: "COM5"   # Or advanced: { port: "${JIG_PORT:-COM5}", baudrate: 115200, autoPowerOff: true, timeoutMs: 4000 }
+```
+
+Hardware commands:
+- `turnOn`, `turnOff`, `turnOffAll`: Relay power control.
+- `powerCycle`: Hard Power Reboot (`offMs: 2000`).
+- `clickButton`, `repeatClick`, `holdButton`, `releaseButton`, `releaseAllButtons`: Servo physical button control.
+- `startRepeatClick`, `stopRepeatClick`: Continuous click repeat loop on STM32.
+- `configureServo`: Set servo angles (`pressAngle`, `releaseAngle`) and durations.
+- `seeLedColor`, `seeLedBlink`, `seeLedOff`: Color and blink detection via TCS sensor.
+- `setSensorLight`: Sensor LED illumination (`on` / `off`).
+- `setBrightnessThresholds`, `waitForBrightness`, `waitForCct`: Advanced optical metrics.
+- `calibrateColor`, `calibrateBrightness`, `addCctPoint`: Hardware sensor calibration.
+- `saveCalibration`, `loadCalibration`, `resetCalibration`, `eraseCalibration`: Flash storage.
+- `enterSafeState`, `systemDiagnostics`: Safety shutdown and diagnostics.
+
+```yaml
+- turnOn: 1
+- clickButton: 1
+- repeatClick:
+    channel: 1
+    count: 3
+- seeLedColor: "GREEN"
+- seeLedBlink: 1
+- seeLedOff: 1
+- enterSafeState
+```
+
 ## Command Selection Rules
 
 - Use `waitUntilVisible` before `tap` when the screen is loading.
@@ -289,3 +322,4 @@ the expected state.
 - Use `retry` around external/flaky transitions, not around parser errors.
 - Use `runFlow` for login/setup blocks reused by multiple tests.
 - Use `screenshot` for evidence, not as a substitute for assertions.
+

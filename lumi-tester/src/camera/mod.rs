@@ -12,6 +12,7 @@
 //! - `detect`    — read button states from a saved profile (one-shot or watch).
 
 pub mod detect;
+pub mod launcher;
 pub mod pattern;
 pub mod profile;
 pub mod server;

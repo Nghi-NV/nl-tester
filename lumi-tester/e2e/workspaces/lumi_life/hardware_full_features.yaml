@@ -1,0 +1,81 @@
+platform: android
+appId: com.lumi.lifenext
+tags:
+  - hardware
+  - full-suite
+defaultTimeout: 10000
+
+# 🔌 Khai báo kết nối Jig phần cứng toàn cục
+jig:
+  port: "${JIG_PORT:-COM5}"
+  baudrate: 115200
+  autoPowerOff: true
+  timeoutMs: 4000
+
+---
+# 1. Cấu hình góc xoay và thời gian gạt Servo vật lý
+- configureServo:
+    channel: 1
+    pressAngle: 75
+    releaseAngle: 15
+    pressDurationMs: 400
+    releaseDurationMs: 150
+    holdDurationMs: 300
+
+# 2. Điều khiển nguồn Rơ-le
+- turnOn: 1
+- powerCycle:
+    channel: 1
+    offMs: 1000
+
+# 3. Điều khiển Servo bấm nút
+- clickButton: 1
+- repeatClick:
+    channel: 1
+    count: 3
+    pressMs: 150
+    releaseMs: 150
+
+- startRepeatClick:
+    channel: 1
+    periodMs: 1500
+- wait: 3000
+- stopRepeatClick: 1
+- releaseAllButtons
+
+# 4. Điều khiển Đèn & Cảm biến màu sắc
+- setSensorLight: "on"
+- seeLedColor: "GREEN"
+- seeLedBlink: 1
+- seeLedOff: 1
+
+- setBrightnessThresholds:
+    channel: 1
+    offBelowPercent: 30
+    onAbovePercent: 70
+    minPulseMs: 50
+    maxPulseMs: 1000
+    sequenceEndGapMs: 500
+
+- setSensorLight: "off"
+
+# 5. Hiệu chuẩn phần cứng (Calibration)
+- calibrateColor:
+    channel: 1
+    color: "RED"
+
+- calibrateBrightness:
+    channel: 1
+    mode: "dark"
+
+- addCctPoint:
+    channel: 1
+    knownKelvin: 4000
+
+- saveCalibration
+- loadCalibration
+
+# 6. Chẩn đoán & Trạng thái an toàn
+- systemDiagnostics
+- enterSafeState
+- turnOffAll

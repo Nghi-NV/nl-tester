@@ -23,6 +23,9 @@ controller…) để verify phần cứng: lệnh `camera calibrate/detect` và 
 `assertDeviceState`, `waitDeviceState`, `assertDeviceTransition`, `waitLedPattern`,
 `getDeviceState`.
 
+### [Tự động hóa Phần cứng (Hardware Automation)](hardware-control.md)
+Tự động hóa gạt công tắc vật lý (Servo), điều khiển nguồn (Relay) và đọc trạng thái màu sắc/chớp tắt LED (Color Sensor) trực tiếp bằng 100% Native Rust qua truyền thông RS485/Serial.
+
 ### [Luồng thực thi Test](flows/test_execution_flow.md)
 Hiểu về vòng đời của một phiên test, từ lúc đọc file YAML đến khi tương tác thiết bị.
 

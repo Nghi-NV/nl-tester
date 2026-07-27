@@ -1784,3 +1784,149 @@ annotated frame, crop region, state JSON và timeline ngắn.
 
 - stopMedia
 ```
+
+---
+
+## ⚡ Hardware Automation (100% Native Rust)
+
+Các lệnh tự động hóa phần cứng bằng Rust Native tương tác trực tiếp với Jig điều khiển (Servo gạt nút, Relay rơ-le nguồn, Color Sensor cảm biến LED) qua truyền thông RS485/Serial.
+
+Khai báo Jig phần cứng trong YAML Header:
+```yaml
+jig: "COM5"   # Hoặc dạng struct: { port: "COM5", baudrate: 115200, autoPowerOff: true, timeoutMs: 3000 }
+```
+
+### `turnOn` / `turnOff` / `turnOffAll`
+**Mô tả**: Bật/Tắt rơ-le nguồn cấp điện cho kênh chỉ định.
+```yaml
+- turnOn: 1
+- turnOff: 1
+- turnOffAll
+```
+
+### `powerCycle`
+**Mô tả**: Hard Power Reboot (Tắt nguồn -> chờ 1s -> Bật lại nguồn).
+```yaml
+- powerCycle: 1
+- powerCycle:
+    channel: 1
+    offMs: 2000
+```
+
+### `clickButton` / `repeatClick`
+**Mô tả**: Bấm nút vật lý (bấm đơn hoặc nhấp lặp lại N lần liên tiếp).
+```yaml
+- clickButton: 1
+- repeatClick:
+    channel: 1
+    count: 3
+    pressMs: 150
+    releaseMs: 150
+```
+
+### `holdButton` / `releaseButton`
+**Mô tả**: Nhấn giữ nút vật lý (Pairing/Reset) và nhả nút.
+```yaml
+- holdButton: 1
+- releaseButton: 1
+```
+
+### `seeLedColor` / `seeLedBlink` / `seeLedOff`
+**Mô tả**: Kiểm tra phản hồi màu sắc, chớp tắt hoặc tắt hẳn của đèn LED bằng cảm biến màu.
+```yaml
+- seeLedColor: "GREEN"
+- seeLedColor:
+    channel: 1
+    expected: ["BLUE", "CYAN"]
+- seeLedBlink: 1
+- seeLedOff: 1
+```
+
+### `configureServo`
+**Mô tả**: Cấu hình góc xoay và thời gian chuyển động cho kênh Servo.
+```yaml
+- configureServo:
+    channel: 1
+    pressAngle: 75
+    releaseAngle: 15
+    pressDurationMs: 400
+    releaseDurationMs: 150
+    holdDurationMs: 300
+```
+
+### `releaseAllButtons`
+**Mô tả**: Nhả toàn bộ các servo về vị trí nghỉ an toàn.
+```yaml
+- releaseAllButtons
+```
+
+### `startRepeatClick` / `stopRepeatClick`
+**Mô tả**: Bắt đầu/Dừng vòng lặp bấm nút liên tục tự động chạy trực tiếp trên chip vi điều khiển STM32.
+```yaml
+- startRepeatClick:
+    channel: 1
+    periodMs: 1500
+- wait: 5000
+- stopRepeatClick: 1
+```
+
+### `setSensorLight`
+**Mô tả**: Bật/Tắt đèn chiếu sáng cảm biến màu sắc TCS.
+```yaml
+- setSensorLight: "on"
+- setSensorLight: "off"
+```
+
+### `setBrightnessThresholds`
+**Mô tả**: Cấu hình ngưỡng độ sáng (% off, % on) và khoảng window phát hiện chớp tắt.
+```yaml
+- setBrightnessThresholds:
+    channel: 1
+    offBelowPercent: 30
+    onAbovePercent: 70
+    minPulseMs: 50
+    maxPulseMs: 1000
+```
+
+### `waitForBrightness` / `waitForCct`
+**Mô tả**: Chờ chỉ số phần trăm độ sáng hoặc nhiệt độ màu Kelvin (CCT) đạt ngưỡng.
+```yaml
+- waitForBrightness:
+    channel: 1
+    minPercent: 70
+- waitForCct:
+    channel: 1
+    minKelvin: 2700
+    maxKelvin: 6500
+```
+
+### `calibrateColor` / `calibrateBrightness` / `addCctPoint`
+**Mô tả**: Hiệu chuẩn màu sắc mẫu, mức độ sáng (dark/on) và điểm nhiệt độ màu Kelvin.
+```yaml
+- calibrateColor:
+    channel: 1
+    color: "RED"
+- calibrateBrightness:
+    channel: 1
+    mode: "dark"
+- addCctPoint:
+    channel: 1
+    knownKelvin: 4000
+```
+
+### `saveCalibration` / `loadCalibration` / `resetCalibration` / `eraseCalibration`
+**Mô tả**: Đọc/Ghi/Xóa dữ liệu hiệu chuẩn phần cứng trong bộ nhớ Flash của vi điều khiển.
+```yaml
+- saveCalibration
+- loadCalibration
+- resetCalibration
+- eraseCalibration
+```
+
+### `enterSafeState` / `systemDiagnostics`
+**Mô tả**: Kích hoạt trạng thái dừng an toàn hoặc đọc dữ liệu chẩn đoán hệ thống STM32.
+```yaml
+- systemDiagnostics
+- enterSafeState
+```
+

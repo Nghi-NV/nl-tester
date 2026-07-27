@@ -7,6 +7,7 @@ use super::context::TestContext;
 use super::events::{ConsoleEventListener, EventEmitter, JsonlEventListener, TestEvent};
 use super::state::{CommandState, FlowState, TestSessionState};
 use crate::driver::traits::PlatformDriver;
+use crate::hardware::traits::*;
 use crate::parser::types::TestCommand;
 use crate::parser::yaml::{parse_commands_from_value, parse_test_file};
 use serde_json;
@@ -46,6 +47,7 @@ pub struct TestExecutor {
     camera_observe_started: HashMap<String, u16>,
     camera_observe_tasks: HashMap<String, tokio::task::JoinHandle<()>>,
     camera_observe_next_port: u16,
+    hardware_controller: Option<crate::hardware::HardwareController>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -63,11 +65,29 @@ fn resolve_camera_config_vars(
         .into_iter()
         .map(|(name, mut cfg)| {
             cfg.rtsp = context.substitute_vars(&cfg.rtsp);
+            cfg.server = cfg.server.map(|s| context.substitute_vars(&s));
             cfg.profile = cfg.profile.map(|p| context.substitute_vars(&p));
             cfg.transport = cfg.transport.map(|t| context.substitute_vars(&t));
             (name, cfg)
         })
         .collect()
+}
+
+fn camera_view_url(server_url: &str) -> String {
+    format!("{}/view", server_url.trim().trim_end_matches('/'))
+}
+
+fn open_camera_view(url: &str) {
+    #[cfg(target_os = "macos")]
+    let command = ("open", vec![url]);
+    #[cfg(target_os = "linux")]
+    let command = ("xdg-open", vec![url]);
+    #[cfg(target_os = "windows")]
+    let command = ("cmd", vec!["/C", "start", "", url]);
+
+    let _ = std::process::Command::new(command.0)
+        .args(command.1)
+        .spawn();
 }
 
 impl TestExecutor {
@@ -149,6 +169,7 @@ impl TestExecutor {
             camera_observe_started: HashMap::new(),
             camera_observe_tasks: HashMap::new(),
             camera_observe_next_port: 9444,
+            hardware_controller: None,
         }
     }
 
@@ -206,6 +227,16 @@ impl TestExecutor {
         }
         self.driver
             .set_desktop_state(flow.desktop_state.clone(), &self.context.base_dir)?;
+
+        // Auto connect global hardware Jig if declared in flow header (e.g. jig: "COM5")
+        if let Some(jig_config) = &flow.jig {
+            let params = jig_config.to_params();
+            let port = self.context.substitute_vars(&params.port);
+            let controller = crate::hardware::HardwareController::new(None);
+            controller.connect(&port, params.baudrate)?;
+            self.hardware_controller = Some(controller);
+            println!("  {} Auto-connected hardware Jig on {}", "🔌".green(), port);
+        }
 
         // Note: Web driver config (closeWhenFinish, browser type) is now pre-parsed and applied
         // in run_on_device before executor is created, so no re-init needed here.
@@ -477,6 +508,14 @@ impl TestExecutor {
             anyhow::bail!(error_msg);
         }
 
+        // Cleanup Jig connection if active
+        if let Some(ctrl) = &self.hardware_controller {
+            let _ = ctrl.relay.all_off();
+            ctrl.disconnect();
+            println!("  {} Auto-disconnected hardware Jig", "🔌".yellow());
+            self.hardware_controller = None;
+        }
+
         self.session.add_flow(flow_state);
 
         if matches!(
@@ -704,19 +743,39 @@ impl TestExecutor {
     }
 
     /// Execute a single command
-    /// Open a read-only live web view for each camera whose config sets
-    /// `observe: true`. Best-effort and spawned once per session, so testers can
-    /// watch detection while the flow runs (off by default for CI/headless).
+    /// Open a read-only live camera view for each declared camera. Best-effort
+    /// and spawned once per session, so testers can watch detection while the
+    /// flow runs without opening the profile editor.
     fn maybe_start_observe_views(&mut self) {
         for (name, cfg) in self.camera_configs.clone() {
-            if !cfg.observe {
-                continue;
-            }
             let Some(profile_rel) = cfg.profile.clone() else {
                 continue;
             };
             let profile_path = self.context.base_dir.join(&profile_rel);
+            let server_url = cfg
+                .server
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty() && !s.contains("${"));
+            if let Some(server_url) = server_url {
+                let view_url = camera_view_url(server_url);
+                let observe_key = format!("{}|{}", name, view_url);
+                if self.camera_observe_started.contains_key(&observe_key) {
+                    continue;
+                }
+                self.camera_observe_started.insert(observe_key, 0);
+                self.emitter.emit(TestEvent::Log {
+                    message: format!("👁  Camera '{}' live view: {}", name, view_url),
+                    depth: self.depth,
+                });
+                open_camera_view(&view_url);
+                continue;
+            }
+
             let rtsp = cfg.rtsp.clone();
+            if rtsp.trim().is_empty() || rtsp.contains("${") {
+                continue;
+            }
             let transport = cfg.transport.clone();
             let mut rtsp_hasher = DefaultHasher::new();
             rtsp.hash(&mut rtsp_hasher);
@@ -730,7 +789,7 @@ impl TestExecutor {
             if let Some(port) = self.camera_observe_started.get(&observe_key) {
                 self.emitter.emit(TestEvent::Log {
                     message: format!(
-                        "👁  Camera '{}' live view already running: http://localhost:{}",
+                        "👁  Camera '{}' live view already running: http://localhost:{}/view",
                         name, port
                     ),
                     depth: self.depth,
@@ -741,13 +800,18 @@ impl TestExecutor {
             self.camera_observe_next_port = self.camera_observe_next_port.saturating_add(1);
             self.camera_observe_started
                 .insert(observe_key.clone(), this_port);
+            let view_server = format!("http://localhost:{}", this_port);
+            if let Some(active_cfg) = self.camera_configs.get_mut(&name) {
+                active_cfg.server = Some(view_server.clone());
+            }
             self.emitter.emit(TestEvent::Log {
                 message: format!(
-                    "👁  Camera '{}' live view: http://localhost:{}",
+                    "👁  Camera '{}' live view: http://localhost:{}/view",
                     name, this_port
                 ),
                 depth: self.depth,
             });
+            open_camera_view(&format!("http://localhost:{}/view", this_port));
             let emitter = self.emitter.clone();
             let depth = self.depth;
             let camera_name = name.clone();
@@ -998,9 +1062,17 @@ impl TestExecutor {
             .get(&key)
             .cloned()
             .expect("config exists");
-        if cfg.rtsp.trim().is_empty() || cfg.rtsp.contains("${") {
+        let server_url = cfg.server.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        if let Some(server_url) = server_url {
+            if server_url.contains("${") {
+                anyhow::bail!(
+                    "camera '{}' has no resolved server URL; set camera.server to a URL such as http://localhost:9444",
+                    key
+                );
+            }
+        } else if cfg.rtsp.trim().is_empty() || cfg.rtsp.contains("${") {
             anyhow::bail!(
-                "camera '{}' has no resolved RTSP url; set camera.rtsp or an env/var such as ${{CAMERA_RTSP}}",
+                "camera '{}' has no resolved frame source; set camera.server or camera.rtsp",
                 key
             );
         }
@@ -1019,17 +1091,23 @@ impl TestExecutor {
         let profile_path = self.context.base_dir.join(&profile_rel);
         let profile = crate::camera::CameraProfile::load(&profile_path)?;
 
-        self.emitter.emit(TestEvent::Log {
-            message: format!(
-                "📷 Connecting to camera '{}' ({})",
-                key,
-                crate::camera::redact_url(&cfg.rtsp)
-            ),
-            depth: self.depth,
-        });
-
-        let session =
-            crate::camera::CameraSession::start(&cfg.rtsp, cfg.transport.as_deref(), profile)?;
+        let session = if let Some(server_url) = server_url {
+            self.emitter.emit(TestEvent::Log {
+                message: format!("📷 Connecting to camera '{}' ({})", key, server_url),
+                depth: self.depth,
+            });
+            crate::camera::CameraSession::start_server(server_url, profile)?
+        } else {
+            self.emitter.emit(TestEvent::Log {
+                message: format!(
+                    "📷 Connecting to camera '{}' ({})",
+                    key,
+                    crate::camera::redact_url(&cfg.rtsp)
+                ),
+                depth: self.depth,
+            });
+            crate::camera::CameraSession::start(&cfg.rtsp, cfg.transport.as_deref(), profile)?
+        };
         self.camera_sessions.insert(key.clone(), session);
         Ok(key)
     }
@@ -2822,6 +2900,320 @@ impl TestExecutor {
                 Ok(())
             }
 
+            // Hardware Automation Commands (Canonical Natural Language)
+            TestCommand::ConnectJig(params) => {
+                let port = self.context.substitute_vars(&params.port);
+                let controller = crate::hardware::HardwareController::new(None);
+                controller.connect(&port, params.baudrate)?;
+                self.hardware_controller = Some(controller);
+                println!("  {} Connected hardware Jig on {}", "🔌".green(), port);
+                Ok(())
+            }
+
+            TestCommand::DisconnectJig => {
+                if let Some(ctrl) = &self.hardware_controller {
+                    ctrl.disconnect();
+                }
+                self.hardware_controller = None;
+                println!("  {} Disconnected hardware Jig", "🔌".yellow());
+                Ok(())
+            }
+
+            TestCommand::ClickButton(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let res = ctrl.servo.click(params.channel, params.hold_ms)?;
+                println!("  {} Click button ch {}: completed={}", "⚙️".green(), params.channel, res.completed);
+                Ok(())
+            }
+
+            TestCommand::HoldButton(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let res = ctrl.servo.press(params.channel)?;
+                println!("  {} Hold button ch {}: completed={}", "⚙️".green(), params.channel, res.completed);
+                Ok(())
+            }
+
+            TestCommand::ReleaseButton(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let res = ctrl.servo.release(params.channel)?;
+                println!("  {} Release button ch {}: completed={}", "⚙️".green(), params.channel, res.completed);
+                Ok(())
+            }
+
+            TestCommand::TurnOn(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let res = ctrl.relay.set_state(params.channel, crate::hardware::RelayState::On)?;
+                println!("  {} Turn ON ch {}: completed={}", "⚡".green(), params.channel, res.completed);
+                Ok(())
+            }
+
+            TestCommand::TurnOff(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let res = ctrl.relay.set_state(params.channel, crate::hardware::RelayState::Off)?;
+                println!("  {} Turn OFF ch {}: completed={}", "⚡".yellow(), params.channel, res.completed);
+                Ok(())
+            }
+
+            TestCommand::TurnOffAll => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let res = ctrl.relay.all_off()?;
+                println!("  {} Turn OFF all: completed={}", "⚡".yellow(), res.completed);
+                Ok(())
+            }
+
+            TestCommand::SeeLedColor(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let timeout_s = params.timeout_ms.unwrap_or(5000) as f64 / 1000.0;
+                let exp_colors: Option<Vec<crate::hardware::Color>> = params.expected.as_ref().map(|list| {
+                    list.iter().map(|s| crate::hardware::Color::from_str(&self.context.substitute_vars(s))).collect()
+                });
+                let reading = ctrl.color_sensor.wait_for_color(params.channel, exp_colors.as_deref(), timeout_s)?;
+                println!("  {} Matched LED color ch {}: {}", "🎨".green(), params.channel, reading.color.as_str());
+                Ok(())
+            }
+
+            TestCommand::SeeLedBlink(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let timeout_s = params.timeout_ms.unwrap_or(5000) as f64 / 1000.0;
+                let blink_res = ctrl.color_sensor.wait_for_blinks(params.channel, None, timeout_s)?;
+                println!("  {} Detected LED blink ch {}: count={}", "💡".green(), params.channel, blink_res.blink_count);
+                Ok(())
+            }
+
+            TestCommand::RepeatClick(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let press_ms = params.press_ms.unwrap_or(200);
+                let release_ms = params.release_ms.unwrap_or(200);
+                let res = ctrl.servo.repeat(params.channel, params.count, press_ms, release_ms)?;
+                println!("  {} Repeat click ch {} (x{}): completed={}", "⚙️".green(), params.channel, params.count, res.completed);
+                Ok(())
+            }
+
+            TestCommand::PowerCycle(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let off_ms = params.off_ms.unwrap_or(1000);
+                println!("  {} Power cycling ch {} (off for {}ms)...", "🔄".yellow(), params.channel, off_ms);
+                ctrl.relay.set_state(params.channel, crate::hardware::RelayState::Off)?;
+                tokio::time::sleep(std::time::Duration::from_millis(off_ms)).await;
+                let res = ctrl.relay.set_state(params.channel, crate::hardware::RelayState::On)?;
+                println!("  {} Power cycle ch {} completed: {}", "⚡".green(), params.channel, res.completed);
+                Ok(())
+            }
+
+            TestCommand::SeeLedOff(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let timeout_s = params.timeout_ms.unwrap_or(5000) as f64 / 1000.0;
+                let exp_colors = vec![crate::hardware::Color::Unknown];
+                let reading = ctrl.color_sensor.wait_for_color(params.channel, Some(&exp_colors), timeout_s)?;
+                println!("  {} LED is OFF ch {}: {}", "🌑".green(), params.channel, reading.color.as_str());
+                Ok(())
+            }
+
+            TestCommand::ConfigureServo(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let press_angle = params.press_angle.unwrap_or(72);
+                let release_angle = params.release_angle.unwrap_or(15);
+                let press_ms = params.press_duration_ms.unwrap_or(400);
+                let release_ms = params.release_duration_ms.unwrap_or(150);
+                let hold_ms = params.hold_duration_ms.unwrap_or(300);
+                ctrl.servo.set_config(
+                    params.channel,
+                    press_angle,
+                    release_angle,
+                    press_ms,
+                    release_ms,
+                    hold_ms,
+                )?;
+                println!("  {} Configured servo ch {}", "⚙️".green(), params.channel);
+                Ok(())
+            }
+
+            TestCommand::ReleaseAllButtons => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                ctrl.servo.release_all()?;
+                println!("  {} Released all servos", "⚙️".green());
+                Ok(())
+            }
+
+            TestCommand::StartRepeatClick(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let period_ms = params.period_ms.unwrap_or(1500);
+                ctrl.servo.start_repeat(params.channel, period_ms)?;
+                println!("  {} Started continuous click repeat ch {}", "⚙️".green(), params.channel);
+                Ok(())
+            }
+
+            TestCommand::StopRepeatClick(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                ctrl.servo.stop_repeat(params.channel)?;
+                println!("  {} Stopped continuous click repeat ch {}", "⚙️".yellow(), params.channel);
+                Ok(())
+            }
+
+            TestCommand::SetSensorLight(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let on = params.enabled.unwrap_or_else(|| {
+                    params.state.as_deref().unwrap_or("on").to_lowercase() == "on"
+                });
+                if on {
+                    ctrl.color_sensor.light_on()?;
+                } else {
+                    ctrl.color_sensor.light_off()?;
+                }
+                println!("  {} Sensor light set to {}", "💡".green(), if on { "ON" } else { "OFF" });
+                Ok(())
+            }
+
+            TestCommand::SetBrightnessThresholds(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let min_pulse = params.min_pulse_ms.unwrap_or(50);
+                let max_pulse = params.max_pulse_ms.unwrap_or(1000);
+                let end_gap = params.sequence_end_gap_ms.unwrap_or(500);
+                ctrl.color_sensor.set_thresholds(
+                    params.channel,
+                    params.off_below_percent,
+                    params.on_above_percent,
+                    min_pulse,
+                    max_pulse,
+                    end_gap,
+                )?;
+                println!("  {} Brightness thresholds set ch {}", "⚙️".green(), params.channel);
+                Ok(())
+            }
+
+            TestCommand::WaitForBrightness(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let reading = ctrl.color_sensor.read_color(params.channel)?;
+                println!("  {} Brightness check ch {}: sample={:?}", "💡".green(), params.channel, reading.sample);
+                Ok(())
+            }
+
+            TestCommand::WaitForCct(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let reading = ctrl.color_sensor.read_color(params.channel)?;
+                println!("  {} CCT check ch {}: sample={:?}", "💡".green(), params.channel, reading.sample);
+                Ok(())
+            }
+
+            TestCommand::CalibrateColor(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                ctrl.calibration.calibrate_color(params.channel, &params.color)?;
+                println!("  {} Calibrated color {} ch {}", "🎯".green(), params.color, params.channel);
+                Ok(())
+            }
+
+            TestCommand::CalibrateBrightness(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                ctrl.calibration.calibrate_brightness(params.channel, &params.mode)?;
+                println!("  {} Calibrated brightness mode {} ch {}", "🎯".green(), params.mode, params.channel);
+                Ok(())
+            }
+
+            TestCommand::AddCctPoint(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                ctrl.calibration.add_cct_point(params.channel, params.known_kelvin)?;
+                println!("  {} Added CCT point {}K ch {}", "🎯".green(), params.known_kelvin, params.channel);
+                Ok(())
+            }
+
+            TestCommand::SaveCalibration => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                ctrl.calibration.action("save")?;
+                println!("  {} Saved calibration to Flash", "💾".green());
+                Ok(())
+            }
+
+            TestCommand::LoadCalibration => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                ctrl.calibration.action("load")?;
+                println!("  {} Loaded calibration from Flash", "💾".green());
+                Ok(())
+            }
+
+            TestCommand::ResetCalibration => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                ctrl.calibration.action("defaults")?;
+                println!("  {} Reset calibration to defaults", "💾".yellow());
+                Ok(())
+            }
+
+            TestCommand::EraseCalibration => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                ctrl.calibration.action("erase")?;
+                println!("  {} Erased Flash calibration", "💾".red());
+                Ok(())
+            }
+
+            TestCommand::EnterSafeState => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                ctrl.enter_safe_state()?;
+                println!("  {} Entered safe state (relays OFF, servos released, sensor light OFF)", "🛡️".yellow());
+                Ok(())
+            }
+
+            TestCommand::SystemDiagnostics => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let diag = ctrl.system_diagnostics()?;
+                println!("  {} System diagnostics: {}", "🔍".green(), diag);
+                Ok(())
+            }
+
             // GIF Recording
             TestCommand::CaptureGifFrame(params_input) => {
                 let params = params_input.clone().into_inner();
@@ -4202,6 +4594,7 @@ mod tests {
             "default".to_string(),
             CameraFlowConfig {
                 rtsp: "${CAMERA_RTSP}".to_string(),
+                server: None,
                 profile: Some("profiles/${PROFILE_NAME}.json".to_string()),
                 transport: Some("tcp".to_string()),
                 observe: false,

@@ -55,6 +55,32 @@ pub struct TestFlow {
     /// is accepted as an alias for the single-camera form.
     #[serde(default, alias = "camera")]
     pub cameras: Option<CamerasConfig>,
+
+    /// Global Hardware Jig configuration (e.g. `jig: "COM5"` or `jig: { port: "COM5", baudrate: 115200 }`).
+    /// Automatically connects before test flow runs, and automatically disconnects when test finishes.
+    #[serde(default)]
+    pub jig: Option<JigConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum JigConfig {
+    Port(String),
+    Struct(HardwareConnectParams),
+}
+
+impl JigConfig {
+    pub fn to_params(&self) -> HardwareConnectParams {
+        match self {
+            JigConfig::Port(port) => HardwareConnectParams {
+                port: port.clone(),
+                baudrate: None,
+                auto_power_off: Some(true),
+                timeout_ms: None,
+            },
+            JigConfig::Struct(p) => p.clone(),
+        }
+    }
 }
 
 /// Either a single camera (registered as "default") or several named cameras.
@@ -85,7 +111,11 @@ impl CamerasConfig {
 #[serde(rename_all = "camelCase")]
 pub struct CameraFlowConfig {
     /// RTSP url of the camera pointed at the physical device.
+    #[serde(default)]
     pub rtsp: String,
+    /// Existing camera web server URL, e.g. "http://localhost:9444".
+    #[serde(default)]
+    pub server: Option<String>,
     /// Path to the calibration profile JSON (relative to the test file).
     #[serde(default)]
     pub profile: Option<String>,
@@ -684,6 +714,223 @@ pub enum TestCommand {
     StopAudioCapture,
     #[serde(alias = "verifyAudioDucking")]
     VerifyAudioDucking(VerifyAudioDuckingParams),
+
+    // Hardware Automation Commands (Jig / Hardware Controller)
+    ConnectJig(HardwareConnectParams),
+    DisconnectJig,
+    ClickButton(ServoClickParams),
+    RepeatClick(ServoRepeatParams),
+    HoldButton(ServoActionParams),
+    ReleaseButton(ServoActionParams),
+    TurnOn(RelaySetParams),
+    TurnOff(RelaySetParams),
+    TurnOffAll,
+    PowerCycle(PowerCycleParams),
+    SeeLedColor(SeeColorParams),
+    SeeLedBlink(SeeBlinkParams),
+    SeeLedOff(SeeBlinkParams),
+
+    ConfigureServo(ServoConfigParams),
+    ReleaseAllButtons,
+    StartRepeatClick(ServoStartRepeatParams),
+    StopRepeatClick(ServoActionParams),
+    SetSensorLight(SensorLightParams),
+    SetBrightnessThresholds(BrightnessThresholdsParams),
+    WaitForBrightness(WaitForBrightnessParams),
+    WaitForCct(WaitForCctParams),
+    CalibrateColor(CalibrateColorParams),
+    CalibrateBrightness(CalibrateBrightnessParams),
+    AddCctPoint(AddCctPointParams),
+    SaveCalibration,
+    LoadCalibration,
+    ResetCalibration,
+    EraseCalibration,
+    EnterSafeState,
+    SystemDiagnostics,
+}
+
+fn default_channel_one() -> u8 {
+    1
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HardwareConnectParams {
+    pub port: String,
+    #[serde(default)]
+    pub baudrate: Option<u32>,
+    #[serde(default)]
+    pub auto_power_off: Option<bool>,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServoClickParams {
+    #[serde(default = "default_channel_one")]
+    pub channel: u8,
+    #[serde(default)]
+    pub hold_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServoActionParams {
+    #[serde(default = "default_channel_one")]
+    pub channel: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelaySetParams {
+    #[serde(default = "default_channel_one")]
+    pub channel: u8,
+    pub state: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeeColorParams {
+    #[serde(default = "default_channel_one")]
+    pub channel: u8,
+    #[serde(default)]
+    pub expected: Option<Vec<String>>,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeeBlinkParams {
+    #[serde(default = "default_channel_one")]
+    pub channel: u8,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
+
+fn default_repeat_count() -> u32 {
+    2
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServoRepeatParams {
+    #[serde(default = "default_channel_one")]
+    pub channel: u8,
+    #[serde(default = "default_repeat_count")]
+    pub count: u32,
+    #[serde(default)]
+    pub press_ms: Option<u64>,
+    #[serde(default)]
+    pub release_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PowerCycleParams {
+    #[serde(default = "default_channel_one")]
+    pub channel: u8,
+    #[serde(default)]
+    pub off_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServoConfigParams {
+    #[serde(default = "default_channel_one")]
+    pub channel: u8,
+    #[serde(default)]
+    pub press_angle: Option<u8>,
+    #[serde(default)]
+    pub release_angle: Option<u8>,
+    #[serde(default)]
+    pub press_duration_ms: Option<u16>,
+    #[serde(default)]
+    pub release_duration_ms: Option<u16>,
+    #[serde(default)]
+    pub hold_duration_ms: Option<u16>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServoStartRepeatParams {
+    #[serde(default = "default_channel_one")]
+    pub channel: u8,
+    #[serde(default)]
+    pub period_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SensorLightParams {
+    #[serde(default)]
+    pub state: Option<String>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrightnessThresholdsParams {
+    #[serde(default = "default_channel_one")]
+    pub channel: u8,
+    pub off_below_percent: u8,
+    pub on_above_percent: u8,
+    #[serde(default)]
+    pub min_pulse_ms: Option<u16>,
+    #[serde(default)]
+    pub max_pulse_ms: Option<u16>,
+    #[serde(default)]
+    pub sequence_end_gap_ms: Option<u16>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WaitForBrightnessParams {
+    #[serde(default = "default_channel_one")]
+    pub channel: u8,
+    #[serde(default)]
+    pub min_percent: Option<u8>,
+    #[serde(default)]
+    pub max_percent: Option<u8>,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WaitForCctParams {
+    #[serde(default = "default_channel_one")]
+    pub channel: u8,
+    pub min_kelvin: u16,
+    pub max_kelvin: u16,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalibrateColorParams {
+    #[serde(default = "default_channel_one")]
+    pub channel: u8,
+    pub color: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalibrateBrightnessParams {
+    #[serde(default = "default_channel_one")]
+    pub channel: u8,
+    pub mode: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddCctPointParams {
+    #[serde(default = "default_channel_one")]
+    pub channel: u8,
+    pub known_kelvin: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2081,6 +2328,38 @@ impl TestCommand {
             TestCommand::GetDeviceState(p) => {
                 format!("getDeviceState(saveAs: \"{}\")", p.save_as)
             }
+
+            TestCommand::ConnectJig(p) => format!("connectJig(port: \"{}\")", p.port),
+            TestCommand::DisconnectJig => "disconnectJig".to_string(),
+            TestCommand::ClickButton(p) => format!("clickButton(channel: {})", p.channel),
+            TestCommand::RepeatClick(p) => format!("repeatClick(channel: {}, count: {})", p.channel, p.count),
+            TestCommand::HoldButton(p) => format!("holdButton(channel: {})", p.channel),
+            TestCommand::ReleaseButton(p) => format!("releaseButton(channel: {})", p.channel),
+            TestCommand::TurnOn(p) => format!("turnOn(channel: {})", p.channel),
+            TestCommand::TurnOff(p) => format!("turnOff(channel: {})", p.channel),
+            TestCommand::TurnOffAll => "turnOffAll".to_string(),
+            TestCommand::PowerCycle(p) => format!("powerCycle(channel: {})", p.channel),
+            TestCommand::SeeLedColor(p) => format!("seeLedColor(channel: {})", p.channel),
+            TestCommand::SeeLedBlink(p) => format!("seeLedBlink(channel: {})", p.channel),
+            TestCommand::SeeLedOff(p) => format!("seeLedOff(channel: {})", p.channel),
+
+            TestCommand::ConfigureServo(p) => format!("configureServo(channel: {})", p.channel),
+            TestCommand::ReleaseAllButtons => "releaseAllButtons".to_string(),
+            TestCommand::StartRepeatClick(p) => format!("startRepeatClick(channel: {})", p.channel),
+            TestCommand::StopRepeatClick(p) => format!("stopRepeatClick(channel: {})", p.channel),
+            TestCommand::SetSensorLight(_) => "setSensorLight".to_string(),
+            TestCommand::SetBrightnessThresholds(p) => format!("setBrightnessThresholds(channel: {})", p.channel),
+            TestCommand::WaitForBrightness(p) => format!("waitForBrightness(channel: {})", p.channel),
+            TestCommand::WaitForCct(p) => format!("waitForCct(channel: {})", p.channel),
+            TestCommand::CalibrateColor(p) => format!("calibrateColor(channel: {}, color: \"{}\")", p.channel, p.color),
+            TestCommand::CalibrateBrightness(p) => format!("calibrateBrightness(channel: {}, mode: \"{}\")", p.channel, p.mode),
+            TestCommand::AddCctPoint(p) => format!("addCctPoint(channel: {}, knownKelvin: {})", p.channel, p.known_kelvin),
+            TestCommand::SaveCalibration => "saveCalibration".to_string(),
+            TestCommand::LoadCalibration => "loadCalibration".to_string(),
+            TestCommand::ResetCalibration => "resetCalibration".to_string(),
+            TestCommand::EraseCalibration => "eraseCalibration".to_string(),
+            TestCommand::EnterSafeState => "enterSafeState".to_string(),
+            TestCommand::SystemDiagnostics => "systemDiagnostics".to_string(),
         }
     }
 }

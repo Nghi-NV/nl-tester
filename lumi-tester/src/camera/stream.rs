@@ -10,9 +10,10 @@ use anyhow::{anyhow, Context, Result};
 use image::RgbImage;
 use std::io::Read;
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 
 #[derive(Clone)]
 pub struct CameraFrame {
@@ -54,7 +55,7 @@ fn ffmpeg() -> Result<PathBuf> {
 /// Capture a single frame from an RTSP URL as an RGB image (JPEG via FFmpeg).
 pub fn snapshot(rtsp: &str, transport: Option<&str>) -> Result<RgbImage> {
     let bin = ffmpeg()?;
-    let output = std::process::Command::new(&bin)
+    let mut child = std::process::Command::new(&bin)
         .args([
             "-nostdin",
             "-loglevel",
@@ -73,24 +74,51 @@ pub fn snapshot(rtsp: &str, transport: Option<&str>) -> Result<RgbImage> {
             "2",
             "pipe:1",
         ])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .context("failed to spawn ffmpeg for snapshot")?;
 
-    if !output.status.success() || output.stdout.is_empty() {
-        let err = String::from_utf8_lossy(&output.stderr);
-        let redacted = crate::camera::redact_url(err.lines().last().unwrap_or("unknown error"));
-        return Err(anyhow!(
-            "ffmpeg could not read a frame from the camera: {}",
-            redacted
-        ));
-    }
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .context("failed to poll ffmpeg snapshot process")?
+        {
+            let mut stdout = Vec::new();
+            let mut stderr = Vec::new();
+            if let Some(mut out) = child.stdout.take() {
+                let _ = out.read_to_end(&mut stdout);
+            }
+            if let Some(mut err) = child.stderr.take() {
+                let _ = err.read_to_end(&mut stderr);
+            }
+            if !status.success() || stdout.is_empty() {
+                let err = String::from_utf8_lossy(&stderr);
+                let redacted =
+                    crate::camera::redact_url(err.lines().last().unwrap_or("unknown error"));
+                return Err(anyhow!(
+                    "ffmpeg could not read a frame from the camera: {}",
+                    redacted
+                ));
+            }
 
-    let img = image::load_from_memory(&output.stdout)
-        .context("failed to decode snapshot JPEG")?
-        .to_rgb8();
-    Ok(img)
+            let img = image::load_from_memory(&stdout)
+                .context("failed to decode snapshot JPEG")?
+                .to_rgb8();
+            return Ok(img);
+        }
+
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(anyhow!(
+                "ffmpeg timed out after 20s while reading a camera frame"
+            ));
+        }
+
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }
 
 /// A warm, continuously-decoding RTSP frame source backed by an FFmpeg

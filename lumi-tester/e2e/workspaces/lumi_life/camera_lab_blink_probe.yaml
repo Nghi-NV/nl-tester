@@ -1,0 +1,31 @@
+platform: android
+appId: com.lumi.lumilife
+name: Lumi Life camera blink probe
+tags:
+  - lumi-life
+  - hardware
+  - camera
+  - blink
+defaultTimeout: 12000
+env:
+  file: "../../../../.env"
+vars:
+  CAMERA_PROFILE: "profiles/lab_switch4_camera.json"
+  TARGET_BUTTON: "device_2.button_1"
+  BLINK_STATE: "BLUE"
+camera:
+  rtsp: "${CAMERA_RTSP}"
+  profile: "${CAMERA_PROFILE}"
+  transport: "tcp"
+---
+- getDeviceState:
+    saveAs: "beforeBlinkProbe"
+- waitLedPattern:
+    button: "${TARGET_BUTTON}"
+    expect: "${BLINK_STATE}"
+    count: 1
+    withinMs: 60000
+    timeoutMs: 60000
+    sampleMs: 50
+    pulseMinMs: 40
+    pulseMaxMs: 10000

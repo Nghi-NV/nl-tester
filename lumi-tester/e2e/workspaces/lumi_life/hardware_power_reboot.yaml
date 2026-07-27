@@ -1,0 +1,25 @@
+platform: android
+appId: com.lumi.lifenext
+tags:
+  - hardware
+  - reboot
+defaultTimeout: 8000
+
+# 🔌 Kết nối Jig toàn cục
+jig: "COM5"
+
+---
+# 1. Bật nguồn ban đầu
+- turnOn: 1
+- seeLedColor: "GREEN"
+
+# 2. Thực hiện Hard Reboot (Ngắt điện 2 giây -> Cấp điện lại)
+- powerCycle:
+    channel: 1
+    offMs: 2000
+
+# 3. Kiểm tra thiết bị sau khi khởi động xong (Đèn LED tạm thời tắt)
+- seeLedOff: 1
+
+# 4. Kiểm tra thiết bị tự khôi phục lại màu LED ban đầu
+- seeLedColor: "GREEN"

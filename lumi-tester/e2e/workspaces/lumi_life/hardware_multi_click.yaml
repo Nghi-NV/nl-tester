@@ -1,0 +1,29 @@
+platform: android
+appId: com.lumi.lifenext
+tags:
+  - hardware
+  - multi-click
+defaultTimeout: 6000
+
+# 🔌 Kết nối Jig toàn cục
+jig: "COM5"
+
+---
+# 1. Bật nguồn thiết bị
+- turnOn: 1
+
+# 2. Bấm 3 lần liên tiếp để chuyển chế độ Mode 1 (Chuyển LED sang màu Đỏ)
+- repeatClick:
+    channel: 1
+    count: 3
+    pressMs: 150
+    releaseMs: 150
+
+- seeLedColor: "RED"
+
+# 3. Bấm 3 lần liên tiếp lần nữa để chuyển sang Mode 2 (Chuyển LED sang màu Xanh Dương)
+- repeatClick:
+    channel: 1
+    count: 3
+
+- seeLedColor: "BLUE"

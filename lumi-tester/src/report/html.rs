@@ -56,8 +56,9 @@ fn generate_html(results: &TestResults) -> String {
             let error_html = match &cmd.status {
                 CommandStatus::Failed { error } => {
                     format!(
-                        r##"<div class="error-message">{}</div>"##,
-                        html_escape(error)
+                        r##"<div class="error-message">{}</div>{}"##,
+                        html_escape(error),
+                        camera_hint_html(error)
                     )
                 }
                 _ => String::new(),
@@ -450,6 +451,22 @@ fn generate_html(results: &TestResults) -> String {
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
             background: #000;
         }}
+
+        .camera-hint {{
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.25);
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            margin-top: 0.75rem;
+            color: #bfdbfe;
+            font-size: 0.8125rem;
+        }}
+
+        .camera-hint pre {{
+            white-space: pre-wrap;
+            margin-top: 0.5rem;
+            font-family: 'JetBrains Mono', monospace;
+        }}
     </style>
 </head>
 <body>
@@ -535,6 +552,17 @@ fn html_escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+fn camera_hint_html(error: &str) -> String {
+    let Some(hint) = crate::camera::launcher::camera_failure_hint(error) else {
+        return String::new();
+    };
+
+    format!(
+        r#"<div class="camera-hint"><strong>Camera next steps</strong><pre>{}</pre></div>"#,
+        html_escape(&hint)
+    )
+}
+
 fn format_duration(ms: u64) -> String {
     if ms < 1000 {
         format!("{}ms", ms)
@@ -544,5 +572,21 @@ fn format_duration(ms: u64) -> String {
         let minutes = ms / 60000;
         let seconds = (ms % 60000) as f64 / 1000.0;
         format!("{}m {:.0}s", minutes, seconds)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn camera_failure_hint_is_rendered_as_html() {
+        let error = "device check failed: button 'device_2.button_1' is 'UNKNOWN', expected 'BLUE'\ncamera evidence: output/camera_evidence/default_123";
+
+        let html = camera_hint_html(error);
+
+        assert!(html.contains("Camera next steps"));
+        assert!(html.contains("lumi-tester camera profile"));
+        assert!(html.contains("device_2.button_1"));
     }
 }

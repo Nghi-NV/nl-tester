@@ -47,6 +47,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
                 close_when_finish: None,
                 desktop_state: None,
                 cameras: None,
+                jig: None,
             }
         };
         // Parse commands
@@ -71,6 +72,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
             close_when_finish: None,
             desktop_state: None,
             cameras: None,
+            jig: None,
         });
     }
 
@@ -104,6 +106,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
             close_when_finish: None,
             desktop_state: None,
             cameras: None,
+            jig: None,
         };
 
         if let Some(val) = map.get(&serde_yaml::Value::String("data".to_string())) {
@@ -239,6 +242,8 @@ fn parse_header(header: &str, base_path: &Path) -> Result<TestFlow> {
         desktop_state: Option<crate::parser::types::DesktopState>,
         #[serde(default, alias = "camera")]
         cameras: Option<crate::parser::types::CamerasConfig>,
+        #[serde(default)]
+        jig: Option<crate::parser::types::JigConfig>,
     }
 
     let parsed: Header = serde_yaml::from_str(header).context("Failed to parse YAML header")?;
@@ -304,6 +309,7 @@ fn parse_header(header: &str, base_path: &Path) -> Result<TestFlow> {
         close_when_finish: parsed.close_when_finish,
         desktop_state: parsed.desktop_state,
         cameras: parsed.cameras,
+        jig: parsed.jig,
     })
 }
 
@@ -455,6 +461,15 @@ fn parse_simple_command(name: &str) -> Result<Option<TestCommand>> {
         "openQuickSettings" => TestCommand::OpenQuickSettings,
         "lockDevice" => TestCommand::LockDevice,
         "unlockDevice" => TestCommand::UnlockDevice,
+        "disconnectJig" => TestCommand::DisconnectJig,
+        "turnOffAll" => TestCommand::TurnOffAll,
+        "releaseAllButtons" | "releaseAll" => TestCommand::ReleaseAllButtons,
+        "saveCalibration" => TestCommand::SaveCalibration,
+        "loadCalibration" => TestCommand::LoadCalibration,
+        "resetCalibration" => TestCommand::ResetCalibration,
+        "eraseCalibration" => TestCommand::EraseCalibration,
+        "enterSafeState" => TestCommand::EnterSafeState,
+        "systemDiagnostics" => TestCommand::SystemDiagnostics,
         "click" => TestCommand::Click(crate::parser::types::ClickParams {
             selector: None,
             text: None,
@@ -1164,6 +1179,248 @@ fn parse_command_with_params(
             TestCommand::WaitLedPattern(serde_yaml::from_value(params.clone())?)
         }
         "getDeviceState" => TestCommand::GetDeviceState(serde_yaml::from_value(params.clone())?),
+
+        // Hardware Automation Commands (Canonical Natural Language Commands)
+        "connectJig" => {
+            let p: crate::parser::types::HardwareConnectParams = if params.is_string() {
+                crate::parser::types::HardwareConnectParams {
+                    port: params.as_str().unwrap().to_string(),
+                    baudrate: None,
+                    auto_power_off: Some(true),
+                    timeout_ms: None,
+                }
+            } else {
+                serde_yaml::from_value(params.clone())?
+            };
+            TestCommand::ConnectJig(p)
+        }
+        "disconnectJig" => TestCommand::DisconnectJig,
+
+        "clickButton" => {
+            let p: crate::parser::types::ServoClickParams = if params.is_number() {
+                crate::parser::types::ServoClickParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                    hold_ms: None,
+                }
+            } else {
+                serde_yaml::from_value(params.clone()).unwrap_or(crate::parser::types::ServoClickParams {
+                    channel: 1,
+                    hold_ms: None,
+                })
+            };
+            TestCommand::ClickButton(p)
+        }
+        "holdButton" => {
+            let p: crate::parser::types::ServoActionParams = if params.is_number() {
+                crate::parser::types::ServoActionParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                }
+            } else {
+                serde_yaml::from_value(params.clone()).unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
+            };
+            TestCommand::HoldButton(p)
+        }
+        "releaseButton" => {
+            let p: crate::parser::types::ServoActionParams = if params.is_number() {
+                crate::parser::types::ServoActionParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                }
+            } else {
+                serde_yaml::from_value(params.clone()).unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
+            };
+            TestCommand::ReleaseButton(p)
+        }
+
+        "turnOn" => {
+            let p: crate::parser::types::RelaySetParams = if params.is_number() {
+                crate::parser::types::RelaySetParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                    state: "on".to_string(),
+                }
+            } else {
+                let mut parsed: crate::parser::types::RelaySetParams = serde_yaml::from_value(params.clone())?;
+                parsed.state = "on".to_string();
+                parsed
+            };
+            TestCommand::TurnOn(p)
+        }
+        "turnOff" => {
+            let p: crate::parser::types::RelaySetParams = if params.is_number() {
+                crate::parser::types::RelaySetParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                    state: "off".to_string(),
+                }
+            } else {
+                let mut parsed: crate::parser::types::RelaySetParams = serde_yaml::from_value(params.clone())?;
+                parsed.state = "off".to_string();
+                parsed
+            };
+            TestCommand::TurnOff(p)
+        }
+        "turnOffAll" => TestCommand::TurnOffAll,
+
+        "seeLedColor" => {
+            let p: crate::parser::types::SeeColorParams = if params.is_string() {
+                crate::parser::types::SeeColorParams {
+                    channel: 1,
+                    expected: Some(vec![params.as_str().unwrap().to_string()]),
+                    timeout_ms: None,
+                }
+            } else {
+                serde_yaml::from_value(params.clone())?
+            };
+            TestCommand::SeeLedColor(p)
+        }
+        "seeLedBlink" => {
+            let p: crate::parser::types::SeeBlinkParams = if params.is_number() {
+                crate::parser::types::SeeBlinkParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                    timeout_ms: None,
+                }
+            } else if params.is_null() {
+                crate::parser::types::SeeBlinkParams {
+                    channel: 1,
+                    timeout_ms: None,
+                }
+            } else {
+                serde_yaml::from_value(params.clone())?
+            };
+            TestCommand::SeeLedBlink(p)
+        }
+
+        "repeatClick" => {
+            let p: crate::parser::types::ServoRepeatParams = if params.is_number() {
+                crate::parser::types::ServoRepeatParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                    count: 2,
+                    press_ms: None,
+                    release_ms: None,
+                }
+            } else {
+                serde_yaml::from_value(params.clone())?
+            };
+            TestCommand::RepeatClick(p)
+        }
+
+        "powerCycle" => {
+            let p: crate::parser::types::PowerCycleParams = if params.is_number() {
+                crate::parser::types::PowerCycleParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                    off_ms: None,
+                }
+            } else if params.is_null() {
+                crate::parser::types::PowerCycleParams {
+                    channel: 1,
+                    off_ms: None,
+                }
+            } else {
+                serde_yaml::from_value(params.clone())?
+            };
+            TestCommand::PowerCycle(p)
+        }
+
+        "seeLedOff" => {
+            let p: crate::parser::types::SeeBlinkParams = if params.is_number() {
+                crate::parser::types::SeeBlinkParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                    timeout_ms: None,
+                }
+            } else if params.is_null() {
+                crate::parser::types::SeeBlinkParams {
+                    channel: 1,
+                    timeout_ms: None,
+                }
+            } else {
+                serde_yaml::from_value(params.clone())?
+            };
+            TestCommand::SeeLedOff(p)
+        }
+
+        "configureServo" | "setServoConfig" => {
+            let p: crate::parser::types::ServoConfigParams = serde_yaml::from_value(params.clone())?;
+            TestCommand::ConfigureServo(p)
+        }
+
+        "releaseAllButtons" | "releaseAll" => TestCommand::ReleaseAllButtons,
+
+        "startRepeatClick" => {
+            let p: crate::parser::types::ServoStartRepeatParams = if params.is_number() {
+                crate::parser::types::ServoStartRepeatParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                    period_ms: None,
+                }
+            } else {
+                serde_yaml::from_value(params.clone())?
+            };
+            TestCommand::StartRepeatClick(p)
+        }
+
+        "stopRepeatClick" => {
+            let p: crate::parser::types::ServoActionParams = if params.is_number() {
+                crate::parser::types::ServoActionParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                }
+            } else if params.is_null() {
+                crate::parser::types::ServoActionParams { channel: 1 }
+            } else {
+                serde_yaml::from_value(params.clone())?
+            };
+            TestCommand::StopRepeatClick(p)
+        }
+
+        "setSensorLight" | "sensorLight" => {
+            let p: crate::parser::types::SensorLightParams = if params.is_bool() {
+                crate::parser::types::SensorLightParams {
+                    state: None,
+                    enabled: params.as_bool(),
+                }
+            } else if params.is_string() {
+                crate::parser::types::SensorLightParams {
+                    state: Some(params.as_str().unwrap().to_string()),
+                    enabled: None,
+                }
+            } else {
+                serde_yaml::from_value(params.clone())?
+            };
+            TestCommand::SetSensorLight(p)
+        }
+
+        "setBrightnessThresholds" => {
+            let p: crate::parser::types::BrightnessThresholdsParams = serde_yaml::from_value(params.clone())?;
+            TestCommand::SetBrightnessThresholds(p)
+        }
+
+        "waitForBrightness" => {
+            let p: crate::parser::types::WaitForBrightnessParams = serde_yaml::from_value(params.clone())?;
+            TestCommand::WaitForBrightness(p)
+        }
+
+        "waitForCct" => {
+            let p: crate::parser::types::WaitForCctParams = serde_yaml::from_value(params.clone())?;
+            TestCommand::WaitForCct(p)
+        }
+
+        "calibrateColor" => {
+            let p: crate::parser::types::CalibrateColorParams = serde_yaml::from_value(params.clone())?;
+            TestCommand::CalibrateColor(p)
+        }
+
+        "calibrateBrightness" => {
+            let p: crate::parser::types::CalibrateBrightnessParams = serde_yaml::from_value(params.clone())?;
+            TestCommand::CalibrateBrightness(p)
+        }
+
+        "addCctPoint" => {
+            let p: crate::parser::types::AddCctPointParams = serde_yaml::from_value(params.clone())?;
+            TestCommand::AddCctPoint(p)
+        }
+
+        "saveCalibration" => TestCommand::SaveCalibration,
+        "loadCalibration" => TestCommand::LoadCalibration,
+        "resetCalibration" => TestCommand::ResetCalibration,
+        "eraseCalibration" => TestCommand::EraseCalibration,
+        "enterSafeState" => TestCommand::EnterSafeState,
+        "systemDiagnostics" => TestCommand::SystemDiagnostics,
 
         _ => return Ok(None),
     };
