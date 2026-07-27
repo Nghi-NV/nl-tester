@@ -1824,11 +1824,45 @@ jig: "COM5"   # Hoặc dạng struct: { port: "COM5", baudrate: 115200, autoPowe
     releaseMs: 150
 ```
 
-### `holdButton` / `releaseButton`
-**Mô tả**: Nhấn giữ nút vật lý (Pairing/Reset) và nhả nút.
+### `pressButton` / `holdButton`
+**Mô tả**: Gạt Servo nhấn và giữ nguyên vị trí nhấn nút vật lý (dùng cho các kịch bản giữ nút Reset 5s / 10s, vào chế độ Pairing).
+**Aliases**: `pressButton`, `holdButton`, `press`
+
+**Ví dụ**:
 ```yaml
-- holdButton: 1
+# Nhấn giữ nút channel 1 (đơn giản)
+- pressButton: 1
+
+# Nhấn giữ với cấu hình tùy chỉnh
+- pressButton:
+    channel: 1
+    durationMs: 5000  # Thời gian giữ (ms)
+```
+
+---
+
+### `releaseButton` / `release`
+**Mô tả**: Gạt Servo nhả 1 nút vật lý cụ thể về vị trí góc nghỉ (`releaseAngle`).
+**Aliases**: `releaseButton`, `release`
+
+**Ví dụ**:
+```yaml
+# Nhả nút channel 1
 - releaseButton: 1
+
+# Alias nhả nút
+- release: 1
+```
+
+---
+
+### `releaseAllButtons` / `releaseAll`
+**Mô tả**: Nhả toàn bộ tất cả các kênh Servo trên Jig về vị trí nghỉ an toàn.
+**Aliases**: `releaseAllButtons`, `releaseAll`
+
+**Ví dụ**:
+```yaml
+- releaseAllButtons
 ```
 
 ### `seeLedColor` / `seeLedBlink` / `seeLedOff`

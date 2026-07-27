@@ -28,8 +28,12 @@ jig:
     channel: 1
     offMs: 1000
 
-# 3. Điều khiển Servo bấm nút
+# 3. Điều khiển Servo bấm/nhấn/nhả nút
 - clickButton: 1
+- pressButton: 1
+- wait: 1000
+- releaseButton: 1
+
 - repeatClick:
     channel: 1
     count: 3
