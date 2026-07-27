@@ -67,7 +67,7 @@ hmac = "0.12"
 sha2 = "0.10"
 
 # Web Testing (Playwright)
-playwright = "0.0.20"
+playwright = { version = "0.0.20", features = ["only-for-docs-rs"] }
 
 # JavaScript Engine
 boa_engine = "0.19"
