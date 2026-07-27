@@ -14,6 +14,7 @@ from pathlib import Path
 
 LUMI_COMMANDS = [
     "ai",
+    "camera",
     "devices",
     "doctor",
     "inspect",

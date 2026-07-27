@@ -124,3 +124,8 @@ resetCalibration,,hardware,Reset calibration to defaults,none,,,,all,"- resetCal
 eraseCalibration,,hardware,Erase Flash calibration,none,,,,all,"- eraseCalibration",""
 enterSafeState,,hardware,Safety shutdown hardware,none,,,,all,"- enterSafeState",""
 systemDiagnostics,,hardware,Query system diagnostics from MCU,none,,,,all,"- systemDiagnostics",""
+assertDeviceState,checkDevice,camera,Assert camera profile region LED state,object,button|expect,camera|withinMs,no,all,"- assertDeviceState: { button: btn1, expect: RED }",""
+waitDeviceState,,camera,Wait for camera profile region LED state,object,button|expect,camera|withinMs,no,all,"- waitDeviceState: { button: btn1, expect: GREEN }",""
+assertDeviceTransition,assertDeviceChange,camera,Assert LED state transition from state to state,object,button|from|to,camera|withinMs,no,all,"- assertDeviceTransition: { button: btn1, from: OFF, to: RED }",""
+waitLedPattern,assertDevicePattern,camera,Wait for camera LED blink pattern,object,button|expect|count,withinMs|pulseMinMs|pulseMaxMs,no,all,"- waitLedPattern: { button: btn1, expect: PINK, count: 3 }",""
+getDeviceState,,camera,Read all camera profile region states into JSON var,object,saveAs,camera,no,all,"- getDeviceState: { saveAs: state }",""
