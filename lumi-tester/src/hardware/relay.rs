@@ -58,4 +58,20 @@ impl RelayControl for RelayService {
             message: None,
         })
     }
+
+    fn get_state(&self, channel: u8) -> Result<RelayState> {
+        let mut transport = self.transport.lock().unwrap();
+        let resp = transport.request(
+            &format!("relay state? {}\n", channel),
+            |line| line.kind == "relay" || line.kind == "ok",
+            3.0,
+        )?;
+        let state = resp.get_str("state").unwrap_or("off");
+        if state.eq_ignore_ascii_case("on") {
+            Ok(RelayState::On)
+        } else {
+            Ok(RelayState::Off)
+        }
+    }
 }
+

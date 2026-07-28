@@ -23,9 +23,64 @@ impl ResponseLine {
         let payload = &trimmed[end_tag + 1..].trim();
 
         let mut fields = HashMap::new();
+
+        if trimmed.contains('|') && !trimmed.contains("---") && !trimmed.contains("t_ms |") {
+            let parts: Vec<&str> = trimmed.split('|').map(|s| s.trim()).collect();
+            match kind.as_str() {
+                "color" => {
+                    let keys = [
+                        "prefix", "t_ms", "clear", "red", "green", "blue",
+                        "rn", "gn", "bn", "color", "conf", "signal", "stable", "s_conf",
+                    ];
+                    for (idx, key) in keys.iter().enumerate() {
+                        if idx < parts.len() {
+                            fields.insert(key.to_string(), parts[idx].to_string());
+                        }
+                    }
+                }
+                "bright" | "brightness" => {
+                    let keys = [
+                        "prefix", "t_ms", "clear", "brightness_pct", "base",
+                        "off_th", "on_th", "signal", "red", "green", "blue",
+                    ];
+                    for (idx, key) in keys.iter().enumerate() {
+                        if idx < parts.len() {
+                            fields.insert(key.to_string(), parts[idx].to_string());
+                        }
+                    }
+                }
+                "blink" | "blink_event" => {
+                    let keys = [
+                        "prefix", "t_ms", "interval_ms", "burst", "off_ms",
+                        "clear", "brightness_pct", "base", "signal",
+                    ];
+                    for (idx, key) in keys.iter().enumerate() {
+                        if idx < parts.len() {
+                            fields.insert(key.to_string(), parts[idx].to_string());
+                        }
+                    }
+                    if let Some(burst) = fields.get("burst") {
+                        fields.insert("count".to_string(), burst.clone());
+                    }
+                }
+                "cct" => {
+                    let keys = [
+                        "prefix", "t_ms", "raw_k", "cct_k", "status",
+                        "cal", "clear", "red", "green", "blue",
+                    ];
+                    for (idx, key) in keys.iter().enumerate() {
+                        if idx < parts.len() {
+                            fields.insert(key.to_string(), parts[idx].to_string());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
         for token in payload.split_whitespace() {
             if let Some((k, v)) = token.split_once('=') {
-                fields.insert(k.to_lowercase(), v.to_string());
+                fields.insert(k.to_lowercase(), v.trim_matches(',').to_string());
             }
         }
 

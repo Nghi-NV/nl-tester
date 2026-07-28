@@ -462,8 +462,9 @@ fn parse_simple_command(name: &str) -> Result<Option<TestCommand>> {
         "lockDevice" => TestCommand::LockDevice,
         "unlockDevice" => TestCommand::UnlockDevice,
         "disconnectJig" => TestCommand::DisconnectJig,
-        "turnOffAll" => TestCommand::TurnOffAll,
+        "turnOffAll" | "relayAllOff" => TestCommand::TurnOffAll,
         "releaseAllButtons" | "releaseAll" => TestCommand::ReleaseAllButtons,
+        "readSensorLight" | "getSensorLightState" | "lightState" => TestCommand::ReadSensorLight,
         "saveCalibration" => TestCommand::SaveCalibration,
         "loadCalibration" => TestCommand::LoadCalibration,
         "resetCalibration" => TestCommand::ResetCalibration,
@@ -853,10 +854,27 @@ fn parse_command_with_params(
             TestCommand::RotateScreen(p)
         }
 
-        "press" | "pressKey" => {
+        "pressKey" => {
             let p: crate::parser::types::PressKeyParamsInput =
                 serde_yaml::from_value(params.clone())?;
             TestCommand::PressKey(p)
+        }
+
+        "press" => {
+            if params.get("channel").is_some() || params.is_number() {
+                let p: crate::parser::types::ServoActionParams = if params.is_number() {
+                    crate::parser::types::ServoActionParams {
+                        channel: params.as_u64().unwrap_or(1) as u8,
+                    }
+                } else {
+                    serde_yaml::from_value(params.clone()).unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
+                };
+                TestCommand::PressButton(p)
+            } else {
+                let p: crate::parser::types::PressKeyParamsInput =
+                    serde_yaml::from_value(params.clone())?;
+                TestCommand::PressKey(p)
+            }
         }
 
         "pushFile" => {
@@ -1115,15 +1133,30 @@ fn parse_command_with_params(
         }
 
         "click" => {
-            let p = if params.is_string() {
-                crate::parser::types::ClickParams {
-                    text: Some(params.as_str().unwrap().to_string()),
-                    selector: None,
-                }
+            if params.get("channel").is_some() || (params.is_number() && params.as_u64().map(|n| n <= 16).unwrap_or(false)) {
+                let p: crate::parser::types::ServoClickParams = if params.is_number() {
+                    crate::parser::types::ServoClickParams {
+                        channel: params.as_u64().unwrap_or(1) as u8,
+                        hold_ms: None,
+                    }
+                } else {
+                    serde_yaml::from_value(params.clone()).unwrap_or(crate::parser::types::ServoClickParams {
+                        channel: 1,
+                        hold_ms: None,
+                    })
+                };
+                TestCommand::ClickButton(p)
             } else {
-                serde_yaml::from_value(params.clone())?
-            };
-            TestCommand::Click(p)
+                let p = if params.is_string() {
+                    crate::parser::types::ClickParams {
+                        text: Some(params.as_str().unwrap().to_string()),
+                        selector: None,
+                    }
+                } else {
+                    serde_yaml::from_value(params.clone())?
+                };
+                TestCommand::Click(p)
+            }
         }
 
         "setLocale" | "locale" => {
@@ -1210,7 +1243,7 @@ fn parse_command_with_params(
             };
             TestCommand::ClickButton(p)
         }
-        "holdButton" => {
+        "pressButton" | "holdButton" | "hold" => {
             let p: crate::parser::types::ServoActionParams = if params.is_number() {
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
@@ -1218,9 +1251,9 @@ fn parse_command_with_params(
             } else {
                 serde_yaml::from_value(params.clone()).unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
             };
-            TestCommand::HoldButton(p)
+            TestCommand::PressButton(p)
         }
-        "releaseButton" => {
+        "releaseButton" | "release" => {
             let p: crate::parser::types::ServoActionParams = if params.is_number() {
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
@@ -1230,8 +1263,38 @@ fn parse_command_with_params(
             };
             TestCommand::ReleaseButton(p)
         }
+        "readServo" | "getServoState" | "servoState" => {
+            let p: crate::parser::types::ServoActionParams = if params.is_number() {
+                crate::parser::types::ServoActionParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                }
+            } else {
+                serde_yaml::from_value(params.clone()).unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
+            };
+            TestCommand::ReadServo(p)
+        }
+        "readRelay" | "getRelayState" | "relayState" => {
+            let p: crate::parser::types::ServoActionParams = if params.is_number() {
+                crate::parser::types::ServoActionParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                }
+            } else {
+                serde_yaml::from_value(params.clone()).unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
+            };
+            TestCommand::ReadRelay(p)
+        }
+        "readColor" | "readColorSensor" | "colorState" => {
+            let p: crate::parser::types::ServoActionParams = if params.is_number() {
+                crate::parser::types::ServoActionParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                }
+            } else {
+                serde_yaml::from_value(params.clone()).unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
+            };
+            TestCommand::ReadColor(p)
+        }
 
-        "turnOn" => {
+        "turnOn" | "relayOn" => {
             let p: crate::parser::types::RelaySetParams = if params.is_number() {
                 crate::parser::types::RelaySetParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
@@ -1244,7 +1307,7 @@ fn parse_command_with_params(
             };
             TestCommand::TurnOn(p)
         }
-        "turnOff" => {
+        "turnOff" | "relayOff" => {
             let p: crate::parser::types::RelaySetParams = if params.is_number() {
                 crate::parser::types::RelaySetParams {
                     channel: params.as_u64().unwrap_or(1) as u8,

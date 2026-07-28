@@ -186,4 +186,17 @@ impl ServoControl for ServoService {
             message: None,
         })
     }
+
+    fn get_state(&self, channel: u8) -> Result<String> {
+        let mut transport = self.transport.lock().unwrap();
+        let resp = transport.request(
+            &format!("servo state? {}\n", channel),
+            |line| line.kind == "servo" || line.kind == "ok",
+            3.0,
+        )?;
+        let state = resp.get_str("state").unwrap_or("UNKNOWN");
+        let angle = resp.get_str("angle").unwrap_or("--");
+        Ok(format!("{} @ {}°", state, angle))
+    }
 }
+

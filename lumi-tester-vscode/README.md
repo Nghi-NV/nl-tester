@@ -32,7 +32,7 @@ iwr https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts
 Then install the extension VSIX:
 
 ```powershell
-code --install-extension lumi-tester-0.1.17.vsix
+code --install-extension lumi-tester-0.1.19.vsix
 ```
 
 Reload VS Code after installation. The extension automatically checks `PATH`

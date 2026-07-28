@@ -1957,6 +1957,29 @@ jig: "COM5"   # Hoặc dạng struct: { port: "COM5", baudrate: 115200, autoPowe
 - eraseCalibration
 ```
 
+### `readServo` / `readRelay` / `readColor` / `readSensorLight`
+**Mô tả**: Đọc và ghi log trạng thái hiện tại của Servo (góc xoay, trạng thái nhấn/nhả), Relay (bật/tắt), Cảm biến màu sắc (màu ổn định, RGBC raw, độ tin cậy) và Đèn soi cảm biến PB15.
+**Aliases**:
+- `readServo`, `getServoState`, `servoState`
+- `readRelay`, `getRelayState`, `relayState`
+- `readColor`, `readColorSensor`, `colorState`
+- `readSensorLight`, `getSensorLightState`, `lightState`
+
+**Ví dụ**:
+```yaml
+# Đọc trạng thái và góc của Servo kênh 1
+- readServo: 1
+
+# Đọc trạng thái BẬT/TẮT của Relay kênh 1
+- readRelay: 1
+
+# Đọc thông số RGBC, màu nhận diện và độ tin cậy từ Cảm biến màu kênh 1
+- readColor: 1
+
+# Đọc trạng thái BẬT/TẮT của Đèn chiếu sáng cảm biến (PB15)
+- readSensorLight
+```
+
 ### `enterSafeState` / `systemDiagnostics`
 **Mô tả**: Kích hoạt trạng thái dừng an toàn hoặc đọc dữ liệu chẩn đoán hệ thống STM32.
 ```yaml

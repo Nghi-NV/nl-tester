@@ -53,9 +53,16 @@ impl HardwareController {
         transport.connect(port, baud)?;
 
         // Send ping handshake
-        let ping_resp = transport.request(&protocol::cmd_ping(), |line| line.kind == "system", 2.0)?;
+        let ping_resp =
+            transport.request(&protocol::cmd_ping(), |line| line.kind == "system", 2.0)?;
         if ping_resp.get_str("status") != Some("ready") {
             log::warn!("Handshake returned unexpected status: {:?}", ping_resp.raw);
+        }
+
+        drop(transport);
+
+        for ch in 1..=8 {
+            let _ = self.servo.set_config(ch, 72, 15, 400, 150, 300);
         }
 
         Ok(())

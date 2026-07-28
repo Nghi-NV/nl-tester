@@ -2928,12 +2928,12 @@ impl TestExecutor {
                 Ok(())
             }
 
-            TestCommand::HoldButton(params) => {
+            TestCommand::PressButton(params) | TestCommand::HoldButton(params) => {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
                 })?;
                 let res = ctrl.servo.press(params.channel)?;
-                println!("  {} Hold button ch {}: completed={}", "⚙️".green(), params.channel, res.completed);
+                println!("  {} Pressed (held) button ch {}: completed={}", "⚙️".green(), params.channel, res.completed);
                 Ok(())
             }
 
@@ -2942,7 +2942,53 @@ impl TestExecutor {
                     anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
                 })?;
                 let res = ctrl.servo.release(params.channel)?;
-                println!("  {} Release button ch {}: completed={}", "⚙️".green(), params.channel, res.completed);
+                println!("  {} Released button ch {}: completed={}", "⚙️".green(), params.channel, res.completed);
+                Ok(())
+            }
+
+            TestCommand::ReadServo(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let state_str = ctrl.servo.get_state(params.channel)?;
+                println!("  {} Servo ch {} state: {}", "⚙️".blue(), params.channel, state_str);
+                Ok(())
+            }
+
+            TestCommand::ReadRelay(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let state = ctrl.relay.get_state(params.channel)?;
+                println!("  {} Relay ch {} state: {}", "⚡".blue(), params.channel, state.as_str().to_uppercase());
+                Ok(())
+            }
+
+            TestCommand::ReadColor(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let reading = ctrl.color_sensor.read_color(params.channel)?;
+                println!(
+                    "  {} Color sensor ch {}: Color={} (Conf={:?}, RGBC=[R:{} G:{} B:{} C:{}])",
+                    "🎨".green(),
+                    params.channel,
+                    reading.color.as_str(),
+                    reading.confidence,
+                    reading.sample.red,
+                    reading.sample.green,
+                    reading.sample.blue,
+                    reading.sample.clear
+                );
+                Ok(())
+            }
+
+            TestCommand::ReadSensorLight => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let enabled = ctrl.color_sensor.get_light_state()?;
+                println!("  {} Color sensor LED (PB15): {}", "💡".blue(), if enabled { "ON" } else { "OFF" });
                 Ok(())
             }
 

@@ -85,7 +85,15 @@ jig:
 | `resetCalibration` | Khôi phục hiệu chuẩn về mặc định nhà sản xuất | `- resetCalibration` |
 | `eraseCalibration` | Xóa dữ liệu hiệu chuẩn trong Flash | `- eraseCalibration` |
 
-### E. Nhóm lệnh Hệ thống & Trạng thái An toàn (System Safety & Diagnostics)
+### E. Nhóm lệnh Truy vấn & Đọc Trạng thái Linh kiện (Hardware State Query API)
+| Câu lệnh YAML | Ý nghĩa tự nhiên | Cú pháp ví dụ |
+| --- | --- | --- |
+| `readServo` | Đọc trạng thái hoạt động hiện tại (RELEASED/PRESSED/CLICKING) và góc xoay của Servo | `- readServo: 1` |
+| `readRelay` | Đọc trạng thái cấp nguồn ON/OFF của Rơ-le | `- readRelay: 1` |
+| `readColor` | Đọc thông số RGBC, màu nhận diện ổn định và độ tin cậy của Cảm biến | `- readColor: 1` |
+| `readSensorLight` | Đọc trạng thái BẬT/TẮT của Đèn chiếu sáng cảm biến (PB15) | `- readSensorLight` |
+
+### F. Nhóm lệnh Hệ thống & Trạng thái An toàn (System Safety & Diagnostics)
 | Câu lệnh YAML | Ý nghĩa tự nhiên | Cú pháp ví dụ |
 | --- | --- | --- |
 | `enterSafeState` | Kích hoạt trạng thái an toàn (Tắt rơ-le, nhả servo, tắt đèn cảm biến) | `- enterSafeState` |

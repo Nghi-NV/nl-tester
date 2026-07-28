@@ -49,8 +49,24 @@ impl ColorSensorService {
 }
 
 impl ColorSensorControl for ColorSensorService {
+    fn get_light_state(&self) -> Result<bool> {
+        let mut transport = self.transport.lock().unwrap();
+        let resp = transport.request(
+            "color light?\n",
+            |line| line.kind == "color_light" || line.kind == "ok",
+            3.0,
+        )?;
+        let state = resp.get_str("state").unwrap_or("off");
+        Ok(state.eq_ignore_ascii_case("on"))
+    }
+
     fn read_color(&self, channel: u8) -> Result<ColorReading> {
         let mut transport = self.transport.lock().unwrap();
+        let _ = transport.request(
+            &crate::hardware::protocol::cmd_color_select(channel),
+            |line| line.kind == "color_status" || line.kind == "color" || line.kind == "ok",
+            2.0,
+        );
         let resp = transport.request(
             &cmd_color_read(channel),
             |line| line.kind == "color",
@@ -62,13 +78,13 @@ impl ColorSensorControl for ColorSensorService {
         let blue = resp.get_u16("blue").unwrap_or(0);
         let clear = resp.get_u16("clear").unwrap_or(0);
 
-        let color_str = resp.get_str("color").unwrap_or("UNKNOWN");
-        let confidence_str = resp.get_str("confidence").unwrap_or("OK");
+        let color_str = resp.get_str("stable").or_else(|| resp.get_str("color")).unwrap_or("UNKNOWN");
+        let confidence_str = resp.get_str("s_conf").or_else(|| resp.get_str("conf")).unwrap_or("OK");
 
         let color = Color::from_str(color_str);
         let confidence = match confidence_str.to_uppercase().as_str() {
-            "OK" => ColorConfidence::Ok,
-            "LOW_CONFIDENCE" => ColorConfidence::LowConfidence,
+            "OK" | "GOOD" => ColorConfidence::Ok,
+            "LOW_CONFIDENCE" | "POOR" => ColorConfidence::LowConfidence,
             "UNCALIBRATED" => ColorConfidence::Uncalibrated,
             _ => ColorConfidence::Invalid,
         };

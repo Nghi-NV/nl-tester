@@ -7,6 +7,7 @@ pub trait ServoControl: Send + Sync {
     fn click(&self, channel: u8, hold_ms: Option<u64>) -> Result<ActionResult>;
     fn press(&self, channel: u8) -> Result<ActionResult>;
     fn release(&self, channel: u8) -> Result<ActionResult>;
+    fn get_state(&self, channel: u8) -> Result<String>;
     fn repeat(
         &self,
         channel: u8,
@@ -31,12 +32,14 @@ pub trait ServoControl: Send + Sync {
 /// Interface cho phần cứng điều khiển Relay (bật/tắt nguồn)
 pub trait RelayControl: Send + Sync {
     fn set_state(&self, channel: u8, state: RelayState) -> Result<ActionResult>;
+    fn get_state(&self, channel: u8) -> Result<RelayState>;
     fn all_off(&self) -> Result<ActionResult>;
 }
 
 /// Interface cho cảm biến màu sắc & phát hiện chớp tắt LED
 pub trait ColorSensorControl: Send + Sync {
     fn read_color(&self, channel: u8) -> Result<ColorReading>;
+    fn get_light_state(&self) -> Result<bool>;
     fn wait_for_color(
         &self,
         channel: u8,

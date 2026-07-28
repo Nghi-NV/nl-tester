@@ -79,7 +79,13 @@ jig:
 - saveCalibration
 - loadCalibration
 
-# 6. Chẩn đoán & Trạng thái an toàn
+# 6. Đọc trạng thái cảm biến, nút bấm, relay và đèn LED
+- readServo: 1
+- readRelay: 1
+- readColor: 1
+- readSensorLight
+
+# 7. Chẩn đoán & Trạng thái an toàn
 - systemDiagnostics
 - enterSafeState
 - turnOffAll
