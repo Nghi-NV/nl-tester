@@ -723,6 +723,7 @@ pub enum TestCommand {
     PressButton(ServoActionParams),
     HoldButton(ServoActionParams),
     ReleaseButton(ServoActionParams),
+    RotateServo(ServoRotateParams),
     ReadServo(ServoActionParams),
     ReadRelay(ServoActionParams),
     ReadColor(ServoActionParams),
@@ -784,6 +785,16 @@ pub struct ServoClickParams {
 pub struct ServoActionParams {
     #[serde(default = "default_channel_one")]
     pub channel: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServoRotateParams {
+    #[serde(default = "default_channel_one")]
+    pub channel: u8,
+    pub angle: i32,
+    #[serde(default)]
+    pub speed: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2341,6 +2352,7 @@ impl TestCommand {
             TestCommand::PressButton(p) => format!("pressButton(channel: {})", p.channel),
             TestCommand::HoldButton(p) => format!("holdButton(channel: {})", p.channel),
             TestCommand::ReleaseButton(p) => format!("releaseButton(channel: {})", p.channel),
+            TestCommand::RotateServo(p) => format!("rotateServo(channel: {}, angle: {})", p.channel, p.angle),
             TestCommand::ReadServo(p) => format!("readServo(channel: {})", p.channel),
             TestCommand::ReadRelay(p) => format!("readRelay(channel: {})", p.channel),
             TestCommand::ReadColor(p) => format!("readColor(channel: {})", p.channel),

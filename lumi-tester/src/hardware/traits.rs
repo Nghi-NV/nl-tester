@@ -7,6 +7,7 @@ pub trait ServoControl: Send + Sync {
     fn click(&self, channel: u8, hold_ms: Option<u64>) -> Result<ActionResult>;
     fn press(&self, channel: u8) -> Result<ActionResult>;
     fn release(&self, channel: u8) -> Result<ActionResult>;
+    fn rotate(&self, channel: u8, angle: i32, speed: u32) -> Result<ActionResult>;
     fn get_state(&self, channel: u8) -> Result<String>;
     fn repeat(
         &self,

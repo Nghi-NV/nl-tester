@@ -2946,6 +2946,16 @@ impl TestExecutor {
                 Ok(())
             }
 
+            TestCommand::RotateServo(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
+                })?;
+                let speed = params.speed.unwrap_or(50);
+                let res = ctrl.servo.rotate(params.channel, params.angle, speed)?;
+                println!("  {} Rotated servo ch {} to {}° (speed={}): completed={}", "⚙️".green(), params.channel, params.angle, speed, res.completed);
+                Ok(())
+            }
+
             TestCommand::ReadServo(params) => {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
@@ -4544,12 +4554,66 @@ impl TestExecutor {
         // Convert TestSessionReport to TestResults for HTML generator
         let test_results = crate::report::types::TestResults {
             session_id: report_data.session_id.clone(),
-            flows: report_data.flows,
-            summary: report_data.summary,
+            flows: report_data.flows.clone(),
+            summary: report_data.summary.clone(),
             generated_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         };
 
         crate::report::html::generate(&test_results, Some(&html_path)).await?;
+
+        // Generate Session-structured output folder matching "Phần mềm - Tool test thiết bị.md"
+        let session_dir = self.context.output_path(&format!("sessions/{}", report_data.session_id));
+        let raw_results_dir = session_dir.join("raw-results");
+        let evidence_dir = session_dir.join("evidence");
+        let report_dir = session_dir.join("report");
+
+        let _ = std::fs::create_dir_all(&raw_results_dir);
+        let _ = std::fs::create_dir_all(&evidence_dir);
+        let _ = std::fs::create_dir_all(&report_dir);
+
+        let session_info_path = session_dir.join("session.json");
+        let session_info_json = serde_json::to_string_pretty(&serde_json::json!({
+            "session_id": report_data.session_id,
+            "summary": report_data.summary,
+            "created_at": chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+        }))?;
+        let _ = std::fs::write(&session_info_path, session_info_json);
+
+        let runs_jsonl_path = raw_results_dir.join("runs.jsonl");
+        let mut jsonl_content = String::new();
+        for flow in &report_data.flows {
+            for cmd in &flow.commands {
+                if let Ok(line) = serde_json::to_string(cmd) {
+                    jsonl_content.push_str(&line);
+                    jsonl_content.push('\n');
+                }
+            }
+        }
+        let _ = std::fs::write(&runs_jsonl_path, jsonl_content);
+
+        let platform_str = self.driver.platform_name();
+        let app_id_str = self.context.app_id.as_deref();
+        let session_result_path = report_dir.join("session-result.json");
+        if let Ok(_) = crate::report::json::generate_standard_session_report(
+            &report_data,
+            app_id_str,
+            Some(&platform_str),
+            &session_result_path,
+        ) {
+            println!(
+                "{} Standardized JSON report saved to: {}",
+                "📋".to_string().blue(),
+                session_result_path.display().to_string().cyan()
+            );
+        }
+
+        let runs_json_path = report_dir.join("runs.json");
+        if let Ok(runs_json) = serde_json::to_string_pretty(&report_data.flows) {
+            let _ = std::fs::write(&runs_json_path, runs_json);
+        }
+
+        let session_html_path = report_dir.join("report.html");
+        let _ = crate::report::html::generate(&test_results, Some(&session_html_path)).await;
 
         println!(
             "{} HTML report saved to: {}",

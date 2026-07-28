@@ -1263,6 +1263,10 @@ fn parse_command_with_params(
             };
             TestCommand::ReleaseButton(p)
         }
+        "rotateServo" | "servoRotate" => {
+            let p: crate::parser::types::ServoRotateParams = serde_yaml::from_value(params.clone())?;
+            TestCommand::RotateServo(p)
+        }
         "readServo" | "getServoState" | "servoState" => {
             let p: crate::parser::types::ServoActionParams = if params.is_number() {
                 crate::parser::types::ServoActionParams {

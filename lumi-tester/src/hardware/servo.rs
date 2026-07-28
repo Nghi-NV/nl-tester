@@ -57,6 +57,24 @@ impl ServoControl for ServoService {
         })
     }
 
+    fn rotate(&self, channel: u8, angle: i32, speed: u32) -> Result<ActionResult> {
+        let start = Instant::now();
+        let mut transport = self.transport.lock().unwrap();
+        let resp = transport.request(
+            &crate::hardware::protocol::cmd_servo_rotate(channel, angle, speed),
+            |line| line.kind == "servo" && line.get_str("action") == Some("rotate"),
+            3.0,
+        )?;
+
+        Ok(ActionResult {
+            action: "servo.rotate".to_string(),
+            channel: Some(channel),
+            completed: resp.get_str("status") == Some("completed") || resp.kind == "servo",
+            duration_ms: start.elapsed().as_millis() as u64,
+            message: None,
+        })
+    }
+
     fn click(&self, channel: u8, hold_duration_ms: Option<u64>) -> Result<ActionResult> {
         let start = Instant::now();
         let mut transport = self.transport.lock().unwrap();

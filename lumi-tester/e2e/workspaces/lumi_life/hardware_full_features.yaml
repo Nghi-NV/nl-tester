@@ -31,6 +31,10 @@ jig:
 # 3. Điều khiển Servo bấm/nhấn/nhả nút
 - clickButton: 1
 - pressButton: 1
+- rotateServo:
+    channel: 1
+    angle: 90
+    speed: 50
 - wait: 1000
 - releaseButton: 1
 

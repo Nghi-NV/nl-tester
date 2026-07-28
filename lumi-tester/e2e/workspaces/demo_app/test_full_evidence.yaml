@@ -1,0 +1,20 @@
+platform: android
+appId: com.android.settings
+tags:
+  - full-evidence
+defaultTimeout: 10000
+
+---
+# 1. Khai báo & Cấu hình thiết bị/cảm biến
+- configureServo:
+    channel: 1
+    pressAngle: 75
+    releaseAngle: 15
+- readColor: 1
+- readSensorLight
+- systemDiagnostics
+
+# 2. Chạy ứng dụng Android & chụp hình evidence
+- launchApp:
+    appId: "com.android.settings"
+- see: "Network"

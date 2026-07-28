@@ -1,0 +1,16 @@
+platform: ios
+appId: com.apple.Preferences
+tags:
+  - ios
+  - real-test
+defaultTimeout: 10000
+
+---
+# 1. Mở ứng dụng Settings trên iOS Simulator
+- launchApp:
+    appId: "com.apple.Preferences"
+
+# 2. Kiểm tra giao diện & cuộn màn hình
+- see: "General"
+- tap: "General"
+- back

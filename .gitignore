@@ -12,18 +12,44 @@ Thumbs.db
 node_modules/
 target/
 dist/
+# Outputs & Test Evidence
 output/
-hardware_control_services/
+output*/
+output_*/
+sessions/
+raw-results/
+evidence/
 
 # Logs
 *.log
+*.jsonl
 
-# Environment files
+# Environment files & Secrets
 .env
 .env.local
 .env.*.local
+*.env
+secrets.json
+secrets.yaml
+credentials.json
+config.local.yaml
+*.secret
+*.token
+
+# Certificates & Keys
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.asc
+*.keystore
+*.jks
+*.mobileprovision
+*.cer
 
 # Private/Sensitive data
+hardware_control_services/
 lumi-tester/e2e/workspaces/lumi_life/
 my_testing/*
 .agent/*

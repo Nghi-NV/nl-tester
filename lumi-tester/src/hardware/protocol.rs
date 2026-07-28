@@ -129,6 +129,10 @@ pub fn cmd_servo_click(channel: u8, hold_ms: Option<u64>) -> String {
     }
 }
 
+pub fn cmd_servo_rotate(channel: u8, angle: i32, speed: u32) -> String {
+    format!("servo rotate {} {} {}\n", channel, angle, speed)
+}
+
 pub fn cmd_servo_repeat_start(channel: u8, period_ms: u64) -> String {
     format!("servo repeat_start {} {}\n", channel, period_ms)
 }

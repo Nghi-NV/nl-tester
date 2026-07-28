@@ -3,7 +3,13 @@
 Cargo.lock.bk
 .DS_Store
 output/
+output*/
+output_*/
+sessions/
+raw-results/
+evidence/
 *.log
+*.jsonl
 
 # IDE
 .vscode/
@@ -11,10 +17,29 @@ output/
 *.swp
 *.swo
 
-# Environment
+# Environment & Secrets
 .env
 .env.local
 .env.*.local
+*.env
+secrets.json
+secrets.yaml
+credentials.json
+config.local.yaml
+*.secret
+*.token
+
+# Certificates & Keys
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.asc
+*.keystore
+*.jks
+*.mobileprovision
+*.cer
 
 # OS
 Thumbs.db
