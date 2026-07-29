@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 DOCS_DIR = ROOT / "lumi-tester" / "docs"
 INDEX_HTML = DOCS_DIR / "index.html"
+ROOT_DOCS_INDEX = ROOT / "docs" / "index.html"
 
 DOC_SOURCES = {
     "commands": DOCS_DIR / "api" / "commands.md",
@@ -59,6 +60,8 @@ def main() -> int:
     if count != 1:
         raise SystemExit(f"Could not find pageNames block in {INDEX_HTML}")
     INDEX_HTML.write_text(updated, encoding="utf-8")
+    ROOT_DOCS_INDEX.parent.mkdir(parents=True, exist_ok=True)
+    ROOT_DOCS_INDEX.write_text(updated, encoding="utf-8")
     return 0
 
 
