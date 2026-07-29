@@ -47,7 +47,7 @@ httpRequest,,network,HTTP request with optional saved response,object,url|method
 setNetwork,,network,Set wifi/mobile data state,object,,wifi|data,no,android,"- setNetwork: { wifi: true, data: false }",""
 airplaneMode,toggleAirplaneMode,network,Toggle airplane mode,none,,,,android,"- airplaneMode",""
 dbQuery,,database,Run database query,object,connection|query,params|save,no,all,"- dbQuery: { connection: test, query: SELECT 1 }","Requires configured driver/support"
-screenshot,takeScreenshot,artifact,Capture screenshot,string|object,path,,,all,"- screenshot: login.png",""
+screenshot,takeScreenshot|takeSnapshot|snapshot,artifact,Capture screenshot,string|object,path,,,all,"- screenshot: login.png",""
 assertScreenshot,,artifact,Compare screenshot,string,path,,,all,"- assertScreenshot: baseline.png",""
 startRecording,,artifact,Start video recording,string|object,path,,,android|ios|web,"- startRecording: run.mp4","Desktop MVP drivers do not implement screen recording"
 stopRecording,stopRecord,artifact,Stop video recording,none,,,,android|ios|web,"- stopRecording","Desktop MVP drivers do not implement screen recording"

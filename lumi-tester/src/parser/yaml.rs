@@ -749,7 +749,7 @@ fn parse_command_with_params(
             TestCommand::AssertVar(p)
         }
 
-        "screenshot" | "takeScreenshot" => {
+        "screenshot" | "takeScreenshot" | "takeSnapshot" | "snapshot" => {
             let p: crate::parser::types::ScreenshotParamsInput =
                 serde_yaml::from_value(params.clone())?;
             TestCommand::TakeScreenshot(p)
