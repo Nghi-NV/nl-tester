@@ -1,21 +1,48 @@
 # 📖 lumi-tester Command Reference
 
-Tài liệu này liệt kê chi tiết tất cả các lệnh (commands) có thể sử dụng trong file YAML của `lumi-tester`.
+Tài liệu này liệt kê chi tiết đầy đủ **tất cả 138 lệnh (commands & aliases)** có thể sử dụng trong file YAML của `lumi-tester` trên các nền tảng **Android**, **Android Auto**, **iOS**, **Web**, **macOS**, **Windows** và **Hardware Jig Controller**.
 
 ---
 
-## � Selectors & Global Parameters
+## 📌 Bảng tra cứu nhanh lệnh (Quick Access Table Index)
+
+| Danh mục | Lệnh & Kịch bản áp dụng |
+| :--- | :--- |
+| 🔍 **Selectors** | [`text`](#các-loại-selector-chính), [`id`](#các-loại-selector-chính), [`regex`](#các-loại-selector-chính), [`type`](#-tìm-hiểu-về-type-element-type), [`point`](#các-loại-selector-chính), [`ocr`](#-ocr-selector-nhận-diện-quang-học), [`relative`](#vị-trí-tương-đối-relative-positioning), [`auto-scroll`](#tự-động-cuộn-auto-scroll) |
+| 📱 **App Lifecycle** | [`launchApp` / `open`](#open--launchapp), [`stopApp` / `stop`](#stopapp--stop), [`installApp`](#installapp), [`uninstallApp`](#uninstallapp), [`clearAppData`](#clearappdata), [`backgroundApp`](#backgroundapp) |
+| 🗺️ **Navigation** | [`back`](#back), [`pressHome` / `home`](#presshome--home), [`hideKeyboard`](#hidekeyboard--hidekbd), [`openLink`](#openlink--deeplink), [`navigate`](#navigate) |
+| 👆 **Interaction** | [`tap`](#tapon--tap), [`longPress`](#longpresson--longpress), [`doubleTap`](#doubletapon--doubletap), [`rightClick`](#rightclick--contextclick), [`inputText` / `write` / `type`](#inputtext--write--type), [`eraseText`](#erasetext--clear), [`tapAt` / `inputAt`](#tapat--inputat), [`pasteText`](#pastetext) |
+| 📜 **Scroll & Swipe** | [`swipeLeft` / `swipeRight` / `swipeUp` / `swipeDown`](#swipeleft--swiperight--swipeup--swipedown--swipe), [`scrollUntilVisible` / `scrollTo`](#scrolluntilvisible--scrollto) |
+| 👁️ **Assertions** | [`see` / `assertVisible`](#assertvisible--see), [`notSee`](#assertnotvisible--notsee), [`waitUntilVisible`](#waituntilvisible--waitsee), [`waitUntilNotVisible`](#waituntilnotvisible--waitnotsee), [`extendedWaitUntil`](#extendedwaituntil), [`assertColor`](#assertcolor--checkcolor), [`assertScreenshot`](#assertscreenshot) |
+| ⏳ **Wait & Delays** | [`wait` / `await`](#wait--await), [`waitForAnimationToEnd`](#waitforanimationtoend) |
+| 📦 **Variables** | [`find` / `define`](#find--define), [`setVar`](#setvar), [`assertVar`](#assertvar), [`generate`](#generate) |
+| 🔀 **Control Flow** | [`repeat`](#repeat), [`retry`](#retry), [`runFlow`](#runflow), [`conditional`](#conditional) |
+| 🐍 **Scripting & Python** | [`runPython` / `execPython` / `python`](#-scripting--python-integration-tích-hợp-script--python), [`runScript`](#runscript), [`evalScript`](#evalscript), [`assertTrue`](#asserttrue--assert) |
+| 🌐 **Network & DB** | [`httpRequest`](#httprequest), [`setNetwork`](#setnetwork), [`airplaneMode`](#airplanemode--toggleairplanemode), [`dbQuery`](#dbquery) |
+| 📋 **Clipboard & Files** | [`setClipboard` / `getClipboard` / `copyTextFrom`](#-clipboard--files-clipboard--quản-lý-file), [`pushFile` / `pullFile`](#pushfile--pullfile) |
+| 📸 **Artifacts & Reports** | [`screenshot`](#screenshot--takescreenshot--snapshot), [`startRecording` / `stopRecording`](#startrecording--stoprecording), [`exportReport`](#exportreport), [`sendLarkMessage` / `lark`](#sendlarkmessage--lark) |
+| 📍 **GPS Simulation** | [`mockLocation` / `gps`](#mocklocation--gps), [`mockLocationControl`](#stopmocklocation--mocklocationcontrol), [`waitForLocation`](#waitforlocation--waitformockcompletion) |
+| 🎬 **GIF Recording** | [`captureGifFrame`](#-gif-recording-tạo-gif-minh-họa), [`buildGif`](#-gif-recording-tạo-gif-minh-họa) |
+| ⚙️ **Hardware Relay/Servo** | [`connectJig`](#connectjig--disconnectjig), [`turnOn` / `turnOff` / `powerCycle`](#turnon--turnoff--turnoffall--powercycle), [`clickButton` / `holdButton` / `releaseButton`](#clickbutton--pressbutton--holdbutton--releasebutton--releaseallbuttons--repeatclick), [`rotateServo` / `startRepeatClick`](#rotateservo--configureservo--startrepeatclick--stoprepeatclick), [`readServo` / `readRelay`](#readservo--readrelay) |
+| 🎨 **Hardware LED & Sensor** | [`seeLedColor` / `seeLedBlink`](#seeledcolor--seeledblink--seeledoff), [`setSensorLight`](#setsensorlight--setbrightnessthresholds--waitforbrightness--waitforcct), [`waitForBrightness` / `waitForCct`](#setsensorlight--setbrightnessthresholds--waitforbrightness--waitforcct), [`calibrateColor` / `saveCalibration`](#calibratecolor--calibratebrightness--addcctpoint--savecalibration--loadcalibration--resetcalibration--erasecalibration) |
+| 📷 **Camera Profile** | [`assertDeviceState`](#-camera-profile-assertions-kiểm-tra-trạng-thái-qua-camera), [`waitDeviceState`](#-camera-profile-assertions-kiểm-tra-trạng-thái-qua-camera), [`assertDeviceTransition`](#-camera-profile-assertions-kiểm-tra-trạng-thái-qua-camera), [`waitLedPattern`](#-camera-profile-assertions-kiểm-tra-trạng-thái-qua-camera) |
+| 🔊 **Audio & Media** | [`playMedia` / `stopMedia`](#-audio--media-playback-âm-thanh--truyền-thông), [`startAudioCapture` / `verifyAudioDucking`](#startaudiocapture--stopaudiocapture--verifyaudioducking) |
+| 🛠️ **System Settings** | [`rotate`](#rotate--setorientation), [`press`](#press--presskey), [`inputRandomEmail` / `inputRandomNumber`](#random-inputs-inputrandomemail--inputrandomnumber--inputrandompersonname--inputrandomtext), [`setVolume` / `lockDevice`](#system-controls-opennotifications--openquicksettings--setvolume--lockdevice--unlockdevice--selectdisplay--setlocale), [`assertPerformance` / `setCpuThrottling`](#performance-profiling-startprofiling--stopprofiling--assertperformance--setcputhrottling--setnetworkconditions) |
+
+---
+
+## 🔍 Selectors & Global Parameters
 
 Nhiều lệnh tương tác (như `tap`, `see`, `scrollTo`) sử dụng chung một bộ tham số để xác định phần tử trên màn hình.
 
 ### Các loại Selector chính
 | Trường | Alias | Mô tả |
 | :--- | :--- | :--- |
-| `text` | - | Tìm theo văn bản hiển thị. |
-| `id` | - | Resource ID (Android/Web). |
-| `regex` | - | Khớp văn bản bằng biểu thức chính quy (Regex). Xem giải thích bên dưới. |
+| `text` | - | Tìm theo văn bản hiển thị (khớp chính xác hoặc chứa chuỗi). |
+| `id` | - | Resource ID (Android/Web), Accessibility ID (iOS), hoặc Name/AutomationId (Windows/macOS). |
+| `regex` | - | Khớp văn bản bằng biểu thức chính quy (Regex). |
 | `desc` | `contentDesc`, `accessibilityId` | Tìm theo mô tả nội dung (Accessibility Label). |
-| `type` | `element_type` | Loại của phần tử (Class name). Xem chi tiết bên dưới. |
+| `type` | `element_type` | Loại phần tử (Class View / XCUIElement / HTML tag). |
 | `point` | - | Tọa độ tuyệt đối `"x,y"` hoặc phần trăm `"x%,y%"`. |
 | `css` | - | (Chỉ Web) CSS Selector. |
 | `xpath` | - | XPath Selector. |
@@ -25,107 +52,55 @@ Nhiều lệnh tương tác (như `tap`, `see`, `scrollTo`) sử dụng chung m�
 ---
 
 ### 🧱 Tìm hiểu về `type` (Element Type)
-Trường `type` giúp bạn thu hẹp phạm vi tìm kiếm bằng cách chỉ định loại "thành phần" trên màn hình. Mỗi nền tảng sẽ có các tên loại khác nhau:
-
-**Android (Tên Class của View):**
-- `Button`: Các nút bấm.
-- `EditText`: Các ô nhập văn bản.
-- `TextView`: Các đoạn văn bản hiển thị (nhãn).
-- `ImageView`: Các hình ảnh, icon.
-- `CheckBox`, `Switch`: Các nút gạt, đánh dấu.
-
-**iOS (XCUIElement Types):**
-- `Button`: Nút bấm.
-- `TextField`, `SecureTextField`: Ô nhập liệu (thường và bảo mật).
-- `StaticText`: Văn bản hiển thị.
-- `Image`: Hình ảnh.
-- `Cell`: Một dòng trong danh sách.
-
-**Web (HTML Tags):**
-- `input`: Các ô nhập liệu.
-- `button`: Các nút bấm.
-- `a`: Các đường dẫn (link).
-- `span`, `div`, `p`: Các khối văn bản.
+Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ định loại thành phần:
+- **Android**: `Button`, `EditText`, `TextView`, `ImageView`, `CheckBox`, `Switch`.
+- **iOS**: `Button`, `TextField`, `SecureTextField`, `StaticText`, `Image`, `Cell`.
+- **Web**: `input`, `button`, `a`, `span`, `div`, `p`.
 
 ---
 
----
-
-### 🔍 Giải thích về Regex (Dễ hiểu nhất)
-**Regex** (biểu thức chính quy) giống như một **"bộ lọc thông minh"**. Thay vì tìm một từ chính xác, bạn mô tả cho máy tính biết "hình dáng" của từ đó.
-
-**Các ký tự "thần kỳ" hay dùng:**
-*   `\d+`: Đại diện cho **một dãy số bất kỳ**. (Ví dụ: `1`, `100`, `999`).
-*   `.+`: Đại diện cho **một đoạn chữ bất kỳ**. (Ví dụ: `abc`, `Hello 123`).
-*   `.*`: Giống `.+` nhưng có thể là **không có chữ nào** (chuỗi rỗng).
-*   `\d{6}`: Tìm chính xác **6 con số** (Rất hay dùng để tìm mã OTP).
-*   `(A|B)`: Tìm chữ A **HOẶC** chữ B. (Ví dụ: `(Nam|Nữ)`).
-*   `^` và `$`: Đánh dấu bắt đầu và kết thúc (tìm chính xác cả câu).
-
-**Ví dụ thực tế:**
-*   `Mã OTP là: \d{6}`: Sẽ tìm thấy các câu như "Mã OTP là: 123456" hay "Mã OTP là: 987654".
-*   `Chào mừng .+`: Sẽ tìm thấy "Chào mừng Nam", "Chào mừng Admin",... (bất cứ tên nào).
-*   `Xác nhận (thành công|thất bại)`: Tìm thấy cả 2 trường hợp "Xác nhận thành công" hoặc "Xác nhận thất bại".
+### 🔍 Giải thích về Regex
+- `\d+`: Dãy số bất kỳ.
+- `\d{6}`: Mã OTP 6 chữ số.
+- `.+`: Đoạn chữ bất kỳ.
+- `(Nam|Nữ)`: Khớp "Nam" hoặc "Nữ".
 
 ---
 
 ### Vị trí tương đối (Relative Positioning)
-Dùng để tìm phần tử dựa trên một "mỏ neo" (Anchor) khác.
 - `rightOf`, `leftOf`, `above`, `below`.
-- Ví dụ:
 ```yaml
 - tap:
     rightOf: "Username"
     type: "EditText"
 ```
 
-### 📷 OCR Selector (Nhận diện văn bản)
-Dùng khi text không thể tìm thấy bằng selector thông thường (VD: Text trong ảnh, trong Canvas game).
-Hỗ trợ tìm chính xác hoặc Regex (tự động nhận diện nếu có ký tự đặc biệt).
-
-**Sử dụng đơn giản (Shorthand):**
-```yaml
-- tap:
-    ocr: "Login" # Tìm chữ "Login" bằng OCR
-```
-
-**Sử dụng đầy đủ:**
+### 📷 OCR Selector (Nhận diện quang học)
 ```yaml
 - tap:
     ocr:
       text: "Start Game"
-      index: 1         # Chọn kết quả thứ 2 nếu có nhiều chữ giống nhau
-      region: "bottom-half" # Chỉ tìm ở nửa dưới màn hình để nhanh hơn
+      index: 0
+      region: "bottom-half" # top-left, top-right, bottom-left, bottom-right, top-half, bottom-half, center
 ```
 
-**Các vùng tìm kiếm (`region`):**
-- `top-left`, `top-right`, `bottom-left`, `bottom-right`
-- `top-half` (50% trên), `bottom-half` (50% dưới), `left-half`, `right-half`
-- `center` (vùng giữa màn hình)
-
 ### Tự động cuộn (Auto-scroll)
-Nếu phần tử không có sẵn trên màn hình, bạn có thể kích hoạt tự động cuộn trong selector.
 ```yaml
-tap:
-  text: "Save"
-  scrollable:
-    enable: true
-    index: 0 # Index của vùng cuộn nếu có nhiều vùng
+- tap:
+    text: "Save"
+    scrollable:
+      enable: true
+      index: 0
 ```
 
 ---
 
-## �📱 App Management (Quản lý Ứng dụng)
+## 📱 App Management & Lifecycle (Quản lý Ứng dụng)
 
 ### `open` / `launchApp`
-**Mô tả**: Mở một ứng dụng trên thiết bị. Có thể xóa dữ liệu app hoặc cấp quyền trước khi mở.
+**Mô tả**: Mở một ứng dụng trên thiết bị. Hỗ trợ Package name (Android), Bundle ID (iOS), `.app` (macOS), hoặc `.exe` path (Windows). Trên macOS/Windows cần cấu hình `desktopState.clear` ở header để xóa dữ liệu desktop state.
 
-**Ví dụ**:
 ```yaml
-# Mở đơn giản bằng appId
-- open: "com.example.app"
-
-# Mở với cấu hình nâng cao
 - launchApp:
     appId: "com.example.app"
     clearState: true
@@ -134,1093 +109,346 @@ tap:
       location: "always"
 ```
 
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mặc định | Mô tả |
-| :--- | :--- | :--- | :--- | :--- |
-| `appId` | `url` | String | - | Package name (Android), Bundle ID (iOS), `.app` path/bundle id (macOS), hoặc `.exe` path (Windows). |
-| `clearState`| - | Boolean | `false` | Xóa dữ liệu ứng dụng trước khi mở. Trên macOS/Windows cần cấu hình `desktopState.clear` ở header. |
-| `clearKeychain`| - | Boolean | `false` | Xóa Keychain (chỉ áp dụng iOS Simulator). |
-| `stopApp` | - | Boolean | `true` | Dừng ứng dụng nếu đang chạy trước khi mở lại. |
-| `permissions`| - | Map | - | Danh sách quyền cần thiết lập (key là tên quyền, value là `allow`/`deny`). |
-| `label` | - | String | - | Label tùy chỉnh cho log (VD: "Mở app ABC"). |
-
-**Giá trị Enum/Đặc biệt**:
-- `permissions`:
-    - Key: `all`, `notifications`, `location`, `camera`, `microphone`, `storage`, v.v.
-    - Value: `allow`, `deny`, `always`, `while_in_use`.
-
----
-
 ### `stopApp` / `stop`
 **Mô tả**: Dừng (kill) ứng dụng đang chạy.
 
-**Ví dụ**:
 ```yaml
 - stopApp: "com.example.app"
 ```
 
----
-
 ### `installApp`
-**Mô tả**: Cài đặt một ứng dụng từ file (.apk, .ipa) trên máy tính vào thiết bị.
+**Mô tả**: Cài đặt file ứng dụng (.apk, .ipa, .app path) vào thiết bị.
 
-**Ví dụ**:
 ```yaml
 - installApp: "./builds/app-debug.apk"
 ```
 
----
-
 ### `uninstallApp`
-**Mô tả**: Gỡ cài đặt ứng dụng khỏi thiết bị.
+**Mô tả**: Gỡ cài đặt ứng dụng theo package/bundle ID.
 
-**Ví dụ**:
 ```yaml
 - uninstallApp: "com.example.app"
 ```
-
----
 
 ### `clearAppData`
 **Mô tả**: Xóa dữ liệu và cache của ứng dụng Android. Không dùng lệnh này cho macOS/Windows; desktop cần `desktopState.clear` trong header và `launchApp: { clearState: true }`.
 
-**Ví dụ**:
 ```yaml
 - clearAppData: "com.example.app"
 ```
 
----
-
-### `installApp`
-**Mô tả**: Cài đặt ứng dụng từ file cục bộ vào thiết bị.
-
-**Ví dụ**:
-```yaml
-- installApp: "./apps/my_app_debug.apk"
-```
-
----
-
-### `uninstallApp`
-**Mô tả**: Gỡ cài đặt ứng dụng khỏi thiết bị.
-
-**Ví dụ**:
-```yaml
-- uninstallApp: "com.example.app"
-```
-
----
-
 ### `backgroundApp`
-**Mô tả**: Đưa ứng dụng xuống nền (background) trong một khoảng thời gian rồi tự động mở lại.
+**Mô tả**: Đưa ứng dụng xuống nền trong khoảng thời gian quy định rồi tự mở lại.
 
-**Ví dụ**:
 ```yaml
 - backgroundApp:
-    durationMs: 5000 # Ở background 5 giây
+    durationMs: 5000
 ```
-
-**Tham số**:
-| Trường | Kiểu dữ liệu | Mặc định | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `appId` | String | App hiện tại | App ID cần đưa xuống background. |
-| `durationMs`| Number | `5000` | Thời gian ở background (mili giây). |
 
 ---
 
-### `back`
-**Mô tả**: Quay lại màn hình trước đó (Nút Back hệ thống).
-**Aliases**: `back`
+## 🗺️ Navigation & Links (Điều hướng)
 
-**Ví dụ**:
+### `back`
+**Mô tả**: Nhấn nút Back hệ thống (Esc trên Desktop).
+
 ```yaml
 - back
 ```
 
----
-
 ### `pressHome` / `home`
 **Mô tả**: Nhấn nút Home để về màn hình chính.
-**Aliases**: `pressHome`, `home`
 
-**Ví dụ**:
 ```yaml
 - home
 ```
 
----
-
-### `selectDisplay` / `display`
-**Mô tả**: Chọn màn hình hiển thị để tương tác (dùng cho các hệ thống nhiều màn hình như Android Auto).
-
-**Ví dụ**:
-```yaml
-- selectDisplay: "0" # Màn hình chính
-- display: "1"       # Màn hình phụ
-```
-
-**Giá trị Enum/Đặc biệt**:
-- `id`: Thường là `0` (Main), `1` (Secondary/External).
-
----
-
-### `setLocale`
-Change the device locale (Android only).
+### `hideKeyboard` / `hideKbd`
+**Mô tả**: Ẩn bàn phím ảo.
 
 ```yaml
-- setLocale: "en_US"
+- hideKeyboard
 ```
 
-### `sendLarkMessage`
-
-Send a notification message to Lark/Feishu via Custom Bot.
-Supports variable substitution (`${time}`, `${date}`) and embedding file content.
-If `secret` is provided, the message will be signed (HMAC-SHA256).
+### `openLink` / `deepLink`
+**Mô tả**: Mở Deep Link hoặc URL quy định.
 
 ```yaml
-- sendLarkMessage:
-    webhook: "https://open.larksuite.com/open-apis/bot/v2/hook/..."
-    secret: "optional_secret_key"
-    title: "Test Report ${date}"
-    content: "All tests passed at ${time}"
-    status: "success" # success, failure, info, warning
-    files:
-      - "./output/report.json"
+- openLink: "myapp://settings/profile"
 ```
 
-## Clipboard
+### `navigate`
+**Mô tả**: Điều hướng trang Web tới URL mới.
+
+```yaml
+- navigate: "https://example.com/dashboard"
+```
 
 ---
 
-## 👆 Interaction (Tương tác)
+## 👆 Interaction & Input (Tương tác & Nhập liệu)
 
-### `tap` / `tapOn`
-**Mô tả**: Chạm (Click) vào một phần tử trên màn hình hoặc theo tọa độ.
+### `tapOn` / `tap`
+**Mô tả**: Nhấn (click) vào phần tử hoặc tọa độ.
 
-**Ví dụ**:
 ```yaml
-# Tìm theo text
 - tap: "Login"
 
-# Tìm theo ID và chỉ định index thứ 2
 - tap:
-    id: "btn_action"
-    index: 1
-
-# Dùng vị trí tương đối
-- tap:
-    rightOf: "Username"
-    type: "EditText"
-
-# Chạm vào ảnh mẫu
-- tap:
-    image: "assets/btn_save.png"
+    id: "btn_submit"
     optional: true
 ```
 
-**Tham số Selector**:
-| Trường | Alias | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `text` | - | String | Tìm phần tử chứa text chính xác (hoặc case-insensitive). |
-| `id` | - | String | Tìm theo Resource ID (Android), ID (Web), hoặc Accessibility ID. |
-| `css` | - | String | (Web) CSS Selector. |
-| `xpath` | - | String | XPath selector. |
-| `point` | - | String | Tọa độ cụ thể ("x,y" hoặc "x%,y%"). |
-| `regex` | - | String | Tìm khớp theo biểu thức chính quy. |
-| `index` | - | Number | Thứ tự của phần tử nếu tìm thấy nhiều kết quả (0-based). |
-| `type` | `element_type` | String | Loại phần tử (EditText, Button, input, v.v.). |
-| `desc` | `contentDesc`, `accessibilityId` | String | Tìm theo Content-Description. |
-| `placeholder`| - | String | Tìm theo text placeholder. |
-| `role` | - | String | Tìm theo ARIA role (Web) hoặc accessibility traits. |
-| `image` | - | String | Path tới file ảnh để tìm kiếm bằng template matching. |
-| `ocr` | - | String/Object | Tìm theo OCR (`"text"` hoặc `{text, index, region}`). |
+### `longPressOn` / `longPress`
+**Mô tả**: Nhấn giữ phần tử trên màn hình.
 
-**Tham số Điều khiển**:
-| Trường | Alias | Kiểu dữ liệu | Mặc định | Mô tả |
-| :--- | :--- | :--- | :--- | :--- |
-| `optional` | - | Boolean | `false` | Nếu `true`, test sẽ tiếp tục ngay cả khi không tìm thấy phần tử. |
-| `exact` | - | Boolean | `false` | Buộc khớp text chính xác tuyệt đối (case-sensitive). |
-| `retryTapIfNoChange`| - | Boolean | `true` | Thử nhấn lại nếu không thấy tín hiệu UI thay đổi. |
-| `scrollable`| - | Object | - | Cấu hình tự động cuộn màn hình để tìm phần tử. |
-| `label` | - | String | - | Label tùy chỉnh cho log (VD: "Nhấn nút Login"). |
-
-**Shorthand Vị trí tương đối** (Sử dụng thay cho Selector chính):
-- `rightOf`, `leftOf`, `above`, `below`. (Alias tương ứng: `rightOf`, `leftOf`).
-- Mỗi mỏ neo có thể dùng text hoặc các trường selector đầy đủ.
-
----
-
-### `doubleTap` / `doubleTapOn`
-**Mô tả**: Chạm nhanh hai lần liên tiếp. Tham số tương tự `tap`.
-
-**Ví dụ**:
 ```yaml
-- doubleTap: "Item Name"
-
-- doubleTapOn:
-    id: "recycler_view"
-    index: 0
+- longPress:
+    text: "Delete Item"
 ```
 
----
+### `doubleTapOn` / `doubleTap`
+**Mô tả**: Nhấn nhanh 2 lần liên tiếp.
 
-### `longPress` / `longPressOn`
-**Mô tả**: Nhấn và giữ một phần tử. Tham số tương tự `tap`.
-
-**Ví dụ**:
 ```yaml
-- longPress: "Hold Me"
-
-- longPressOn:
-    point: "50%,50%"
+- doubleTap:
+    id: "photo_thumbnail"
 ```
-
----
 
 ### `rightClick` / `contextClick`
-**Mô tả**: Nhấn chuột phải (Context Menu). Tham số tương tự `tap`.
+**Mô tả**: Click chuột phải (dùng trên Web, macOS, Windows).
 
-**Ví dụ**:
 ```yaml
-- rightClick: "File.txt"
-
-- contextClick:
-    id: "item_id"
+- rightClick:
+    text: "File.txt"
 ```
 
----
+### `click`
+**Mô tả**: Lệnh click đơn giản trên Web.
 
-### `tapAt`
-**Mô tả**: Chạm vào phần tử theo loại và thứ tự mà không cần text/ID.
+```yaml
+- click: "Sign In"
+```
 
-**Ví dụ**:
+### `inputText` / `write` / `type`
+**Mô tả**: Nhập văn bản vào ô đang focus hoặc ô chỉ định.
+
+```yaml
+- inputText: "user@example.com"
+
+- write:
+    text: "Xin chào"
+    unicode: true
+```
+
+### `eraseText` / `clear`
+**Mô tả**: Xóa ký tự trong ô đang nhập.
+
+```yaml
+- eraseText: 5 # Xóa 5 ký tự
+```
+
+### `tapAt` / `inputAt`
+**Mô tả**: Tương tác theo loại phần tử và thứ tự index (Fallback khi không có ID/Text).
+
 ```yaml
 - tapAt:
     type: "Button"
-    index: 1 # Chạm vào nút thứ 2 trên màn hình
-```
+    index: 1
 
----
-
-### `inputText` / `write` / `type`
-**Mô tả**: Nhập văn bản vào một phần tử hoặc ô đang focus.
-
-**Ví dụ**:
-```yaml
-# Nhập vào ô đang focus
-- write: "my password"
-
-# Nhập tiếng Việt có hỗ trợ AdbIME
-- write:
-    text: "xin chào"
-    unicode: true
-
-# Tìm phần tử rồi mới nhập (Lệnh `type`)
-- type:
-    text: "admin"
-    selector: "#user_login"
-```
-
-**Tham số**:
-| Trường | Kiểu dữ liệu | Mặc định | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `text` | String | - | Nội dung văn bản cần nhập. |
-| `unicode` | Boolean | `false` | Dùng chế độ Unicode (Android AdbIME) cho tiếng Việt/Ký tự đặc biệt. |
-| `selector` | String | - | (Chỉ lệnh `type`) Selector tìm phần tử trước khi nhập. |
-| `label` | String | - | Label tùy chỉnh cho log. |
-
----
-
-### `inputAt`
-**Mô tả**: Nhập văn bản vào phần tử theo loại và thứ tự.
-
-**Ví dụ**:
-```yaml
 - inputAt:
     type: "EditText"
     index: 0
     text: "admin@example.com"
 ```
 
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `type` | `element_type` | String | Loại phần tử (EditText, Button,...). |
-| `index` | - | Number | Thứ tự tương ứng của loại phần tử đó. |
-| `text` | - | String | Nội dung cần nhập. |
-
----
-
-### `eraseText` / `clear`
-**Mô tả**: Xóa văn bản trong ô nhập liệu đang focus.
-
-**Ví dụ**:
-```yaml
-- clear:
-    charCount: 10 # Xóa 10 ký tự
-
-- eraseText: 5
-```
-
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `charCount`| - | Number | Số lượng ký tự cần xóa. Nếu bỏ trống, sẽ xóa toàn bộ. |
-
----
-
-### `hideKeyboard` / `hideKbd`
-**Mô tả**: Ẩn bàn phím ảo nếu đang hiển thị.
-
-**Ví dụ**:
-```yaml
-- hideKeyboard
-```
-
----
-
-### `press` / `pressKey`
-**Mô tả**: Nhấn phím vật lý hoặc tổ hợp phím hệ thống.
-
-**Ví dụ**:
-```yaml
-- press: "Enter"
-
-- pressKey:
-    key: "Back"
-    times: 3 # Nhấn Back 3 lần
-```
-
-**Tham số**:
-| Trường | Kiểu dữ liệu | Mặc định | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `key` | String | - | Tên phím hoặc Keycode (số). |
-| `times` | Value | `1` | Số lần nhấn (hỗ trợ số hoặc biến `${var}`). |
-
-**Các phím phổ biến**:
-- `Home`, `Back`, `Enter`, `Done`, `Menu`, `Search`, `Power`, `VolumeUp`, `VolumeDown`, `DpadUp`, `DpadDown`, `DpadLeft`, `DpadRight`, `DpadCenter`.
-
----
-
 ### `pasteText`
-**Mô tả**: Dán văn bản từ clipboard vào vị trí con trỏ hiện tại.
+**Mô tả**: Dán nội dung clipboard vào ô đang chọn.
 
-**Ví dụ**:
 ```yaml
 - pasteText
 ```
 
 ---
 
-## 📜 Scroll & Swipe
+## 📜 Scroll & Swipe (Cuộn & Vuốt)
 
-### `swipe`
-**Mô tả**: Vẩy (Vuốt) màn hình theo một hướng cụ thể.
-**Aliases**: `swipeUp`, `swipeDown`, `swipeLeft`, `swipeRight`
+### `swipeLeft` / `swipeRight` / `swipeUp` / `swipeDown` / `swipe`
+**Mô tả**: Vuốt màn hình theo hướng chỉ định.
 
-**Ví dụ**:
 ```yaml
-# Vuốt lên đơn giản
-- swipe: "up"
-
-# Dùng các lệnh chuyên biệt
 - swipeLeft
-- swipeRight
-- swipeUp
-- swipeDown
 
-# Vuốt sang trái chậm với khoảng cách ngắn
 - swipe:
-    direction: "left"
-    distance: 0.5
-    duration: 1000
+    direction: "up"
+    distance: 0.8
+    duration: 500
 ```
 
-**Tham số**:
-| Trường | Kiểu dữ liệu | Mặc định | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `direction` | String | - | Hướng vuốt: `up`, `down`, `left`, `right`. |
-| `duration` | Number | `500` | Thời gian thực hiện hành động (ms). |
-| `distance` | Number | `0.8` | Khoảng cách vuốt (tỉ lệ 0.0 đến 1.0 của màn hình). |
-| `from` | Selector | - | Bắt đầu vuốt từ vị trí của một phần tử cụ thể. |
-
----
-
-### `scrollTo` / `scrollUntilVisible`
+### `scrollUntilVisible` / `scrollTo`
 **Mô tả**: Cuộn màn hình liên tục cho đến khi thấy phần tử mục tiêu xuất hiện.
 
-**Ví dụ**:
 ```yaml
-# Cuộn tìm text
-- scrollTo: "Footer Link"
+- scrollTo: "Bottom Link"
 
-# Cuộn trong một vùng cụ thể (container)
 - scrollUntilVisible:
-    id: "target_item"
+    id: "target_card"
     direction: "down"
-    maxScrolls: 20
-    from:
-      id: "scroll_container"
-```
-
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mặc định | Mô tả |
-| :--- | :--- | :--- | :--- | :--- |
-| (Selector) | - | Mixed | - | Chấp nhận `text`, `id`, `regex`, v.v. |
-| `direction` | - | String | `down` | Hướng cuộn: `down`, `up`, `left`, `right`. |
-| `maxScrolls` | `numberScroll` | Number | `10` | Số lần cuộn tối đa trước khi dừng. |
-| `from` | - | Selector | - | Chỉ định Container thực hiện cuộn. |
-| `timeout` | - | Number | - | Thời gian chờ tối đa (ms). |
-| `label` | - | String | - | Label tùy chỉnh cho log. |
-
----
-
----
-
-## 📦 Variables & Reusables
-
-### `find` / `define`
-**Mô tả**: Định nghĩa một selector và lưu vào biến để tái sử dụng. Biến này có thể là text đơn giản hoặc một selector phức tạp (Object).
-
-**Ví dụ**:
-```yaml
-# Định nghĩa biến text đơn giản
-- find:
-    name: "btn_login"
-    text: "Login"
-
-# Định nghĩa selector phức tạp
-- find:
-    name: "home_icon"
-    id: "icon_home"
-    index: 0
-
-# Sử dụng biến trong các lệnh khác
-- tap: "${btn_login}"
-
-- see: "${home_icon}"
-
-- tap:
-    rightOf: "${home_icon}" # Dùng làm anchor cho relative selector
-```
-
-**Tham số**:
-| Trường | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- |
-| `name` | String | Tên biến (không bao gồm `${}`). |
-| (Selector) | Mixed | Các trường selector như `text`, `id`, `xpath`, ... |
-
----
-
-## ⚙️ System & Settings (Hệ thống)
-
-### `openNotifications`
-**Mô tả**: Kéo thanh thông báo hoặc trung tâm thông báo xuống.
-**Aliases**: `openNotifications`
-
-**Ví dụ**:
-```yaml
-- openNotifications
+    maxScrolls: 15
 ```
 
 ---
 
-### `openQuickSettings`
-**Mô tả**: Mở bảng cài đặt nhanh (Quick Settings).
-**Aliases**: `openQuickSettings`
+## 👁️ Assertions & Visibility (Kiểm tra giao diện)
 
-**Ví dụ**:
+### `assertVisible` / `see`
+**Mô tả**: Kiểm tra phần tử hiển thị trên màn hình.
+
 ```yaml
-- openQuickSettings
-```
+- see: "Welcome Back"
 
----
-
-### `setVolume`
-**Mô tả**: Điều chỉnh âm lượng của thiết bị.
-
-**Ví dụ**:
-```yaml
-- setVolume: 75 # Đặt âm lượng 75%
-```
-
----
-
-### `setLocale` / `locale`
-**Mô tả**: Thay đổi ngôn ngữ/vùng (Locale) của hệ thống.
-**Aliases**: `locale`
-
-**Ví dụ**:
-```yaml
-- setLocale: "vi_VN"
-```
-
----
-
-### `selectDisplay` / `display`
-**Mô tả**: Chọn màn hình hiển thị để tương tác (dùng cho các hệ thống nhiều màn hình).
-**Aliases**: `display`
-
-**Ví dụ**:
-```yaml
-- selectDisplay: "1"
-```
-
-### `lockDevice` / `unlockDevice`
-**Mô tả**: Khóa màn hình hoặc mở khóa thiết bị.
-**Aliases**: `lockDevice`, `unlockDevice`
-
-**Ví dụ**:
-```yaml
-- lockDevice
-- unlockDevice
-```
-
----
-
-### `setNetwork`
-**Mô tả**: Bật/Tắt các kết nối mạng (WiFi, Dữ liệu di động).
-**Aliases**: `setNetwork`
-
-**Ví dụ**:
-```yaml
-- setNetwork:
-    wifi: true
-    data: false
-```
-
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `wifi` | - | Boolean | Bật/tắt WiFi. |
-| `data` | - | Boolean | Bật/tắt Dữ liệu di động. |
-
----
-
-### `airplaneMode` / `toggleAirplaneMode`
-**Mô tả**: Chế độ máy bay.
-**Aliases**: `airplaneMode`, `toggleAirplaneMode`
-
-**Ví dụ**:
-```yaml
-- airplaneMode
-```
-
----
-
-### `setOrientation`
-**Mô tả**: Đặt hướng xoay màn hình nâng cao.
-**Aliases**: `setOrientation`
-
-**Ví dụ**:
-```yaml
-- setOrientation:
-    mode: "LANDSCAPE"
-```
-
-**Giá trị Enum/Đặc biệt**:
-- `mode`: `PORTRAIT`, `LANDSCAPE`, `UPSIDE_DOWN`, `LANDSCAPE_LEFT`, `LANDSCAPE_RIGHT`.
-
----
-
-### `rotate` / `rotateScreen`
-**Mô tả**: Xoay màn hình nhanh giữa hai chế độ cơ bản.
-**Aliases**: `rotate`, `rotateScreen`
-
-**Ví dụ**:
-```yaml
-- rotate: "landscape"
-- rotate: "portrait"
-```
-
----
-
-## ⚡ Performance Testing
-
-### `startProfiling`
-**Mô tả**: Bắt đầu ghi nhận số liệu hiệu năng (CPU, RAM, v.v.).
-**Aliases**: `startProfiling`
-
-**Ví dụ**:
-```yaml
-- startProfiling:
-    samplingIntervalMs: 500 # 0.5 giây/mẫu
-    package: "com.example.app"
-```
-
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mặc định | Mô tả |
-| :--- | :--- | :--- | :--- | :--- |
-| `samplingIntervalMs`| - | Number | `1000` | Tần suất lấy mẫu (ms). |
-| `package` | - | String | App hiện tại | Package name cần profile. |
-
----
-
-### `stopProfiling`
-**Mô tả**: Dừng ghi nhận và xuất báo cáo hiệu năng.
-**Aliases**: `stopProfiling`
-
-**Ví dụ**:
-```yaml
-- stopProfiling:
-    savePath: "performance_report.json"
-```
-
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `savePath` | - | String | Đường dẫn lưu file báo cáo (JSON). |
-
----
-
-### `assertPerformance`
-**Mô tả**: Kiểm tra các chỉ số hiệu năng có nằm trong ngưỡng cho phép hay không.
-**Aliases**: `assertPerformance`
-
-**Ví dụ**:
-```yaml
-- assertPerformance:
-    metric: "memory"
-    limit: "250MB"
-```
-
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `metric` | - | Enum | Loại chỉ số: `cpu`, `memory`, `fps`, `jank`. |
-| `limit` | - | String/Number | Ngưỡng giới hạn cho phép. |
-
-**Giá trị Enum/Đặc biệt**:
-- `metric`: `cpu`, `memory`, `fps`, `jank`.
-
----
-
-### `setCpuThrottling`
-**Mô tả**: Giới hạn tốc độ CPU (giả lập thiết bị cấu hình thấp).
-**Aliases**: `setCpuThrottling`
-
-**Ví dụ**:
-```yaml
-- setCpuThrottling: 2.0 # Giới hạn chậm hơn 2 lần
-```
-
----
-
-### `setNetworkConditions`
-**Mô tả**: Thay đổi điều kiện mạng (giả lập mạng yếu).
-**Aliases**: `setNetworkConditions`
-
-**Ví dụ**:
-```yaml
-- setNetworkConditions: "slow-3g"
-```
-
-**Giá trị Enum/Đặc biệt**:
-- Profile: `online`, `offline`, `slow-3g`, `fast-3g`, `4g`, `wifi`.
-
----
-
-## 👁️ Assertions (Kiểm tra)
-
-### `see` / `assertVisible`
-**Mô tả**: Kiểm tra phần tử có hiển thị trên màn hình hay không.
-
-**Ví dụ**:
-```yaml
-# Kiểm tra text đơn giản
-- see: "Welcome"
-
-# Kiểm tra nâng cao với soft assertion
 - assertVisible:
-    id: "user_profile_img"
-    soft: true # Nếu không thấy cũng không làm dừng toàn bộ test suite
+    id: "header_title"
+    soft: true # Không dừng test khi không thấy
 ```
 
-**Tham số**:
-| Trường | Kiểu dữ liệu | Mặc định | Mô tả |
-| :--- | :--- | :--- | :--- |
-| (Selector) | Mixed | - | Chấp nhận các trường selector như `text`, `id`, `regex`, v.v. |
-| `timeout` | Number | `defaultTimeout` | Thời gian chờ tối đa cho phần tử xuất hiện (ms). |
-| `soft` | Boolean | `false` | Nếu `true`, chỉ log lỗi và đánh dấu bước fail nhưng vẫn chạy tiếp. |
-| `containsChild`| Selector | - | Kiểm tra phần tử cha có chứa một phần tử con cụ thể hay không. |
-| `label` | String | - | Label tùy chỉnh cho log. |
+### `assertNotVisible` / `notSee`
+**Mô tả**: Kiểm tra phần tử KHÔNG xuất hiện trên màn hình.
 
----
-
-### `notSee` / `assertNotVisible`
-**Mô tả**: Kiểm tra phần tử KHÔNG hiển thị trên màn hình.
-
-**Ví dụ**:
 ```yaml
-- notSee: "Logged Out"
-
-- assertNotVisible:
-    id: "error_icon"
+- notSee: "Error Message"
 ```
-
----
 
 ### `waitUntilVisible` / `waitSee`
 **Mô tả**: Chờ cho đến khi phần tử xuất hiện.
 
-**Ví dụ**:
 ```yaml
-- waitSee: "Welcome Home"
-
-- waitUntilVisible:
-    id: "main_content"
+- waitSee:
+    id: "dashboard_loaded"
     timeout: 10000
 ```
 
----
+### `waitUntilNotVisible` / `waitNotSee`
+**Mô tả**: Chờ cho đến khi phần tử biến mất (VD: Loading overlay).
 
-### `waitNotSee` / `waitUntilNotVisible`
-**Mô tả**: Chờ cho đến khi phần tử biến mất.
-
-**Ví dụ**:
 ```yaml
 - waitNotSee: "Loading..."
-
-- waitUntilNotVisible:
-    id: "progress_bar"
 ```
 
----
-
 ### `extendedWaitUntil`
-**Mô tả**: Chờ điều kiện phức tạp với nhiều trạng thái.
+**Mô tả**: Chờ nhiều điều kiện visible / notVisible cùng lúc.
 
-**Ví dụ**:
 ```yaml
 - extendedWaitUntil:
-    timeout: 30000
+    timeout: 15000
     visible:
       id: "success_dialog"
     notVisible:
-      id: "loading_overlay"
+      id: "spinner"
 ```
-
----
-
-### `assert` / `assertTrue`
-**Mô tả**: Kiểm tra một biểu thức logic hoặc giá trị biến.
-
-**Ví dụ**:
-```yaml
-# Kiểm tra biểu thức chuỗi
-- assert: "${items_count} > 0"
-
-# Dùng cấu trúc struct
-- assertTrue:
-    condition: "${status} == 'active'"
-    soft: true
-```
-
----
-
-### `assertVar`
-**Mô tả**: So sánh trực tiếp giá trị của một biến.
-
-**Ví dụ**:
-```yaml
-- assertVar:
-    name: "user_role"
-    expected: "admin"
-```
-
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `name` | - | String | Tên biến cần kiểm tra. |
-| `expected`| - | String | Giá trị mong đợi. |
-
----
 
 ### `assertColor` / `checkColor`
-**Mô tả**: Kiểm tra màu sắc tại một tọa độ điểm ảnh.
+**Mô tả**: Kiểm tra màu pixel tại tọa độ chỉ định.
 
-**Ví dụ**:
 ```yaml
 - assertColor:
     point: "50%,50%"
-    color: "#4CAF50" # Màu xanh lá
-    tolerance: 5 # Sai số 5%
+    color: "#00FF00"
+    tolerance: 5
 ```
-
-**Tham số**:
-| Trường | Kiểu dữ liệu | Mặc định | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `point` | String | - | Tọa độ ("x,y" hoặc "%"). |
-| `color` | String | - | Mã màu (Hex, tên màu: `red`, `blue`,...). |
-| `tolerance` | Number | `10` | Độ lệch màu cho phép (0-100%). |
-
----
 
 ### `assertScreenshot`
-**Mô tả**: So sánh màn hình hiện tại với ảnh mẫu (Visual Regression).
-**Aliases**: `assertScreenshot`
+**Mô tả**: So sánh ảnh màn hình hiện tại với ảnh mẫu baseline.
 
-**Ví dụ**:
 ```yaml
-- assertScreenshot: "baselines/home_screen.png"
+- assertScreenshot: "baselines/home.png"
 ```
-
----
 
 ### `assertClipboard`
-**Mô tả**: Kiểm tra nội dung trong clipboard có khớp với mong đợi không.
-**Aliases**: `assertClipboard`
+**Mô tả**: Kiểm tra nội dung clipboard.
 
-**Ví dụ**:
 ```yaml
-- assertClipboard: "Expected Text"
+- assertClipboard: "Copied Token"
 ```
 
 ---
 
-## 📋 Clipboard & Data Transfer
-
-### `setClipboard`
-**Mô tả**: Gán một chuỗi văn bản vào clipboard của thiết bị.
-**Aliases**: `setClipboard`
-
-**Ví dụ**:
-```yaml
-- setClipboard: "hello world"
-```
-
----
-
-### `getClipboard`
-**Mô tả**: Lấy nội dung từ clipboard và lưu vào biến.
-**Aliases**: `getClipboard`
-
-**Ví dụ**:
-```yaml
-- getClipboard:
-    name: "otp_code"
-```
-
----
-
-### `copyTextFrom`
-**Mô tả**: Trích xuất text từ một phần tử UI và lưu vào clipboard hoặc biến.
-
-**Ví dụ**:
-```yaml
-- copyTextFrom:
-    id: "user_id_label"
-```
-
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- | :--- |
-| (Selector) | - | Mixed | Các trường selector (`id`, `text`,...). |
-
----
-
-### `pushFile`
-**Mô tả**: Đẩy file từ máy tính lên thiết bị.
-
-**Ví dụ**:
-```yaml
-- pushFile:
-    source: "./local/config.json"
-    destination: "/sdcard/config.json"
-```
-
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `source` | - | String | Đường dẫn file trên máy tính. |
-| `destination`| - | String | Đường dẫn đích trên thiết bị. |
-
----
-
-### `pullFile`
-**Mô tả**: Lấy file từ thiết bị về máy tính.
-
-**Ví dụ**:
-```yaml
-- pullFile:
-    source: "/sdcard/log.txt"
-    destination: "./logs/device_log.txt"
-```
-
----
-
-## 🎲 Random Inputs
-
-### `generate`
-**Mô tả**: Sinh dữ liệu ngẫu nhiên (Faker) và lưu vào biến.
-
-**Ví dụ**:
-```yaml
-- generate:
-    name: "random_user"
-    type: "name"
-
-- generate:
-    name: "expiry_date"
-    type: "date"
-    format: "YYYY-MM-DD"
-
-- generate:
-    name: "age"
-    type: "number"
-    format: "18-60"
-```
-
-**Giá trị Enum/Đặc biệt**:
-- `type`: `uuid`, `email`, `phone`, `name`, `address`, `number`, `date`, `password`.
-
----
-
-### `inputRandomEmail`
-**Mô tả**: Nhập một địa chỉ email ngẫu nhiên vào ô đang focus.
-
-**Ví dụ**:
-```yaml
-- inputRandomEmail
-```
-
----
-
-### `inputRandomName` / `inputRandomPersonName`
-**Mô tả**: Nhập tên người ngẫu nhiên.
-**Aliases**: `inputRandomPersonName`
-
-**Ví dụ**:
-```yaml
-- inputRandomName
-```
-
----
-
-### `inputRandomText`
-**Mô tả**: Nhập chuỗi văn bản ngẫu nhiên.
-**Aliases**: `inputRandomText`
-
-**Ví dụ**:
-```yaml
-- inputRandomText:
-    length: 10
-```
-
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `length` | - | Number | Độ dài chuỗi (mặc định 8). |
-
----
-
-### `inputRandomNumber` / `inputRandomPhoneNumber`
-**Mô tả**: Nhập chuỗi số ngẫu nhiên.
-**Aliases**: `inputRandomNumber`, `inputRandomPhoneNumber`
-
-**Ví dụ**:
-```yaml
-- inputRandomNumber:
-    length: 6 # Ví dụ sinh mã OTP 6 số
-```
-
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `length` | - | Number | Số lượng chữ số. |
-
----
-
-## ⚙️ Logic & Control Flow
+## ⏳ Wait & Delays (Tạm dừng)
 
 ### `wait` / `await`
-**Mô tả**: Dừng thực thi trong một khoảng thời gian cố định.
+**Mô tả**: Tạm dừng cố định khoảng thời gian (ms).
 
-**Ví dụ**:
 ```yaml
-- wait: 2000 # Chờ 2 giây
+- wait: 2000 # Tạm dừng 2s
 ```
 
----
-
 ### `waitForAnimationToEnd`
-**Mô tả**: Chờ cho đến khi các hiệu ứng chuyển cảnh (Animation) kết thúc và màn hình ổn định.
+**Mô tả**: Chờ hiệu ứng chuyển cảnh ổn định.
 
-**Ví dụ**:
 ```yaml
 - waitForAnimationToEnd
 ```
 
 ---
 
+## 📦 Variables & Selectors (Biến & Bộ chọn tái sử dụng)
+
+### `find` / `define`
+**Mô tả**: Định nghĩa bộ chọn selector và gán tên biến để tái sử dụng.
+
+```yaml
+- find:
+    name: "submit_btn"
+    id: "btn_submit"
+
+- tap: "${submit_btn}"
+```
+
 ### `setVar`
-**Mô tả**: Khai báo hoặc cập nhật giá trị cho một biến.
+**Mô tả**: Gán giá trị vào biến.
 
-**Ví dụ**:
 ```yaml
 - setVar:
-    name: "is_logged_in"
-    value: true
-
-- setVar:
-    name: "timestamp"
-    value: "${evalScript: Date.now()}"
+    name: "user_name"
+    value: "John Doe"
 ```
 
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `name` | - | String | Tên biến. |
-| `value`| - | Mixed | Giá trị gán cho biến. |
+### `assertVar`
+**Mô tả**: Kiểm tra giá trị biến.
+
+```yaml
+- assertVar:
+    name: "user_name"
+    equals: "John Doe"
+```
+
+### `generate`
+**Mô tả**: Sinh dữ liệu ngẫu nhiên (Faker) và lưu vào biến.
+
+```yaml
+- generate:
+    name: "random_email"
+    type: "email" # uuid, email, phone, name, address, number, date
+```
 
 ---
 
-### `runFlow`
-**Mô tả**: Chạy một file test flow khác như một kịch bản con (Sub-flow).
-**Aliases**: `runFlow`
-
-**Ví dụ**:
-```yaml
-- runFlow:
-    path: "common/login.yaml"
-    vars:
-      user: "admin"
-    when: "${is_logged_in} == false"
-```
-
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mặc định | Mô tả |
-| :--- | :--- | :--- | :--- | :--- |
-| `path` | - | String | - | Đường dẫn tới file YAML flow. |
-| `vars` | `env` | Map | - | Danh sách biến truyền vào cho sub-flow. |
-| `when` | - | Expression | - | Điều kiện để chạy flow này. |
-| `optional`| - | Boolean | `false` | Nếu `true`, sub-flow lỗi sẽ không làm dừng flow chính. |
-
----
+## 🔀 Control Flow & Logic (Luồng điều khiển)
 
 ### `repeat`
-**Mô tả**: Vòng lặp thực thi một danh sách các lệnh.
+**Mô tả**: Vòng lặp thực thi danh sách lệnh.
 
-**Ví dụ**:
 ```yaml
 - repeat:
-    times: 5
+    times: 3
     commands:
       - tap: "Next"
       - wait: 500
 ```
 
-**Tham số**:
-- `times`: Số lần lặp.
-- `while`: Lặp cho đến khi điều kiện (biến hoặc phần tử xuất hiện/biến mất) không còn thỏa mãn.
-- `commands`: Danh sách các lệnh bên trong vòng lặp.
-
----
-
 ### `retry`
-**Mô tả**: Thử lại một khối lệnh nếu có lỗi xảy ra.
+**Mô tả**: Thử lại khối lệnh nếu xảy ra lỗi.
 
-**Ví dụ**:
 ```yaml
 - retry:
     maxRetries: 3
@@ -1229,77 +457,82 @@ If `secret` is provided, the message will be signed (HMAC-SHA256).
       - see: "Success"
 ```
 
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mặc định | Mô tả |
-| :--- | :--- | :--- | :--- | :--- |
-| `maxRetries`| - | Number | `3` | Số lần thử lại tối đa. |
-| `commands` | - | Sequence | - | Danh sách lệnh cần thực hiện lại. |
+### `runFlow`
+**Mô tả**: Chạy file test sub-flow YAML khác.
 
----
+```yaml
+- runFlow:
+    path: "./common/login.yaml"
+    vars:
+      user: "admin"
+```
 
 ### `conditional`
-**Mô tả**: Cấu trúc rẽ nhánh If-Then-Else dựa trên sự xuất hiện/biến mất của phần tử.
+**Mô tả**: Cấu trúc rẽ nhánh If / Then / Else theo phần tử UI.
 
-**Ví dụ**:
 ```yaml
 - conditional:
     condition:
       visible: "Update Available"
     then:
-      - tap: "Later"
+      - tap: "Skip"
     else:
-      - log: "No update found"
+      - log: "No update popup"
 ```
 
-**Tham số điều kiện (`condition`)**:
-| Trường | Mô tả |
-| :--- | :--- |
-| `visible` | Kiểm tra text/id/... đang hiển thị. |
-| `visibleRegex`| Kiểm tra khớp regex đang hiển thị. |
-| `notVisible`| Kiểm tra phần tử KHÔNG hiển thị. |
-| `notVisibleRegex`| Kiểm tra regex KHÔNG hiển thị. |
-
 ---
+
+## 🐍 Scripting & Python Integration (Tích hợp Script & Python)
+
+### `runPython` / `execPython` / `python`
+**Mô tả**: Thực thi file Python hoặc đoạn mã Python inline, truyền tham số và lưu biến kết quả vào context test flow.
+
+```yaml
+- runPython:
+    code: |
+      import sys
+      print("Calculated token: ABC123XYZ")
+    saveVar: "auth_token"
+
+- runPython:
+    script: "./scripts/helper.py"
+    args: ["--mode", "test"]
+    saveVars:
+      output_code: "status_code"
+      output_msg: "status_msg"
+```
 
 ### `runScript`
-**Mô tả**: Thực thi một lệnh Shell script trên máy tính đang chạy test (Host).
+**Mô tả**: Thực thi lệnh Shell script trên máy Host.
 
-**Ví dụ**:
 ```yaml
-- runScript: "scripts/setup_db.sh"
-
 - runScript:
     command: "python3"
-    args: ["process_data.py", "data.csv"]
-    saveOutput: "python_result"
-    timeoutMs: 30000
+    args: ["process.py"]
+    saveOutput: "script_result"
 ```
-
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `command` | - | String | Lệnh hoặc đường dẫn tới script. |
-| `args` | - | Array | Danh sách tham số truyền vào script. |
-| `saveOutput`| - | String | Tên biến dùng để lưu kết quả từ `stdout`. |
-| `timeoutMs` | - | Number | Thời gian chờ tối đa (ms). |
-| `failOnError`| - | Boolean | Nếu `true`, test sẽ dừng nếu script lỗi (exit code != 0). |
-
----
 
 ### `evalScript`
-**Mô tả**: Thực thi mã JavaScript để tính toán và trả về giá trị cho biến.
+**Mô tả**: Thực thi mã JavaScript để tính toán biểu thức.
 
-**Ví dụ**:
 ```yaml
-- evalScript: "Math.random() > 0.5"
+- evalScript: "Date.now()"
+```
+
+### `assertTrue` / `assert`
+**Mô tả**: Kiểm tra biểu thức điều kiện logic.
+
+```yaml
+- assertTrue: "${status_code} == 200"
 ```
 
 ---
 
-### `httpRequest`
-**Mô tả**: Gửi yêu cầu HTTP (REST API).
+## 🌐 Network & Database (Mạng & Cơ sở dữ liệu)
 
-**Ví dụ**:
+### `httpRequest`
+**Mô tả**: Gửi HTTP REST API request.
+
 ```yaml
 - httpRequest:
     url: "https://api.example.com/login"
@@ -1308,682 +541,410 @@ If `secret` is provided, the message will be signed (HMAC-SHA256).
       Content-Type: "application/json"
     body:
       username: "admin"
-      password: "${pwd}"
     saveResponse:
-      "$.token": "auth_token" # Lưu token từ JSON response vào biến
+      "$.data.token": "api_token"
 ```
 
-**Tham số**:
-| Trường | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- |
-| `url` | String | URL API cần gọi. |
-| `method` | String | Phương thức: `GET`, `POST`, `PUT`, `DELETE`. |
-| `headers` | Map | Các HTTP Headers. |
-| `body` | Mixed | Nội dung request (JSON hoặc Yaml). |
-| `saveResponse`| Map | Map giữa JSONPath và tên biến để lưu kết quả. |
+### `setNetwork`
+**Mô tả**: Bật/tắt WiFi hoặc Mobile Data trên Android.
 
----
+```yaml
+- setNetwork:
+    wifi: true
+    data: false
+```
+
+### `airplaneMode` / `toggleAirplaneMode`
+**Mô tả**: Bật/Tắt chế độ máy bay.
+
+```yaml
+- airplaneMode
+```
 
 ### `dbQuery`
-**Mô tả**: Thực hiện truy vấn vào cơ sở dữ liệu.
+**Mô tả**: Thực hiện truy vấn SQL vào cơ sở dữ liệu.
 
-**Ví dụ**:
 ```yaml
 - dbQuery:
-    connection: "postgres://user@localhost:5432/db"
+    connection: "postgres://user:pass@localhost:5432/db"
     query: "SELECT status FROM users WHERE id = ?"
     params: ["123"]
     save:
-      "status": "user_status" # Lưu kết quả SQL vào biến
+      "status": "user_status"
 ```
-
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `connection`| - | String | Connection string tới DB. |
-| `query` | - | String | Câu lệnh SQL. |
-| `params` | - | Array | Danh sách tham số cho SQL (`?`). |
-| `save` | - | Map | Map kết quả cột vào tên biến. |
-**Aliases**: `dbQuery`
 
 ---
 
-## 📊 Reporting (Báo cáo)
+## 📋 Clipboard & Files (Clipboard & Quản lý File)
 
-### `exportReport`
-**Mô tả**: Xuất báo cáo kết quả test ra file (HTML/JSON).
-
-**Ví dụ**:
+### `setClipboard` / `getClipboard` / `assertClipboard` / `copyTextFrom` / `pasteText`
 ```yaml
-- exportReport:
-    path: "reports/daily_test.html"
-    format: "html"
+- setClipboard: "SecretOTP123"
+
+- getClipboard: "my_copied_code"
+
+- copyTextFrom:
+    id: "otp_label"
+
+- pasteText
 ```
 
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mặc định | Mô tả |
-| :--- | :--- | :--- | :--- | :--- |
-| `path` | - | String | - | Đường dẫn lưu file báo cáo. |
-| `format` | - | String | `html` | Định dạng: `html`, `json`. |
+### `pushFile` / `pullFile`
+**Mô tả**: Truyền file giữa máy Host và thiết bị Android.
 
----
-
-## 📍 Location & GPS
-
-### `mockLocation` / `gps`
-**Mô tả**: Giả lập vị trí GPS của thiết bị.
-**Aliases**: `mockLocation`, `gps`
-
-**Ví dụ**:
 ```yaml
-- gps:
-    file: "path/to/route.gpx"
-    speed: 60 # 60km/h
-    loop: true
-    startIndex: 0
-```
+- pushFile:
+    source: "./config.json"
+    destination: "/sdcard/config.json"
 
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mặc định | Mô tả |
-| :--- | :--- | :--- | :--- | :--- |
-| `file` | - | String | - | Đường dẫn file chứa tọa độ (GPX, KML, JSON). |
-| `speed` | - | Number | - | Tốc độ di chuyển (km/h). |
-| `speedMode`| - | String | `linear` | Chế độ tốc độ: `linear` (cố định), `noise` (biến thiên). |
-| `speedNoise`| - | Number | - | Độ biến thiên tốc độ khi dùng `noise`. |
-| `loop` | - | Boolean | `false` | Tự động lặp lại route. |
-| `startIndex`| - | Number | `0` | Chỉ số điểm bắt đầu trong file. |
-| `intervalMs`| - | Number | `1000` | Tần suất cập nhật vị trí. |
+- pullFile:
+    source: "/sdcard/log.txt"
+    destination: "./output/log.txt"
+```
 
 ---
 
-### `mockLocationControl`
-**Mô tả**: Điều khiển trạng thái giả lập GPS đang chạy.
+## 📸 Artifacts & Reporting (Báo cáo & Ảnh chụp)
 
-**Ví dụ**:
+### `screenshot` / `takeScreenshot` / `snapshot`
+**Mô tả**: Chụp ảnh màn hình thiết bị.
+
 ```yaml
-- mockLocationControl:
-    speed: 100
-    pause: true
+- screenshot: "login_screen.png"
 ```
-
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `speed` | - | Number | Tốc độ mới. |
-| `pause` | - | Boolean | Tạm dừng. |
-| `resume` | - | Boolean | Tiếp tục. |
-| `speedMode`| - | String | Chế độ tốc độ mới. |
-
----
-
-### `waitForLocation`
-**Mô tả**: Chờ cho đến khi vị trí giả lập di chuyển đến tọa độ mục tiêu.
-
-**Ví dụ**:
-```yaml
-- waitForLocation:
-    lat: 10.7769
-    lon: 106.7009
-    tolerance: 10.0 # Bán kính 10m
-```
-
-**Tham số**:
-| Trường | Alias | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `lat` | - | Number | Vĩ độ. |
-| `lon` | - | Number | Kinh độ. |
-| `tolerance` | - | Number | Độ lệch cho phép (mét). |
-
----
-
-### `waitForMockCompletion`
-**Mô tả**: Chờ cho đến khi route giả lập hoàn tất.
-
-**Ví dụ**:
-```yaml
-- waitForMockCompletion: 60000 # Timeout 60s
-```
-
----
-
-## 📷 Media (Screenshot & Video)
-
-### `takeScreenshot` / `screenshot`
-**Mô tả**: Chụp ảnh màn hình hiện tại.
-
-**Ví dụ**:
-```yaml
-- takeScreenshot: "screenshots/step_1.png"
-
-- screenshot:
-    path: "screenshots/error.png"
-```
-
----
 
 ### `startRecording` / `stopRecording`
-**Mô tả**: Quay phim màn hình thiết bị.
+**Mô tả**: Quay video màn hình kiểm thử.
 
-**Ví dụ**:
 ```yaml
-- startRecording: "videos/test_run.mp4"
-
+- startRecording: "test_run.mp4"
+- wait: 5000
 - stopRecording
 ```
 
----
+### `exportReport`
+**Mô tả**: Xuất báo cáo kết quả ra định dạng HTML / JSON.
 
-### `startGifCapture` / `stopGifCapture`
-**Mô tả**: Tự động chụp các khung hình để tạo ảnh GIF minh họa.
-
-**Ví dụ**:
 ```yaml
-- startGifCapture:
-    interval: 500
-    maxFrames: 50
+- exportReport:
+    path: "./output/report.json"
+    format: "json"
 ```
 
-**Tham số `startGifCapture`**:
-- `interval`: Khoảng thời gian giữa các lần chụp (ms, mặc định 200).
-- `maxFrames`: Số lượng ảnh tối đa (mặc định 150).
-- `width`: Chiều rộng ảnh (tự động scale chiều cao).
+### `sendLarkMessage` / `lark`
+**Mô tả**: Gửi thông báo kết quả qua Lark / Feishu Bot.
 
-**Tham số `stopGifCapture`**:
-- `output`: File path đầu ra (.gif).
-- `quality`: `low`, `medium`, `high`.
-
----
-
-### `captureFrame` / `captureGifFrame`
-**Mô tả**: Chụp một khung hình thủ công để đưa vào ảnh GIF.
-
-**Ví dụ**:
 ```yaml
-- captureFrame: "login_success"
-
-- captureGifFrame:
-    name: "error_state"
-    crop: "0%,0%,100%,50%" # Cắt lấy nửa trên màn hình
+- lark:
+    webhook: "https://open.larksuite.com/open-apis/bot/v2/hook/xxx"
+    title: "Kết quả kiểm thử"
+    content: "Test suite chạy hoàn tất thành công!"
+    status: "success"
 ```
 
-**Tham số**:
-- `name`: Tên định danh cho frame.
-- `crop`: Vùng cắt ảnh `"left%,top%,width%,height%"`.
+---
+
+## 📍 Location & GPS Simulation (Giả lập vị trí GPS)
+
+### `mockLocation` / `gps`
+**Mô tả**: Phát di chuyển vị trí GPS giả lập theo tuyến đường file GPX/KML.
+
+```yaml
+- gps:
+    file: "./routes/hanoi_drive.gpx"
+    speed: 50 # km/h
+    loop: true
+```
+
+### `stopMockLocation` / `mockLocationControl`
+```yaml
+- mockLocationControl:
+    speed: 80
+    pause: false
+
+- stopMockLocation
+```
+
+### `waitForLocation` / `waitForMockCompletion`
+```yaml
+- waitForLocation:
+    lat: 21.0278
+    lon: 105.8342
+    tolerance: 15.0
+
+- waitForMockCompletion: 60000
+```
 
 ---
 
-### `createGif` / `buildGif`
-**Mô tả**: Tạo file GIF từ các frame đã chụp thủ công.
+## 🎬 GIF Recording (Tạo GIF minh họa)
 
-**Ví dụ**:
+### `captureGifFrame` / `startGifCapture` / `stopGifCapture` / `buildGif`
 ```yaml
-- captureFrame: "step1"
+- captureGifFrame: "step1"
 - tap: "Next"
-- captureFrame: "step2"
+- captureGifFrame: "step2"
 - buildGif:
+    frames: ["step1", "step2"]
     output: "result.gif"
-    frames:
-      - "step1"
-      - name: "step2"
-        delay: 1000 # Chờ 1s tại frame này
-    quality: "high"
-    loopGif: true
+    delay: 500
 ```
 
 ---
 
-## 🌐 Web Specific & Deep Links
+## ⚙️ Hardware Jig Controller (Điều khiển Phần cứng Jig STM32/Relay/Servo)
 
-### `openLink` / `deepLink`
-**Mô tả**: Mở một Deep Link hoặc URL tùy chỉnh.
+Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch nạp và bộ Jig điều khiển phần cứng tự động hóa cho thiết bị IoT / Smart Home.
 
-**Ví dụ**:
+### `connectJig` / `disconnectJig`
+**Mô tả**: Kết nối tới mạch phần cứng Jig Controller qua cổng RS232/USB Serial.
+
 ```yaml
-- openLink: "myapp://product/123"
+- connectJig: "COM5"
 
-- deepLink:
-    url: "https://example.com/reset-password"
+# Hoặc bằng cấu hình đối tượng
+- connectJig:
+    port: "COM5"
+    baudrate: 115200
+    timeoutMs: 3000
 ```
 
----
-
-### `navigate`
-**Mô tả**: Điều hướng trình duyệt tới một URL cụ thể.
-
-**Ví dụ**:
-```yaml
-- navigate: "https://www.google.com"
-```
-
----
-
-### `click`
-**Mô tả**: Click vào phần tử trên trình duyệt bằng CSS hoặc Text.
-
-**Ví dụ**:
-```yaml
-- click:
-    selector: ".nav-item"
-    text: "Menu"
-```
-
-**Tham số**:
-- `selector`: CSS Selector.
-- `text`: Text nội dung.
-
----
-
-### `type`
-**Mô tả**: Nhập văn bản vào phần tử trên trình duyệt thông qua Selector.
-
-**Ví dụ**:
-```yaml
-- type:
-    selector: "#search-input"
-    text: "lumi-tester"
-```
-
----
-
-## 📷 Camera Hardware Testing
-
-Các lệnh này dùng camera RTSP để đọc LED/trạng thái thiết bị thật. Camera profile
-chỉ mô tả visual model của thiết bị; không lưu home, room, account hoặc logic app.
-
-Khai báo camera trong YAML header:
+### `turnOn` / `turnOff` / `turnOffAll` / `powerCycle`
+**Mô tả**: Điều khiển đóng/ngắt các kênh Rơ-le (Relay) cấp nguồn phần cứng.
 
 ```yaml
-camera:
-  rtsp: "${CAMERA_RTSP}"
-  profile: "${CAMERA_PROFILE}"
-  transport: "tcp"
-vars:
-  CAMERA_PROFILE: "profiles/switch_4_wall_left.json"
-  TARGET_DEVICE: "switch_4_wall_left"
-  STATE_ON: "ON"
-  STATE_OFF: "OFF"
-```
-
-### `assertDeviceState`
-**Mô tả**: Đọc ngay một region LED và assert state hiện tại.
-
-```yaml
-- assertDeviceState:
-    button: "${TARGET_DEVICE}.button_1"
-    expect: "${STATE_OFF}"
-```
-
-### `waitDeviceState`
-**Mô tả**: Chờ một region đạt state mong muốn, có chống flicker bằng stable frames.
-
-```yaml
-- waitDeviceState:
-    button: "${TARGET_DEVICE}.button_1"
-    expect: "${STATE_ON}"
-```
-
-### `assertDeviceTransition`
-**Mô tả**: Bắt buộc region bắt đầu ở `from`, sau đó chờ sang `to`.
-
-```yaml
-- assertDeviceTransition:
-    button: "${TARGET_DEVICE}.button_1"
-    from: "${STATE_OFF}"
-    to: "${STATE_ON}"
-```
-
-### `waitLedPattern` / `assertDevicePattern`
-**Mô tả**: Đọc pattern nhấp nháy bằng frame timestamp, phù hợp reset/pairing blink.
-
-```yaml
-- waitLedPattern:
-    button: "${TARGET_DEVICE}.status"
-    expect: "PINK"
-    count: 3
-    withinMs: 800
-    sampleMs: 20
-    pulseMinMs: 40
-    pulseMaxMs: 250
-```
-
-### `getDeviceState`
-**Mô tả**: Đọc toàn bộ regions vào biến JSON và lưu artifact `camera-state-*.json`.
-
-```yaml
-- getDeviceState:
-    saveAs: "switchState"
-```
-
-**Tham số chung**:
-| Trường | Kiểu dữ liệu | Mô tả |
-| :--- | :--- | :--- |
-| `button` / `led` / `region` | String | Id region trong profile. Ưu tiên target đầy đủ như `${TARGET_DEVICE}.button_1` khi profile có nhiều thiết bị. |
-| `expect` | String | State cần match, ví dụ `ON`, `OFF`, `RED`, `PINK`. |
-| `camera` | String | Tên camera khi header dùng `cameras:` nhiều camera. |
-| `timeoutMs` | Number | Override timeout cho lệnh chờ. Không cần đặt nếu default profile/runner đủ. |
-| `stableFrames` | Number | Số frame liên tiếp cần match cho `waitDeviceState`/transition. |
-
-Khi assert/wait fail, runner lưu evidence camera gồm raw frame, warped frame,
-annotated frame, crop region, state JSON và timeline ngắn.
-
----
-
-## 🔊 Audio Testing (Kiểm thử Âm thanh)
-
-### `playMedia`
-**Mô tả**: Phát file audio/video trên thiết bị. Hỗ trợ Android.
-**Aliases**: `playMedia`
-
-**Ví dụ**:
-```yaml
-# Phát file audio đơn giản
-- playMedia: "./sounds/notification.mp3"
-
-# Phát với tùy chọn loop
-- playMedia:
-    file: "./sounds/background_music.mp3"
-    loopPlayback: true
-```
-
-**Tham số**:
-| Trường | Kiểu dữ liệu | Mặc định | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `file` | String | - | Đường dẫn file audio (tương đối hoặc tuyệt đối). |
-| `loopPlayback` | Boolean | `false` | Phát lặp liên tục. |
-
----
-
-### `stopMedia`
-**Mô tả**: Dừng phát media đang chạy.
-**Aliases**: `stopMedia`
-
-**Ví dụ**:
-```yaml
-- stopMedia
-```
-
----
-
-### `startAudioCapture`
-**Mô tả**: Bắt đầu ghi nhận audio từ thiết bị để phân tích sau. Hỗ trợ Android.
-**Aliases**: `startAudioCapture`
-
-**Ví dụ**:
-```yaml
-# Capture với thời lượng mặc định (30 giây)
-- startAudioCapture
-
-# Capture với thời lượng tùy chỉnh
-- startAudioCapture:
-    duration: 60000  # 60 giây
-    port: 8890
-```
-
-**Tham số**:
-| Trường | Kiểu dữ liệu | Mặc định | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `duration` | Number | `30000` | Thời lượng capture tối đa (ms). |
-| `port` | Number | `8890` | Port của audio server. |
-
----
-
-### `stopAudioCapture`
-**Mô tả**: Dừng ghi nhận audio.
-**Aliases**: `stopAudioCapture`
-
-**Ví dụ**:
-```yaml
-- stopAudioCapture
-```
-
----
-
-### `verifyAudioDucking`
-**Mô tả**: Xác minh rằng Audio Ducking đã xảy ra trong quá trình capture. Audio Ducking là khi âm lượng nhạc nền giảm xuống khi có thông báo hoặc hướng dẫn điều hướng.
-**Aliases**: `verifyAudioDucking`
-
-**Ví dụ**:
-```yaml
-# Verify với tham số mặc định
-- verifyAudioDucking
-
-# Verify với tham số tùy chỉnh
-- verifyAudioDucking:
-    minDuckingCount: 2      # Yêu cầu ít nhất 2 lần ducking
-    volumeDropThreshold: 40 # Yêu cầu âm lượng giảm ít nhất 40%
-```
-
-**Tham số**:
-| Trường | Kiểu dữ liệu | Mặc định | Mô tả |
-| :--- | :--- | :--- | :--- |
-| `minDuckingCount` | Number | `1` | Số lần ducking tối thiểu cần phát hiện. |
-| `volumeDropThreshold` | Number | `30` | Ngưỡng giảm âm lượng tối thiểu (%). |
-
-**Ví dụ Use Case hoàn chỉnh**:
-```yaml
-# Test Audio Ducking cho ứng dụng Navigation
-- playMedia:
-    file: "./audio/background_music.mp3"
-    loopPlayback: true
-
-- startAudioCapture:
-    duration: 30000
-
-- wait: 5000
-
-# Trigger navigation instruction (app sẽ phát thông báo)
-- tap: "Start Navigation"
-
-- wait: 10000
-
-- stopAudioCapture
-
-- verifyAudioDucking:
-    minDuckingCount: 1
-    volumeDropThreshold: 30
-
-- stopMedia
-```
-
----
-
-## ⚡ Hardware Automation (100% Native Rust)
-
-Các lệnh tự động hóa phần cứng bằng Rust Native tương tác trực tiếp với Jig điều khiển (Servo gạt nút, Relay rơ-le nguồn, Color Sensor cảm biến LED) qua truyền thông RS485/Serial.
-
-Khai báo Jig phần cứng trong YAML Header:
-```yaml
-jig: "COM5"   # Hoặc dạng struct: { port: "COM5", baudrate: 115200, autoPowerOff: true, timeoutMs: 3000 }
-```
-
-### `turnOn` / `turnOff` / `turnOffAll`
-**Mô tả**: Bật/Tắt rơ-le nguồn cấp điện cho kênh chỉ định.
-```yaml
-- turnOn: 1
-- turnOff: 1
-- turnOffAll
-```
-
-### `powerCycle`
-**Mô tả**: Hard Power Reboot (Tắt nguồn -> chờ 1s -> Bật lại nguồn).
-```yaml
-- powerCycle: 1
-- powerCycle:
+- turnOn: 1       # Bật nguồn kênh 1
+- turnOff: 1      # Tắt nguồn kênh 1
+- turnOffAll      # Tắt toàn bộ rơ-le
+- powerCycle:     # Khởi động lại nguồn (Tắt 2s rồi bật lại)
     channel: 1
     offMs: 2000
 ```
 
-### `clickButton` / `repeatClick`
-**Mô tả**: Bấm nút vật lý (bấm đơn hoặc nhấp lặp lại N lần liên tiếp).
+### `clickButton` / `pressButton` / `holdButton` / `releaseButton` / `releaseAllButtons` / `repeatClick`
+**Mô tả**: Điều khiển động cơ Servo nhấn nút vật lý trên thiết bị.
+
 ```yaml
-- clickButton: 1
-- repeatClick:
+- clickButton: 1         # Click nút vật lý kênh 1
+- pressButton: 1         # Nhấn đè nút kênh 1
+- holdButton: 1          # Nhấn giữ nút (cho chế độ Pairing / Reset)
+- releaseButton: 1       # Nhả nút kênh 1
+- releaseAllButtons      # Nhả tất cả các nút về vị trí nghỉ
+- repeatClick:           # Nhấn nhấp nhả 3 lần liên tiếp
     channel: 1
     count: 3
-    pressMs: 150
-    releaseMs: 150
 ```
 
-### `pressButton` / `holdButton`
-**Mô tả**: Gạt Servo nhấn và giữ nguyên vị trí nhấn nút vật lý (dùng cho các kịch bản giữ nút Reset 5s / 10s, vào chế độ Pairing).
-**Aliases**: `pressButton`, `holdButton`, `press`
+### `rotateServo` / `configureServo` / `startRepeatClick` / `stopRepeatClick`
+**Mô tả**: Cấu hình góc xoay Servo chi tiết và điều khiển vòng lặp nhấn nhả tự động phần cứng trên STM32.
 
-**Ví dụ**:
 ```yaml
-# Nhấn giữ nút channel 1 (đơn giản)
-- pressButton: 1
-
-# Nhấn giữ với cấu hình tùy chỉnh
-- pressButton:
+- rotateServo:
     channel: 1
-    durationMs: 5000  # Thời gian giữ (ms)
-```
+    angle: 90
+    speed: 50
 
----
-
-### `releaseButton` / `release`
-**Mô tả**: Gạt Servo nhả 1 nút vật lý cụ thể về vị trí góc nghỉ (`releaseAngle`).
-**Aliases**: `releaseButton`, `release`
-
-**Ví dụ**:
-```yaml
-# Nhả nút channel 1
-- releaseButton: 1
-
-# Alias nhả nút
-- release: 1
-```
-
----
-
-### `releaseAllButtons` / `releaseAll`
-**Mô tả**: Nhả toàn bộ tất cả các kênh Servo trên Jig về vị trí nghỉ an toàn.
-**Aliases**: `releaseAllButtons`, `releaseAll`
-
-**Ví dụ**:
-```yaml
-- releaseAllButtons
-```
-
-### `seeLedColor` / `seeLedBlink` / `seeLedOff`
-**Mô tả**: Kiểm tra phản hồi màu sắc, chớp tắt hoặc tắt hẳn của đèn LED bằng cảm biến màu.
-```yaml
-- seeLedColor: "GREEN"
-- seeLedColor:
-    channel: 1
-    expected: ["BLUE", "CYAN"]
-- seeLedBlink: 1
-- seeLedOff: 1
-```
-
-### `configureServo`
-**Mô tả**: Cấu hình góc xoay và thời gian chuyển động cho kênh Servo.
-```yaml
 - configureServo:
     channel: 1
     pressAngle: 75
-    releaseAngle: 15
-    pressDurationMs: 400
-    releaseDurationMs: 150
-    holdDurationMs: 300
-```
+    releaseAngle: 0
+    pressDurationMs: 200
 
-### `releaseAllButtons`
-**Mô tả**: Nhả toàn bộ các servo về vị trí nghỉ an toàn.
-```yaml
-- releaseAllButtons
-```
-
-### `startRepeatClick` / `stopRepeatClick`
-**Mô tả**: Bắt đầu/Dừng vòng lặp bấm nút liên tục tự động chạy trực tiếp trên chip vi điều khiển STM32.
-```yaml
 - startRepeatClick:
     channel: 1
     periodMs: 1500
-- wait: 5000
+
 - stopRepeatClick: 1
 ```
 
-### `setSensorLight`
-**Mô tả**: Bật/Tắt đèn chiếu sáng cảm biến màu sắc TCS.
+### `readServo` / `readRelay`
+**Mô tả**: Đọc trạng thái phản hồi từ Servo và Relay.
+
 ```yaml
-- setSensorLight: "on"
-- setSensorLight: "off"
+- readServo: 1
+- readRelay: 1
 ```
 
-### `setBrightnessThresholds`
-**Mô tả**: Cấu hình ngưỡng độ sáng (% off, % on) và khoảng window phát hiện chớp tắt.
+---
+
+## 🎨 Hardware LED & Color Sensor (Cảm biến màu & LED Phần cứng)
+
+### `seeLedColor` / `seeLedBlink` / `seeLedOff`
+**Mô tả**: Kiểm tra và đợi trạng thái đèn LED phần cứng (RED, GREEN, BLUE, YELLOW, CYAN, MAGENTA, PINK, WHITE, OFF).
+
 ```yaml
+- seeLedColor: "GREEN"
+
+- seeLedColor:
+    channel: 1
+    expected: "BLUE"
+    timeoutMs: 5000
+
+- seeLedBlink: 1 # Đợi LED kênh 1 nhấp nháy
+
+- seeLedOff: 1   # Đợi LED tắt
+```
+
+### `setSensorLight` / `setBrightnessThresholds` / `waitForBrightness` / `waitForCct`
+**Mô tả**: Điều khiển đèn chiếu cảm biến màu và cài đặt ngưỡng độ sáng / nhiệt độ màu (CCT Kelvin).
+
+```yaml
+- setSensorLight: "on"
+
 - setBrightnessThresholds:
     channel: 1
     offBelowPercent: 30
     onAbovePercent: 70
-    minPulseMs: 50
-    maxPulseMs: 1000
-```
 
-### `waitForBrightness` / `waitForCct`
-**Mô tả**: Chờ chỉ số phần trăm độ sáng hoặc nhiệt độ màu Kelvin (CCT) đạt ngưỡng.
-```yaml
 - waitForBrightness:
     channel: 1
     minPercent: 70
+
 - waitForCct:
     channel: 1
     minKelvin: 2700
     maxKelvin: 6500
 ```
 
-### `calibrateColor` / `calibrateBrightness` / `addCctPoint`
-**Mô tả**: Hiệu chuẩn màu sắc mẫu, mức độ sáng (dark/on) và điểm nhiệt độ màu Kelvin.
+### `calibrateColor` / `calibrateBrightness` / `addCctPoint` / `saveCalibration` / `loadCalibration` / `resetCalibration` / `eraseCalibration`
+**Mô tả**: Hiệu chỉnh và lưu trữ dữ liệu cân bằng trắng / màu sắc cảm biến vào bộ nhớ Flash.
+
 ```yaml
 - calibrateColor:
     channel: 1
     color: "RED"
-- calibrateBrightness:
-    channel: 1
-    mode: "dark"
-- addCctPoint:
-    channel: 1
-    knownKelvin: 4000
-```
 
-### `saveCalibration` / `loadCalibration` / `resetCalibration` / `eraseCalibration`
-**Mô tả**: Đọc/Ghi/Xóa dữ liệu hiệu chuẩn phần cứng trong bộ nhớ Flash của vi điều khiển.
-```yaml
 - saveCalibration
 - loadCalibration
-- resetCalibration
-- eraseCalibration
 ```
 
-### `readServo` / `readRelay` / `readColor` / `readSensorLight`
-**Mô tả**: Đọc và ghi log trạng thái hiện tại của Servo (góc xoay, trạng thái nhấn/nhả), Relay (bật/tắt), Cảm biến màu sắc (màu ổn định, RGBC raw, độ tin cậy) và Đèn soi cảm biến PB15.
-**Aliases**:
-- `readServo`, `getServoState`, `servoState`
-- `readRelay`, `getRelayState`, `relayState`
-- `readColor`, `readColorSensor`, `colorState`
-- `readSensorLight`, `getSensorLightState`, `lightState`
+### `enterSafeState` / `systemDiagnostics` / `readColor` / `readSensorLight`
+**Mô tả**: Ngắt an toàn khẩn cấp, chẩn đoán hệ thống MCU và đọc giá trị màu RGBC thực tế.
 
-**Ví dụ**:
 ```yaml
-# Đọc trạng thái và góc của Servo kênh 1
-- readServo: 1
-
-# Đọc trạng thái BẬT/TẮT của Relay kênh 1
-- readRelay: 1
-
-# Đọc thông số RGBC, màu nhận diện và độ tin cậy từ Cảm biến màu kênh 1
+- enterSafeState
+- systemDiagnostics
 - readColor: 1
-
-# Đọc trạng thái BẬT/TẮT của Đèn chiếu sáng cảm biến (PB15)
 - readSensorLight
 ```
 
-### `enterSafeState` / `systemDiagnostics`
-**Mô tả**: Kích hoạt trạng thái dừng an toàn hoặc đọc dữ liệu chẩn đoán hệ thống STM32.
+---
+
+## 📷 Camera Profile Assertions (Kiểm tra trạng thái qua Camera)
+
+### `assertDeviceState` / `waitDeviceState` / `assertDeviceTransition` / `waitLedPattern` / `getDeviceState`
+**Mô tả**: Nhận diện vùng đèn LED thiết bị qua Camera profile.
+
 ```yaml
-- systemDiagnostics
-- enterSafeState
+- assertDeviceState:
+    button: "power_led"
+    expect: "GREEN"
+
+- waitDeviceState:
+    button: "status_led"
+    expect: "BLUE"
+    withinMs: 5000
+
+- assertDeviceTransition:
+    button: "status_led"
+    from: "OFF"
+    to: "RED"
+
+- waitLedPattern:
+    button: "status_led"
+    expect: "PINK"
+    count: 3
+
+- getDeviceState:
+    saveAs: "current_device_leds"
 ```
 
+---
+
+## 🔊 Audio & Media Playback (Âm thanh & Truyền thông)
+
+### `playMedia` / `stopMedia`
+**Mô tả**: Phát file âm thanh mẫu (.wav, .mp3) ra loa thiết bị.
+
+```yaml
+- playMedia:
+    file: "./audio/voice_command.wav"
+    loopPlayback: false
+
+- stopMedia
+```
+
+### `startAudioCapture` / `stopAudioCapture` / `verifyAudioDucking`
+**Mô tả**: Ghi âm tín hiệu mic và kiểm tra hiện tượng giảm âm lượng (Audio Ducking).
+
+```yaml
+- startAudioCapture:
+    duration: 10000
+
+- stopAudioCapture
+
+- verifyAudioDucking:
+    minDuckingCount: 1
+    volumeDropThreshold: 0.3
+```
+
+---
+
+## 🛠️ Device & System Settings (Thiết lập Thiết bị & Hệ thống)
+
+### `rotate` / `setOrientation`
+**Mô tả**: Xoay màn hình thiết bị.
+
+```yaml
+- rotate: "landscape"
+
+- setOrientation: "LANDSCAPE"
+```
+
+### `press` / `pressKey`
+**Mô tả**: Nhấn phím cứng hoặc phím hệ thống (ENTER, BACK, HOME, VOLUME_UP, DPAD_CENTER).
+
+```yaml
+- press: "ENTER"
+
+- pressKey:
+    key: "BACK"
+    times: 2
+```
+
+### Random Inputs: `inputRandomEmail` / `inputRandomNumber` / `inputRandomPersonName` / `inputRandomText`
+**Mô tả**: Nhập ngẫu nhiên dữ liệu vào ô đang chọn.
+
+```yaml
+- inputRandomEmail
+- inputRandomNumber: { length: 6 }
+- inputRandomPersonName
+- inputRandomText: { length: 10 }
+```
+
+### System Controls: `openNotifications` / `openQuickSettings` / `setVolume` / `lockDevice` / `unlockDevice` / `selectDisplay` / `setLocale`
+```yaml
+- openNotifications
+- openQuickSettings
+- setVolume: 80
+- lockDevice
+- unlockDevice
+- display: 1
+- locale: "vi_VN"
+```
+
+### Performance Profiling: `startProfiling` / `stopProfiling` / `assertPerformance` / `setCpuThrottling` / `setNetworkConditions`
+```yaml
+- startProfiling
+- wait: 10000
+- stopProfiling:
+    savePath: "./output/profile.trace"
+
+- assertPerformance:
+    metric: "memory"
+    limit: "250MB"
+
+- setCpuThrottling: 4.0
+
+- setNetworkConditions: "slow-3g"
+```
