@@ -65,6 +65,7 @@ MCP_README = ROOT / "lumi-tester-mcp" / "README.md"
 README_MD = ROOT / "lumi-tester" / "README.md"
 WRITING_TESTS_MD = ROOT / "lumi-tester" / "docs" / "writing_tests.md"
 COMMANDS_MD = ROOT / "lumi-tester" / "docs" / "api" / "commands.md"
+PYTHON_INTEGRATION_MD = ROOT / "lumi-tester" / "docs" / "python-integration.md"
 FLOWS_MD = ROOT / "lumi-tester" / "docs" / "flows" / "test_execution_flow.md"
 DOCS_INDEX_HTML = ROOT / "lumi-tester" / "docs" / "index.html"
 DESKTOP_TESTING_MD = ROOT / "lumi-tester" / "docs" / "desktop-testing.md"
@@ -1558,12 +1559,14 @@ def validate_docs_index_content() -> list[str]:
     embedded = json.loads(match.group(1))
     expected = {
         "commands": COMMANDS_MD.read_text(encoding="utf-8"),
+        "python_integration": PYTHON_INTEGRATION_MD.read_text(encoding="utf-8"),
         "flows": FLOWS_MD.read_text(encoding="utf-8"),
         "writing_tests": WRITING_TESTS_MD.read_text(encoding="utf-8"),
         "ai_authoring": AI_AUTHORING_MD.read_text(encoding="utf-8"),
     }
     expected_page_names = {
         "commands": "Commands Reference",
+        "python_integration": "Python Integration",
         "flows": "Test Flows",
         "writing_tests": "Writing Tests",
         "ai_authoring": "AI Authoring",
