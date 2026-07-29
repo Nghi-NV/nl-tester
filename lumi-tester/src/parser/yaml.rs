@@ -1510,6 +1510,24 @@ fn parse_command_with_params(
         "enterSafeState" => TestCommand::EnterSafeState,
         "systemDiagnostics" => TestCommand::SystemDiagnostics,
 
+        "runPython" | "execPython" | "python" => {
+            let p: crate::parser::types::RunPythonParams = if params.is_string() {
+                crate::parser::types::RunPythonParams {
+                    script: Some(params.as_str().unwrap().to_string()),
+                    code: None,
+                    args: vec![],
+                    env: HashMap::new(),
+                    timeout_ms: None,
+                    python_path: None,
+                    save_var: None,
+                    save_vars: None,
+                }
+            } else {
+                serde_yaml::from_value(params.clone())?
+            };
+            TestCommand::RunPython(p)
+        }
+
         _ => return Ok(None),
     };
 
@@ -1834,6 +1852,46 @@ platform: android
         match &flow.commands[7] {
             TestCommand::ReleaseButton(p) => assert_eq!(p.channel, 2),
             _ => panic!("Expected ReleaseButton for command 7"),
+        }
+    }
+
+    #[test]
+    fn test_run_python_parsing() {
+        let yaml = r#"
+platform: android
+---
+- runPython: "./scripts/test.py"
+- execPython:
+    script: "./scripts/run.py"
+    args: ["--mode", "fast"]
+    saveVars:
+      token: "data.token"
+      status: "status"
+- python:
+    code: "print('hello')"
+    saveVar: "out"
+"#;
+        let flow = parse_yaml_content(yaml, Path::new("test.yaml")).unwrap();
+        assert_eq!(flow.commands.len(), 3);
+
+        match &flow.commands[0] {
+            TestCommand::RunPython(p) => assert_eq!(p.script.as_deref(), Some("./scripts/test.py")),
+            _ => panic!("Expected RunPython for command 0"),
+        }
+        match &flow.commands[1] {
+            TestCommand::RunPython(p) => {
+                assert_eq!(p.script.as_deref(), Some("./scripts/run.py"));
+                assert_eq!(p.args, vec!["--mode", "fast"]);
+                assert!(p.save_vars.is_some());
+            }
+            _ => panic!("Expected RunPython for command 1"),
+        }
+        match &flow.commands[2] {
+            TestCommand::RunPython(p) => {
+                assert_eq!(p.code.as_deref(), Some("print('hello')"));
+                assert_eq!(p.save_var.as_deref(), Some("out"));
+            }
+            _ => panic!("Expected RunPython for command 2"),
         }
     }
 }

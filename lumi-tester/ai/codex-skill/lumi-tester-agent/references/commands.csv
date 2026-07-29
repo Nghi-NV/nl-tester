@@ -67,6 +67,7 @@ rotate,rotateScreen,device,Rotate screen, string|object,mode,,,android|ios,"- ro
 press,pressKey,device,Press hardware/key code by name, string|object,key,times,no,android|android_auto|ios|macos|windows,"- press: ENTER","Android Auto supports DHU keys such as navigation search play_pause media_next"
 pushFile,,file,Push file to device,object,source|destination,,no,android,"- pushFile: { source: local.txt, destination: /sdcard/local.txt }",""
 pullFile,,file,Pull file from device,object,source|destination,,no,android,"- pullFile: { source: /sdcard/log.txt, destination: ./log.txt }",""
+runPython,execPython|python,script,Execute Python script file or code snippet,string|object,script|code,args|env|timeoutMs|pythonPath|saveVar|saveVars,no,all,"- runPython: ./script.py",""
 setClipboard,,clipboard,Set clipboard text,string,text,,,android|ios|web|macos|windows,"- setClipboard: hello",""
 getClipboard,,clipboard,Save clipboard to variable,string|object,name,,,android|ios|web|macos|windows,"- getClipboard: clip",""
 assertClipboard,,clipboard,Assert clipboard content,string,text,,,android|ios|web|macos|windows,"- assertClipboard: hello",""

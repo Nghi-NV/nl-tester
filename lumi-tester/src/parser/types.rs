@@ -753,6 +753,8 @@ pub enum TestCommand {
     EraseCalibration,
     EnterSafeState,
     SystemDiagnostics,
+
+    RunPython(RunPythonParams),
 }
 
 fn default_channel_one() -> u8 {
@@ -947,6 +949,34 @@ pub struct AddCctPointParams {
     #[serde(default = "default_channel_one")]
     pub channel: u8,
     pub known_kelvin: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum SaveVarsInput {
+    List(Vec<String>),
+    Map(HashMap<String, String>),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunPythonParams {
+    #[serde(default)]
+    pub script: Option<String>,
+    #[serde(default)]
+    pub code: Option<String>,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+    #[serde(default, alias = "timeout_ms", alias = "timeoutMs")]
+    pub timeout_ms: Option<u64>,
+    #[serde(default, alias = "python_path", alias = "pythonPath")]
+    pub python_path: Option<String>,
+    #[serde(default, alias = "save_var", alias = "saveVar")]
+    pub save_var: Option<String>,
+    #[serde(default, alias = "save_vars", alias = "saveVars")]
+    pub save_vars: Option<SaveVarsInput>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2382,6 +2412,7 @@ impl TestCommand {
             TestCommand::EraseCalibration => "eraseCalibration".to_string(),
             TestCommand::EnterSafeState => "enterSafeState".to_string(),
             TestCommand::SystemDiagnostics => "systemDiagnostics".to_string(),
+            TestCommand::RunPython(_) => "runPython".to_string(),
         }
     }
 }

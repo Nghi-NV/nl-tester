@@ -3273,6 +3273,157 @@ impl TestExecutor {
                 Ok(())
             }
 
+            TestCommand::RunPython(params) => {
+                let timeout_ms = params.timeout_ms.unwrap_or(30000);
+
+                let py_exe = if let Some(ref p) = params.python_path {
+                    self.context.substitute_vars(p)
+                } else if cfg!(target_os = "windows") {
+                    "python".to_string()
+                } else {
+                    "python3".to_string()
+                };
+
+                let (_temp_file, script_path) = if let Some(ref code) = params.code {
+                    let substituted_code = self.context.substitute_vars(code);
+                    let temp_dir = std::env::temp_dir();
+                    let file_path = temp_dir.join(format!("lumi_py_{}.py", Uuid::new_v4()));
+                    std::fs::write(&file_path, substituted_code)
+                        .with_context(|| format!("Failed to write inline Python script to {}", file_path.display()))?;
+                    (Some(file_path.clone()), file_path.to_string_lossy().to_string())
+                } else if let Some(ref script) = params.script {
+                    let substituted = self.context.substitute_vars(script);
+                    let resolved = self.context.resolve_path(&substituted);
+                    (None, resolved.to_string_lossy().to_string())
+                } else {
+                    anyhow::bail!("runPython requires either 'script' or 'code' parameter");
+                };
+
+                let substituted_args: Vec<String> = params
+                    .args
+                    .iter()
+                    .map(|arg| self.context.substitute_vars(arg))
+                    .collect();
+
+                let mut cmd = tokio::process::Command::new(&py_exe);
+                cmd.arg(&script_path);
+                for arg in &substituted_args {
+                    cmd.arg(arg);
+                }
+
+                for (k, v) in &params.env {
+                    cmd.env(k, self.context.substitute_vars(v));
+                }
+
+                println!(
+                    "  {} Running Python command: {} {}...",
+                    "🐍".green(),
+                    py_exe,
+                    script_path
+                );
+
+                let start = std::time::Instant::now();
+                let output_res = tokio::time::timeout(
+                    std::time::Duration::from_millis(timeout_ms),
+                    cmd.output(),
+                )
+                .await;
+
+                if let Some(ref temp_p) = _temp_file {
+                    std::fs::remove_file(temp_p).ok();
+                }
+
+                let output = match output_res {
+                    Ok(Ok(out)) => out,
+                    Ok(Err(e)) => anyhow::bail!("Failed to execute Python process '{}': {}", py_exe, e),
+                    Err(_) => anyhow::bail!("Python script execution timed out after {}ms", timeout_ms),
+                };
+
+                let stdout_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let stderr_str = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+                if !output.status.success() {
+                    if !stderr_str.is_empty() {
+                        println!("    {} {}", "❌ Python stderr:".red(), stderr_str);
+                    }
+                    anyhow::bail!("Python script failed with exit code {:?}: {}", output.status.code(), stderr_str);
+                }
+
+                if !stdout_str.is_empty() {
+                    println!("    {} {}", "📄 Python stdout:".cyan(), stdout_str);
+                }
+
+                if let Some(ref var_name) = params.save_var {
+                    self.context.set_var(var_name, &stdout_str);
+                    println!(
+                        "    {} Saved Python output to variable '${}' ({} bytes)",
+                        "💾".green(),
+                        var_name,
+                        stdout_str.len()
+                    );
+                }
+
+                if let Some(ref save_vars) = params.save_vars {
+                    if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&stdout_str) {
+                        match save_vars {
+                            crate::parser::types::SaveVarsInput::List(list) => {
+                                for key in list {
+                                    if let Some(val) = json_val.get(key) {
+                                        let val_str = match val {
+                                            serde_json::Value::String(s) => s.clone(),
+                                            other => other.to_string(),
+                                        };
+                                        self.context.set_var(key, &val_str);
+                                        println!(
+                                            "    {} Saved Python JSON field '{}' to variable '${}'",
+                                            "💾".green(),
+                                            key,
+                                            key
+                                        );
+                                    }
+                                }
+                            }
+                            crate::parser::types::SaveVarsInput::Map(map) => {
+                                for (var_name, json_path) in map {
+                                    let pointer_path = if json_path.starts_with('/') {
+                                        json_path.clone()
+                                    } else {
+                                        format!("/{}", json_path.replace('.', "/"))
+                                    };
+                                    let found_val = json_val.pointer(&pointer_path).or_else(|| json_val.get(json_path));
+                                    if let Some(val) = found_val {
+                                        let val_str = match val {
+                                            serde_json::Value::String(s) => s.clone(),
+                                            other => other.to_string(),
+                                        };
+                                        self.context.set_var(var_name, &val_str);
+                                        println!(
+                                            "    {} Saved Python JSON path '{}' to variable '${}'",
+                                            "💾".green(),
+                                            json_path,
+                                            var_name
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        println!(
+                            "    {} Warning: saveVars requires Python stdout to be valid JSON",
+                            "⚠️".yellow()
+                        );
+                    }
+                }
+
+                println!(
+                    "  {} Python execution completed in {}ms",
+                    "✓".green(),
+                    start.elapsed().as_millis()
+                );
+
+                Ok(())
+            }
+
             // GIF Recording
             TestCommand::CaptureGifFrame(params_input) => {
                 let params = params_input.clone().into_inner();
