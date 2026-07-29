@@ -776,7 +776,7 @@ pub struct HardwareConnectParams {
 pub struct ServoClickParams {
     #[serde(default = "default_channel_one")]
     pub channel: u8,
-    #[serde(default)]
+    #[serde(default, alias = "hold_ms", alias = "holdMs")]
     pub hold_ms: Option<u64>,
 }
 

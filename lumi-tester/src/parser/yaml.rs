@@ -1782,4 +1782,58 @@ not a shell assignment
         assert_eq!(parsed.get("PASSWORD").map(String::as_str), Some("abc#123"));
         assert!(!parsed.contains_key("not a shell assignment"));
     }
+
+    #[test]
+    fn test_servo_button_aliases_parsing() {
+        let yaml = r#"
+platform: android
+---
+- clickButton: 1
+- click: { channel: 2, hold_ms: 500 }
+- pressButton: 1
+- hold: 2
+- holdButton: 3
+- press: 4
+- releaseButton: 1
+- release: 2
+"#;
+        let flow = parse_yaml_content(yaml, Path::new("hardware.yaml")).unwrap();
+        assert_eq!(flow.commands.len(), 8);
+
+        match &flow.commands[0] {
+            TestCommand::ClickButton(p) => assert_eq!(p.channel, 1),
+            _ => panic!("Expected ClickButton for command 0"),
+        }
+        match &flow.commands[1] {
+            TestCommand::ClickButton(p) => {
+                assert_eq!(p.channel, 2);
+                assert_eq!(p.hold_ms, Some(500));
+            }
+            _ => panic!("Expected ClickButton for command 1"),
+        }
+        match &flow.commands[2] {
+            TestCommand::PressButton(p) => assert_eq!(p.channel, 1),
+            _ => panic!("Expected PressButton for command 2"),
+        }
+        match &flow.commands[3] {
+            TestCommand::PressButton(p) => assert_eq!(p.channel, 2),
+            _ => panic!("Expected PressButton for command 3"),
+        }
+        match &flow.commands[4] {
+            TestCommand::PressButton(p) => assert_eq!(p.channel, 3),
+            _ => panic!("Expected PressButton for command 4"),
+        }
+        match &flow.commands[5] {
+            TestCommand::PressButton(p) => assert_eq!(p.channel, 4),
+            _ => panic!("Expected PressButton for command 5"),
+        }
+        match &flow.commands[6] {
+            TestCommand::ReleaseButton(p) => assert_eq!(p.channel, 1),
+            _ => panic!("Expected ReleaseButton for command 6"),
+        }
+        match &flow.commands[7] {
+            TestCommand::ReleaseButton(p) => assert_eq!(p.channel, 2),
+            _ => panic!("Expected ReleaseButton for command 7"),
+        }
+    }
 }
