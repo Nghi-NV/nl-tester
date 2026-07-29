@@ -1589,7 +1589,7 @@ def validate_docs_index_content() -> list[str]:
             errors.append(f"{DOCS_INDEX_HTML}: missing nav item for {key}")
 
     page_names_match = re.search(
-        r"const pageNames = (\{.*?\});\n\s*function loadPage",
+        r"const pageNames = (\{.*?\});\s*(?=function|let|var|const)",
         html,
         flags=re.DOTALL,
     )

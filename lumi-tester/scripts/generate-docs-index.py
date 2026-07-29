@@ -51,8 +51,8 @@ def main() -> int:
         "const pageNames = " + page_names_json.replace("\n", "\n        ") + ";"
     )
     updated, count = re.subn(
-        r"const pageNames = \{.*?\};\n\s*function loadPage",
-        lambda _match: page_names_replacement + "\n\n        function loadPage",
+        r"const pageNames = \{.*?\};\s*(?=function|let|var|const)",
+        lambda _match: page_names_replacement + "\n\n        ",
         updated,
         count=1,
         flags=re.DOTALL,

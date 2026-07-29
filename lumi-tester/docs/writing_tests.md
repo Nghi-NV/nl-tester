@@ -2,6 +2,8 @@
 
 Tài liệu này giúp bạn hiểu rõ cấu trúc file kịch bản test và cách tổ chức một test flow hiệu quả.
 
+---
+
 ## 📄 Cấu trúc File YAML
 
 `lumi-tester` chấp nhận hai định dạng file để phù hợp với nhu cầu đơn giản hoặc phức tạp.
@@ -53,6 +55,254 @@ Phần Header nằm phía trên dấu `---`. Nếu không có dấu `---`, các 
 
 ---
 
+## 💡 Ví dụ đầy đủ kịch bản kiểm thử (Full Test Flow Examples)
+
+### 1. 🤖 Android Mobile Test (Đăng nhập & Kiểm tra Trang chủ)
+```yaml
+platform: android
+appId: com.example.smartapp
+defaultTimeout: 10000
+tags:
+  - mobile
+  - smoke
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: "allow"
+      location: "while_in_use"
+
+# Chờ màn hình đăng nhập hiển thị
+- waitSee:
+    id: "login_container"
+
+# Nhập email và mật khẩu
+- tap:
+    id: "input_email"
+- inputText: "user@example.com"
+
+- tap:
+    id: "input_password"
+- inputText: "Secret123"
+
+- tap:
+    id: "btn_login"
+
+# Xác nhận vào được Dashboard
+- see:
+    text: "Chào mừng"
+    exact: false
+- screenshot: "android_dashboard.png"
+```
+
+---
+
+### 2. 🍏 iOS Mobile Test (Xác thực & Accessibility ID)
+```yaml
+platform: ios
+appId: com.example.iosapp
+defaultTimeout: 12000
+tags:
+  - ios
+  - regression
+---
+- launchApp:
+    clearState: true
+
+- tap:
+    desc: "LoginButton"
+    type: "Button"
+
+- type:
+    text: "ios_tester@example.com"
+    selector: "EmailField"
+
+- hideKeyboard
+
+- tap: "Submit"
+- see: "Welcome Page"
+```
+
+---
+
+### 3. 🌐 Web Automation Test (Chrome Multi-step & API Call)
+```yaml
+platform: web
+url: "https://shop.example.com"
+browser: Chrome
+defaultTimeout: 15000
+---
+- launchApp
+
+# Gửi HTTP API lấy Token khuyến mãi
+- httpRequest:
+    url: "https://api.example.com/promo/active"
+    method: "GET"
+    saveResponse:
+      "$.promo_code": "PROMO_CODE"
+
+- tap:
+    css: ".nav-login-btn"
+
+- inputText: "testuser@gmail.com"
+- press: "Enter"
+
+- scrollTo: "Mã giảm giá"
+- tap:
+    css: "#promo_input"
+- write: "$PROMO_CODE"
+
+- see: "Áp dụng thành công"
+```
+
+---
+
+### 4. 🐍 Python Integration Test (Thực thi mã Python & Kiểm tra Biến)
+```yaml
+platform: android
+appId: com.example.iotapp
+---
+# Gọi script Python tạo mã xác thực JWT ngẫu nhiên
+- runPython:
+    code: |
+      import time, json
+      payload = {
+        "timestamp": int(time.time()),
+        "token": "AUTH_XYZ999",
+        "role": "admin"
+      }
+      print(json.dumps(payload))
+    saveVars:
+      generated_token: "token"
+      user_role: "role"
+
+- assertTrue: "${user_role} == 'admin'"
+
+- tap:
+    id: "auth_token_field"
+- write: "$generated_token"
+```
+
+---
+
+### 5. ⚙️ Hardware Jig Controller Test (Relay, Servo & LED Sensor)
+```yaml
+platform: android
+appId: com.lumi.smarthome
+---
+# 1. Kết nối mạch điều khiển Jig qua USB Serial
+- connectJig:
+    port: "COM5"
+    baudrate: 115200
+
+# 2. Cấp nguồn rơ-le kênh 1 cho thiết bị Smart Switch
+- turnOn: 1
+- wait: 2000
+
+# 3. Điều khiển động cơ Servo nhấn giữ nút Pairing trong 5 giây
+- holdButton: 1
+- wait: 5000
+- releaseButton: 1
+
+# 4. Kiểm tra đèn LED phần cứng nhấp nháy màu xanh dương (Pairing Mode)
+- seeLedColor:
+    channel: 1
+    expected: "BLUE"
+    timeoutMs: 8000
+
+# 5. Ngắt nguồn hoàn toàn sau khi hoàn tất test
+- turnOffAll
+- disconnectJig
+```
+
+---
+
+### 6. 🚗 Android Auto / Automotive Test (Điều hướng Bản đồ & Media)
+```yaml
+platform: android_auto
+appId: com.example.naviapp
+---
+- selectDisplay: "1" # Màn hình trung tâm ô tô DHU
+- launchApp
+
+- tap:
+    point: "50%,20%" # Chọn ô tìm kiếm đường đi
+- inputText: "Hà Nội"
+- press: "ENTER"
+
+- see: "Bắt đầu chỉ đường"
+- tap: "Bắt đầu chỉ đường"
+```
+
+---
+
+### 7. 💻 macOS Desktop Test (App Lifecycle & Clear State)
+```yaml
+platform: macos
+appId: /Applications/LumiDesktop.app
+desktopState:
+  clear:
+    mode: autoSafe
+---
+- launchApp:
+    clearState: true
+
+- see: "Setup Wizard"
+- tap: "Next"
+- screenshot: "macos_wizard.png"
+```
+
+---
+
+### 8. 📍 GPS Simulation Test (Giả lập di chuyển theo file GPX)
+```yaml
+platform: android
+appId: com.example.tracker
+---
+- launchApp
+
+# Bắt đầu phát tọa độ di chuyển tốc độ 60km/h
+- gps:
+    file: "./routes/hanoi_to_haiphong.gpx"
+    speed: 60
+    loop: true
+
+- wait: 5000
+- waitForLocation:
+    lat: 20.8449
+    lon: 106.6881
+    tolerance: 50.0
+
+- stopMockLocation
+```
+
+---
+
+### 9. 📈 Performance Profiling Test (Đo CPU/RAM & Assert)
+```yaml
+platform: android
+appId: com.example.heavyapp
+---
+- startProfiling:
+    samplingIntervalMs: 500
+
+- launchApp
+- repeat:
+    times: 5
+    commands:
+      - swipeLeft
+      - wait: 1000
+
+- stopProfiling:
+    savePath: "./output/profile_result.json"
+
+- assertPerformance:
+    metric: "memory"
+    limit: "200MB"
+```
+
+---
+
 ## 🔍 Cách tìm Elements (Selectors)
 
 `lumi-tester` hỗ trợ nhiều cách để xác định element trên màn hình:
@@ -87,24 +337,6 @@ Phần Header nằm phía trên dấu `---`. Nếu không có dấu `---`, các 
     - tap:
         desc: "Nút Lưu"
     ```
-
-### 🧱 Tìm hiểu về `type` (Element Type)
-Trường `type` giúp chỉ định loại thành phần:
-- **Android**: `Button`, `EditText`, `TextView`, `ImageView`, `CheckBox`, `Switch`.
-- **iOS**: `Button`, `TextField`, `SecureTextField`, `StaticText`, `Image`, `Cell`.
-- **Web**: `input`, `button`, `a`, `span`, `div`, `p`.
-
----
-
-## 📦 Biến số và Substitutions
-
-Sử dụng `${variable_name}` để truy xuất biến.
-```yaml
-vars:
-  username: "test_user"
----
-- write: "${username}"
-```
 
 ---
 
