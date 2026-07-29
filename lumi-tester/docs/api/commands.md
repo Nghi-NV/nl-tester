@@ -2,6 +2,8 @@
 
 Tài liệu này liệt kê chi tiết đầy đủ **tất cả 138 lệnh (commands & aliases)** có thể sử dụng trong file YAML của `lumi-tester` trên các nền tảng **Android**, **Android Auto**, **iOS**, **Web**, **macOS**, **Windows** và **Hardware Jig Controller**.
 
+Mỗi lệnh đều có ví dụ minh họa đầy đủ **tất cả các biến số và tham số có thể có** (từ dạng viết tắt đơn giản đến dạng đối tượng nâng cao).
+
 ---
 
 ## 📌 Bảng tra cứu nhanh lệnh (Quick Access Table Index)
@@ -73,6 +75,8 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 - tap:
     rightOf: "Username"
     type: "EditText"
+    timeout: 5000
+    optional: false
 ```
 
 ### 📷 OCR Selector (Nhận diện quang học)
@@ -100,25 +104,38 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `open` / `launchApp`
 **Mô tả**: Mở một ứng dụng trên thiết bị. Hỗ trợ Package name (Android), Bundle ID (iOS), `.app` (macOS), hoặc `.exe` path (Windows). Trên macOS/Windows cần cấu hình `desktopState.clear` ở header để xóa dữ liệu desktop state.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
+# 1. Viết tắt (Shorthand)
+- launchApp
+
+# 2. Đầy đủ các biến số đối tượng
 - launchApp:
     appId: "com.example.app"
     clearState: true
     permissions:
       notifications: "allow"
       location: "always"
+      camera: "deny"
+      microphone: "allow"
 ```
 
 ### `stopApp` / `stop`
 **Mô tả**: Dừng (kill) ứng dụng đang chạy.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
+# 1. Viết tắt (Shorthand) - Dừng app mặc định từ header
+- stopApp
+
+# 2. Chỉ định appId cụ thể
 - stopApp: "com.example.app"
 ```
 
 ### `installApp`
 **Mô tả**: Cài đặt file ứng dụng (.apk, .ipa, .app path) vào thiết bị.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - installApp: "./builds/app-debug.apk"
 ```
@@ -126,6 +143,7 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `uninstallApp`
 **Mô tả**: Gỡ cài đặt ứng dụng theo package/bundle ID.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - uninstallApp: "com.example.app"
 ```
@@ -133,14 +151,24 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `clearAppData`
 **Mô tả**: Xóa dữ liệu và cache của ứng dụng Android. Không dùng lệnh này cho macOS/Windows; desktop cần `desktopState.clear` trong header và `launchApp: { clearState: true }`.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
+# 1. Xóa app mặc định
+- clearAppData
+
+# 2. Chỉ định package name cụ thể
 - clearAppData: "com.example.app"
 ```
 
 ### `backgroundApp`
 **Mô tả**: Đưa ứng dụng xuống nền trong khoảng thời gian quy định rồi tự mở lại.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
+# 1. Viết tắt thời gian ms
+- backgroundApp: 5000
+
+# 2. Đối tượng cấu hình
 - backgroundApp:
     durationMs: 5000
 ```
@@ -173,8 +201,13 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `openLink` / `deepLink`
 **Mô tả**: Mở Deep Link hoặc URL quy định.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
+# 1. Deep link đơn giản
 - openLink: "myapp://settings/profile"
+
+# 2. Mở URL Web
+- openLink: "https://example.com/checkout?user=123"
 ```
 
 ### `navigate`
@@ -191,36 +224,61 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `tapOn` / `tap`
 **Mô tả**: Nhấn (click) vào phần tử hoặc tọa độ.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
+# 1. Viết tắt theo Text
 - tap: "Login"
 
+# 2. Đầy đủ các trường biến số đối tượng
 - tap:
     id: "btn_submit"
+    text: "Submit"
+    type: "Button"
+    index: 0
+    timeout: 5000
     optional: true
+    scrollable:
+      enable: true
+      index: 0
 ```
 
 ### `longPressOn` / `longPress`
 **Mô tả**: Nhấn giữ phần tử trên màn hình.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
+# 1. Viết tắt
+- longPress: "Delete Item"
+
+# 2. Đầy đủ các trường đối tượng
 - longPress:
-    text: "Delete Item"
+    id: "item_row_1"
+    durationMs: 2000
+    timeout: 5000
 ```
 
 ### `doubleTapOn` / `doubleTap`
 **Mô tả**: Nhấn nhanh 2 lần liên tiếp.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
+# 1. Viết tắt
+- doubleTap: "photo_thumbnail"
+
+# 2. Đầy đủ đối tượng
 - doubleTap:
     id: "photo_thumbnail"
+    timeout: 3000
 ```
 
 ### `rightClick` / `contextClick`
 **Mô tả**: Click chuột phải (dùng trên Web, macOS, Windows).
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - rightClick:
     text: "File.txt"
+    id: "file_node_12"
 ```
 
 ### `click`
@@ -233,24 +291,36 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `inputText` / `write` / `type`
 **Mô tả**: Nhập văn bản vào ô đang focus hoặc ô chỉ định.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
+# 1. Nhập vào ô đang focus
 - inputText: "user@example.com"
 
+# 2. Nhập vào ô có selector cụ thể với tất cả tham số
 - write:
-    text: "Xin chào"
+    text: "Xin chào Việt Nam"
+    selector: "input_address"
+    id: "field_address"
     unicode: true
+    clearFirst: true
 ```
 
 ### `eraseText` / `clear`
 **Mô tả**: Xóa ký tự trong ô đang nhập.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
-- eraseText: 5 # Xóa 5 ký tự
+# 1. Xóa toàn bộ
+- eraseText
+
+# 2. Xóa N ký tự
+- eraseText: 5
 ```
 
 ### `tapAt` / `inputAt`
 **Mô tả**: Tương tác theo loại phần tử và thứ tự index (Fallback khi không có ID/Text).
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - tapAt:
     type: "Button"
@@ -276,25 +346,38 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `swipeLeft` / `swipeRight` / `swipeUp` / `swipeDown` / `swipe`
 **Mô tả**: Vuốt màn hình theo hướng chỉ định.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
+# 1. Viết tắt hướng
 - swipeLeft
+- swipeUp
 
+# 2. Đầy đủ các trường đối tượng
 - swipe:
     direction: "up"
-    distance: 0.8
-    duration: 500
+    distance: 0.8  # Tỷ lệ chiều dài vuốt (0.1 -> 1.0)
+    duration: 500  # Thời gian vuốt (ms)
+    startX: "50%"
+    startY: "80%"
+    endX: "50%"
+    endY: "20%"
 ```
 
 ### `scrollUntilVisible` / `scrollTo`
 **Mô tả**: Cuộn màn hình liên tục cho đến khi thấy phần tử mục tiêu xuất hiện.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
+# 1. Viết tắt theo Text
 - scrollTo: "Bottom Link"
 
+# 2. Đầy đủ các biến số đối tượng
 - scrollUntilVisible:
     id: "target_card"
-    direction: "down"
+    text: "Mục 50"
+    direction: "down"  # down, up, left, right
     maxScrolls: 15
+    scrollDistance: 0.7
 ```
 
 ---
@@ -304,40 +387,57 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `assertVisible` / `see`
 **Mô tả**: Kiểm tra phần tử hiển thị trên màn hình.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
+# 1. Viết tắt
 - see: "Welcome Back"
 
+# 2. Đầy đủ biến số
 - assertVisible:
     id: "header_title"
-    soft: true # Không dừng test khi không thấy
+    text: "Trang chủ"
+    type: "TextView"
+    timeout: 8000
+    soft: true  # soft assertion: không ngắt flow khi không thấy
 ```
 
 ### `assertNotVisible` / `notSee`
 **Mô tả**: Kiểm tra phần tử KHÔNG xuất hiện trên màn hình.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - notSee: "Error Message"
+
+- assertNotVisible:
+    id: "loading_spinner"
+    timeout: 5000
 ```
 
 ### `waitUntilVisible` / `waitSee`
 **Mô tả**: Chờ cho đến khi phần tử xuất hiện.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - waitSee:
     id: "dashboard_loaded"
+    text: "Hoàn tất"
     timeout: 10000
 ```
 
 ### `waitUntilNotVisible` / `waitNotSee`
 **Mô tả**: Chờ cho đến khi phần tử biến mất (VD: Loading overlay).
 
+Ví dụ đầy đủ các tham số:
 ```yaml
-- waitNotSee: "Loading..."
+- waitNotSee:
+    id: "loading_overlay"
+    timeout: 15000
 ```
 
 ### `extendedWaitUntil`
 **Mô tả**: Chờ nhiều điều kiện visible / notVisible cùng lúc.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - extendedWaitUntil:
     timeout: 15000
@@ -350,6 +450,7 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `assertColor` / `checkColor`
 **Mô tả**: Kiểm tra màu pixel tại tọa độ chỉ định.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - assertColor:
     point: "50%,50%"
@@ -360,8 +461,11 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `assertScreenshot`
 **Mô tả**: So sánh ảnh màn hình hiện tại với ảnh mẫu baseline.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
-- assertScreenshot: "baselines/home.png"
+- assertScreenshot:
+    baseline: "baselines/home.png"
+    tolerancePercent: 1.5
 ```
 
 ### `assertClipboard`
@@ -396,10 +500,13 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `find` / `define`
 **Mô tả**: Định nghĩa bộ chọn selector và gán tên biến để tái sử dụng.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - find:
     name: "submit_btn"
     id: "btn_submit"
+    text: "Gửi dữ liệu"
+    type: "Button"
 
 - tap: "${submit_btn}"
 ```
@@ -407,6 +514,7 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `setVar`
 **Mô tả**: Gán giá trị vào biến.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - setVar:
     name: "user_name"
@@ -416,19 +524,23 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `assertVar`
 **Mô tả**: Kiểm tra giá trị biến.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - assertVar:
     name: "user_name"
     equals: "John Doe"
+    contains: "John"
 ```
 
 ### `generate`
 **Mô tả**: Sinh dữ liệu ngẫu nhiên (Faker) và lưu vào biến.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - generate:
     name: "random_email"
     type: "email" # uuid, email, phone, name, address, number, date
+    length: 8
 ```
 
 ---
@@ -438,6 +550,7 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `repeat`
 **Mô tả**: Vòng lặp thực thi danh sách lệnh.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - repeat:
     times: 3
@@ -449,9 +562,11 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `retry`
 **Mô tả**: Thử lại khối lệnh nếu xảy ra lỗi.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - retry:
     maxRetries: 3
+    delayMs: 1000
     commands:
       - tap: "Submit"
       - see: "Success"
@@ -460,16 +575,19 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `runFlow`
 **Mô tả**: Chạy file test sub-flow YAML khác.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - runFlow:
     path: "./common/login.yaml"
     vars:
       user: "admin"
+      pass: "123456"
 ```
 
 ### `conditional`
 **Mô tả**: Cấu trúc rẽ nhánh If / Then / Else theo phần tử UI.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - conditional:
     condition:
@@ -487,29 +605,38 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `runPython` / `execPython` / `python`
 **Mô tả**: Thực thi file Python hoặc đoạn mã Python inline, truyền tham số và lưu biến kết quả vào context test flow.
 
+Ví dụ đầy đủ tất cả các biến số có thể:
 ```yaml
+# 1. Thực thi đoạn mã inline và lưu stdout
 - runPython:
     code: |
-      import sys
-      print("Calculated token: ABC123XYZ")
-    saveVar: "auth_token"
+      import sys, json
+      print(json.dumps({"token": "ABC123XYZ", "status": 200}))
+    saveVar: "raw_output"
 
+# 2. Đầy đủ các biến số với file script, args, env, timeout, pythonPath và saveVars
 - runPython:
     script: "./scripts/helper.py"
-    args: ["--mode", "test"]
+    args: ["--mode", "test", "--serial", "$DEVICE_SERIAL"]
+    env:
+      API_SECRET: "my_secret_key"
+    timeoutMs: 15000
+    pythonPath: "./venv/bin/python"
     saveVars:
-      output_code: "status_code"
-      output_msg: "status_msg"
+      auth_token: "token"
+      res_status: "status"
 ```
 
 ### `runScript`
 **Mô tả**: Thực thi lệnh Shell script trên máy Host.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - runScript:
     command: "python3"
-    args: ["process.py"]
+    args: ["process.py", "--flag"]
     saveOutput: "script_result"
+    timeoutMs: 10000
 ```
 
 ### `evalScript`
@@ -533,21 +660,27 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `httpRequest`
 **Mô tả**: Gửi HTTP REST API request.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - httpRequest:
     url: "https://api.example.com/login"
     method: "POST"
     headers:
       Content-Type: "application/json"
+      Authorization: "Bearer ${token}"
     body:
       username: "admin"
+      password: "password123"
+    timeoutMs: 10000
     saveResponse:
       "$.data.token": "api_token"
+      "$.status": "api_status"
 ```
 
 ### `setNetwork`
 **Mô tả**: Bật/tắt WiFi hoặc Mobile Data trên Android.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - setNetwork:
     wifi: true
@@ -564,13 +697,15 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `dbQuery`
 **Mô tả**: Thực hiện truy vấn SQL vào cơ sở dữ liệu.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - dbQuery:
     connection: "postgres://user:pass@localhost:5432/db"
-    query: "SELECT status FROM users WHERE id = ?"
+    query: "SELECT status, role FROM users WHERE id = ?"
     params: ["123"]
     save:
       "status": "user_status"
+      "role": "user_role"
 ```
 
 ---
@@ -578,6 +713,7 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ## 📋 Clipboard & Files (Clipboard & Quản lý File)
 
 ### `setClipboard` / `getClipboard` / `assertClipboard` / `copyTextFrom` / `pasteText`
+Ví dụ đầy đủ các tham số:
 ```yaml
 - setClipboard: "SecretOTP123"
 
@@ -592,6 +728,7 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `pushFile` / `pullFile`
 **Mô tả**: Truyền file giữa máy Host và thiết bị Android.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - pushFile:
     source: "./config.json"
@@ -625,21 +762,23 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `exportReport`
 **Mô tả**: Xuất báo cáo kết quả ra định dạng HTML / JSON.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - exportReport:
     path: "./output/report.json"
-    format: "json"
+    format: "json" # json, html
 ```
 
 ### `sendLarkMessage` / `lark`
 **Mô tả**: Gửi thông báo kết quả qua Lark / Feishu Bot.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - lark:
     webhook: "https://open.larksuite.com/open-apis/bot/v2/hook/xxx"
-    title: "Kết quả kiểm thử"
-    content: "Test suite chạy hoàn tất thành công!"
-    status: "success"
+    title: "Kết quả kiểm thử Automated"
+    content: "Test suite chạy hoàn tất 100% pass!"
+    status: "success" # success, failed
 ```
 
 ---
@@ -649,14 +788,17 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ### `mockLocation` / `gps`
 **Mô tả**: Phát di chuyển vị trí GPS giả lập theo tuyến đường file GPX/KML.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - gps:
     file: "./routes/hanoi_drive.gpx"
     speed: 50 # km/h
     loop: true
+    intervalMs: 1000
 ```
 
 ### `stopMockLocation` / `mockLocationControl`
+Ví dụ đầy đủ các tham số:
 ```yaml
 - mockLocationControl:
     speed: 80
@@ -666,6 +808,7 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ```
 
 ### `waitForLocation` / `waitForMockCompletion`
+Ví dụ đầy đủ các tham số:
 ```yaml
 - waitForLocation:
     lat: 21.0278
@@ -680,6 +823,7 @@ Trường `type` giúp thu hẹp phạm vi tìm kiếm bằng cách chỉ địn
 ## 🎬 GIF Recording (Tạo GIF minh họa)
 
 ### `captureGifFrame` / `startGifCapture` / `stopGifCapture` / `buildGif`
+Ví dụ đầy đủ các tham số:
 ```yaml
 - captureGifFrame: "step1"
 - tap: "Next"
@@ -699,10 +843,12 @@ Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch
 ### `connectJig` / `disconnectJig`
 **Mô tả**: Kết nối tới mạch phần cứng Jig Controller qua cổng RS232/USB Serial.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
+# 1. Viết tắt cổng COM
 - connectJig: "COM5"
 
-# Hoặc bằng cấu hình đối tượng
+# 2. Đầy đủ các tham số đối tượng
 - connectJig:
     port: "COM5"
     baudrate: 115200
@@ -712,6 +858,7 @@ Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch
 ### `turnOn` / `turnOff` / `turnOffAll` / `powerCycle`
 **Mô tả**: Điều khiển đóng/ngắt các kênh Rơ-le (Relay) cấp nguồn phần cứng.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - turnOn: 1       # Bật nguồn kênh 1
 - turnOff: 1      # Tắt nguồn kênh 1
@@ -724,6 +871,7 @@ Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch
 ### `clickButton` / `pressButton` / `holdButton` / `releaseButton` / `releaseAllButtons` / `repeatClick`
 **Mô tả**: Điều khiển động cơ Servo nhấn nút vật lý trên thiết bị.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - clickButton: 1         # Click nút vật lý kênh 1
 - pressButton: 1         # Nhấn đè nút kênh 1
@@ -733,11 +881,13 @@ Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch
 - repeatClick:           # Nhấn nhấp nhả 3 lần liên tiếp
     channel: 1
     count: 3
+    intervalMs: 300
 ```
 
 ### `rotateServo` / `configureServo` / `startRepeatClick` / `stopRepeatClick`
 **Mô tả**: Cấu hình góc xoay Servo chi tiết và điều khiển vòng lặp nhấn nhả tự động phần cứng trên STM32.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - rotateServo:
     channel: 1
@@ -772,15 +922,20 @@ Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch
 ### `seeLedColor` / `seeLedBlink` / `seeLedOff`
 **Mô tả**: Kiểm tra và đợi trạng thái đèn LED phần cứng (RED, GREEN, BLUE, YELLOW, CYAN, MAGENTA, PINK, WHITE, OFF).
 
+Ví dụ đầy đủ các tham số:
 ```yaml
+# 1. Viết tắt màu
 - seeLedColor: "GREEN"
 
+# 2. Đầy đủ các trường đối tượng
 - seeLedColor:
     channel: 1
     expected: "BLUE"
     timeoutMs: 5000
 
-- seeLedBlink: 1 # Đợi LED kênh 1 nhấp nháy
+- seeLedBlink:
+    channel: 1
+    periodMs: 500
 
 - seeLedOff: 1   # Đợi LED tắt
 ```
@@ -788,6 +943,7 @@ Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch
 ### `setSensorLight` / `setBrightnessThresholds` / `waitForBrightness` / `waitForCct`
 **Mô tả**: Điều khiển đèn chiếu cảm biến màu và cài đặt ngưỡng độ sáng / nhiệt độ màu (CCT Kelvin).
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - setSensorLight: "on"
 
@@ -809,6 +965,7 @@ Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch
 ### `calibrateColor` / `calibrateBrightness` / `addCctPoint` / `saveCalibration` / `loadCalibration` / `resetCalibration` / `eraseCalibration`
 **Mô tả**: Hiệu chỉnh và lưu trữ dữ liệu cân bằng trắng / màu sắc cảm biến vào bộ nhớ Flash.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - calibrateColor:
     channel: 1
@@ -821,6 +978,7 @@ Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch
 ### `enterSafeState` / `systemDiagnostics` / `readColor` / `readSensorLight`
 **Mô tả**: Ngắt an toàn khẩn cấp, chẩn đoán hệ thống MCU và đọc giá trị màu RGBC thực tế.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - enterSafeState
 - systemDiagnostics
@@ -835,6 +993,7 @@ Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch
 ### `assertDeviceState` / `waitDeviceState` / `assertDeviceTransition` / `waitLedPattern` / `getDeviceState`
 **Mô tả**: Nhận diện vùng đèn LED thiết bị qua Camera profile.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - assertDeviceState:
     button: "power_led"
@@ -866,10 +1025,12 @@ Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch
 ### `playMedia` / `stopMedia`
 **Mô tả**: Phát file âm thanh mẫu (.wav, .mp3) ra loa thiết bị.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - playMedia:
     file: "./audio/voice_command.wav"
     loopPlayback: false
+    volume: 80
 
 - stopMedia
 ```
@@ -877,9 +1038,11 @@ Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch
 ### `startAudioCapture` / `stopAudioCapture` / `verifyAudioDucking`
 **Mô tả**: Ghi âm tín hiệu mic và kiểm tra hiện tượng giảm âm lượng (Audio Ducking).
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - startAudioCapture:
     duration: 10000
+    savePath: "./output/recorded_voice.wav"
 
 - stopAudioCapture
 
@@ -904,6 +1067,7 @@ Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch
 ### `press` / `pressKey`
 **Mô tả**: Nhấn phím cứng hoặc phím hệ thống (ENTER, BACK, HOME, VOLUME_UP, DPAD_CENTER).
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - press: "ENTER"
 
@@ -915,6 +1079,7 @@ Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch
 ### Random Inputs: `inputRandomEmail` / `inputRandomNumber` / `inputRandomPersonName` / `inputRandomText`
 **Mô tả**: Nhập ngẫu nhiên dữ liệu vào ô đang chọn.
 
+Ví dụ đầy đủ các tham số:
 ```yaml
 - inputRandomEmail
 - inputRandomNumber: { length: 6 }
@@ -923,6 +1088,7 @@ Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch
 ```
 
 ### System Controls: `openNotifications` / `openQuickSettings` / `setVolume` / `lockDevice` / `unlockDevice` / `selectDisplay` / `setLocale`
+Ví dụ đầy đủ các tham số:
 ```yaml
 - openNotifications
 - openQuickSettings
@@ -934,14 +1100,18 @@ Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch
 ```
 
 ### Performance Profiling: `startProfiling` / `stopProfiling` / `assertPerformance` / `setCpuThrottling` / `setNetworkConditions`
+Ví dụ đầy đủ các tham số:
 ```yaml
-- startProfiling
+- startProfiling:
+    samplingIntervalMs: 500
+
 - wait: 10000
+
 - stopProfiling:
     savePath: "./output/profile.trace"
 
 - assertPerformance:
-    metric: "memory"
+    metric: "memory" # memory, cpu, fps
     limit: "250MB"
 
 - setCpuThrottling: 4.0
