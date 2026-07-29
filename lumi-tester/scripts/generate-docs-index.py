@@ -14,6 +14,7 @@ INDEX_HTML = DOCS_DIR / "index.html"
 
 DOC_SOURCES = {
     "commands": DOCS_DIR / "api" / "commands.md",
+    "python_integration": DOCS_DIR / "python-integration.md",
     "flows": DOCS_DIR / "flows" / "test_execution_flow.md",
     "writing_tests": DOCS_DIR / "writing_tests.md",
     "ai_authoring": DOCS_DIR / "ai-authoring.md",
@@ -21,6 +22,7 @@ DOC_SOURCES = {
 
 PAGE_NAMES = {
     "commands": "Commands Reference",
+    "python_integration": "Python Integration",
     "flows": "Test Flows",
     "writing_tests": "Writing Tests",
     "ai_authoring": "AI Authoring",
