@@ -489,6 +489,58 @@
         "WHITE",
         "OFF"
       ]
+    },
+    "runPythonParams": {
+      "type": "object",
+      "properties": {
+        "script": {
+          "type": "string",
+          "description": "Path to Python script file (.py) relative to flow directory"
+        },
+        "code": {
+          "type": "string",
+          "description": "Inline Python code snippet to execute"
+        },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Command line arguments passed to Python script"
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Environment variables passed to Python process"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum execution timeout in milliseconds (default: 30000)"
+        },
+        "pythonPath": {
+          "type": "string",
+          "description": "Custom Python binary path (e.g., 'python3', 'python', or venv path)"
+        },
+        "saveVar": {
+          "type": "string",
+          "description": "Variable name to save trimmed stdout text output"
+        },
+        "saveVars": {
+          "oneOf": [
+            {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "List of JSON keys to extract into variables from Python JSON stdout"
+            },
+            {
+              "type": "object",
+              "additionalProperties": { "type": "string" },
+              "description": "Map of varName -> jsonPath to extract into variables from Python JSON stdout"
+            }
+          ],
+          "description": "Extract multiple variables from Python JSON stdout"
+        }
+      },
+      "additionalProperties": true
     }
   }
 }

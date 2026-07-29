@@ -21,6 +21,7 @@
 - **Cross-platform DSL**: Write once, run everywhere (Android, Android Auto, iOS, Web, macOS, Windows).
 - **Smart Selectors**: Support for `text`, `id`, `css`, `xpath`, `regex` (including advanced patterns like `\d+`, `[...]`, `(...)`), and `point`.
 - **Control Flow**: Advanced logic with `repeat`, `conditional`, `runFlow`, and `variables`.
+- **Python Integration**: Run external Python scripts (`runPython`) with argument passing, custom env, and automatic single/multi variable extraction (`saveVar`, `saveVars`).
 - **Media Support**: Integrated screenshots and video recording (video currently Android only).
 - **Professional Reports**: Automated HTML/JSON reports with failure context and embedded media.
 - 🛠️ **Parallel Execution**: Scale testing by running concurrently on multiple devices.
@@ -171,8 +172,9 @@ lumi-tester devices
 Deep-dive into our guides located in the `docs/` directory:
 
 1. [**Writing Tests Guide**](docs/writing_tests.md): Master YAML syntax and selectors.
-2. [**Commands Reference**](docs/api/commands.md): Comprehensive details on all supported commands (`tap`, `see`, `mockLocation`, `assertColor`, etc.).
-3. [**Test Flow Structure**](docs/flows/test_execution_flow.md): Understand the lifecycle and flow of a test session.
+2. [**Python Integration Guide**](docs/python-integration.md): Run Python scripts and extract variables.
+3. [**Commands Reference**](docs/api/commands.md): Comprehensive details on all supported commands (`tap`, `see`, `mockLocation`, `runPython`, etc.).
+4. [**Test Flow Structure**](docs/flows/test_execution_flow.md): Understand the lifecycle and flow of a test session.
 
 ---
 

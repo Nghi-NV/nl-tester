@@ -1,0 +1,30 @@
+platform: android
+appId: com.example.app
+tags:
+  - example
+  - python
+defaultTimeout: 10000
+---
+# 1. Shorthand Python execution
+- runPython: "./scripts/python_helper.py"
+
+# 2. Advanced Python execution with args, env, and saveVars mapping
+- runPython:
+    script: "./scripts/python_helper.py"
+    args:
+      - "$DEVICE_SERIAL"
+    env:
+      TEST_MODE: "automated"
+    saveVars:
+      authToken: "data.token"
+      userId: "data.user_id"
+      status: "status"
+
+# 3. Inline Python snippet execution
+- runPython:
+    code: |
+      import sys
+      print("Verified token:", sys.argv[1])
+    args:
+      - "$authToken"
+    saveVar: "verify_output"
