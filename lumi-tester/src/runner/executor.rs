@@ -3094,8 +3094,8 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
                 })?;
-                let press_angle = params.press_angle.unwrap_or(72);
-                let release_angle = params.release_angle.unwrap_or(15);
+                let press_angle = params.press_angle.unwrap_or(15);
+                let release_angle = params.release_angle.unwrap_or(72);
                 let press_ms = params.press_duration_ms.unwrap_or(400);
                 let release_ms = params.release_duration_ms.unwrap_or(150);
                 let hold_ms = params.hold_duration_ms.unwrap_or(300);

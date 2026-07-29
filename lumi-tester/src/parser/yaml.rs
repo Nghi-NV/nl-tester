@@ -749,7 +749,7 @@ fn parse_command_with_params(
             TestCommand::AssertVar(p)
         }
 
-        "screenshot" | "takeScreenshot" | "takeSnapshot" | "snapshot" => {
+        "screenshot" | "takeScreenshot" => {
             let p: crate::parser::types::ScreenshotParamsInput =
                 serde_yaml::from_value(params.clone())?;
             TestCommand::TakeScreenshot(p)
@@ -867,7 +867,8 @@ fn parse_command_with_params(
                         channel: params.as_u64().unwrap_or(1) as u8,
                     }
                 } else {
-                    serde_yaml::from_value(params.clone()).unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
+                    serde_yaml::from_value(params.clone())
+                        .unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
                 };
                 TestCommand::PressButton(p)
             } else {
@@ -1133,17 +1134,21 @@ fn parse_command_with_params(
         }
 
         "click" => {
-            if params.get("channel").is_some() || (params.is_number() && params.as_u64().map(|n| n <= 16).unwrap_or(false)) {
+            if params.get("channel").is_some()
+                || (params.is_number() && params.as_u64().map(|n| n <= 16).unwrap_or(false))
+            {
                 let p: crate::parser::types::ServoClickParams = if params.is_number() {
                     crate::parser::types::ServoClickParams {
                         channel: params.as_u64().unwrap_or(1) as u8,
                         hold_ms: None,
                     }
                 } else {
-                    serde_yaml::from_value(params.clone()).unwrap_or(crate::parser::types::ServoClickParams {
-                        channel: 1,
-                        hold_ms: None,
-                    })
+                    serde_yaml::from_value(params.clone()).unwrap_or(
+                        crate::parser::types::ServoClickParams {
+                            channel: 1,
+                            hold_ms: None,
+                        },
+                    )
                 };
                 TestCommand::ClickButton(p)
             } else {
@@ -1236,10 +1241,12 @@ fn parse_command_with_params(
                     hold_ms: None,
                 }
             } else {
-                serde_yaml::from_value(params.clone()).unwrap_or(crate::parser::types::ServoClickParams {
-                    channel: 1,
-                    hold_ms: None,
-                })
+                serde_yaml::from_value(params.clone()).unwrap_or(
+                    crate::parser::types::ServoClickParams {
+                        channel: 1,
+                        hold_ms: None,
+                    },
+                )
             };
             TestCommand::ClickButton(p)
         }
@@ -1249,7 +1256,8 @@ fn parse_command_with_params(
                     channel: params.as_u64().unwrap_or(1) as u8,
                 }
             } else {
-                serde_yaml::from_value(params.clone()).unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
+                serde_yaml::from_value(params.clone())
+                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
             };
             TestCommand::PressButton(p)
         }
@@ -1259,12 +1267,14 @@ fn parse_command_with_params(
                     channel: params.as_u64().unwrap_or(1) as u8,
                 }
             } else {
-                serde_yaml::from_value(params.clone()).unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
+                serde_yaml::from_value(params.clone())
+                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
             };
             TestCommand::ReleaseButton(p)
         }
         "rotateServo" | "servoRotate" => {
-            let p: crate::parser::types::ServoRotateParams = serde_yaml::from_value(params.clone())?;
+            let p: crate::parser::types::ServoRotateParams =
+                serde_yaml::from_value(params.clone())?;
             TestCommand::RotateServo(p)
         }
         "readServo" | "getServoState" | "servoState" => {
@@ -1273,7 +1283,8 @@ fn parse_command_with_params(
                     channel: params.as_u64().unwrap_or(1) as u8,
                 }
             } else {
-                serde_yaml::from_value(params.clone()).unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
+                serde_yaml::from_value(params.clone())
+                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
             };
             TestCommand::ReadServo(p)
         }
@@ -1283,7 +1294,8 @@ fn parse_command_with_params(
                     channel: params.as_u64().unwrap_or(1) as u8,
                 }
             } else {
-                serde_yaml::from_value(params.clone()).unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
+                serde_yaml::from_value(params.clone())
+                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
             };
             TestCommand::ReadRelay(p)
         }
@@ -1293,7 +1305,8 @@ fn parse_command_with_params(
                     channel: params.as_u64().unwrap_or(1) as u8,
                 }
             } else {
-                serde_yaml::from_value(params.clone()).unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
+                serde_yaml::from_value(params.clone())
+                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
             };
             TestCommand::ReadColor(p)
         }
@@ -1305,7 +1318,8 @@ fn parse_command_with_params(
                     state: "on".to_string(),
                 }
             } else {
-                let mut parsed: crate::parser::types::RelaySetParams = serde_yaml::from_value(params.clone())?;
+                let mut parsed: crate::parser::types::RelaySetParams =
+                    serde_yaml::from_value(params.clone())?;
                 parsed.state = "on".to_string();
                 parsed
             };
@@ -1318,7 +1332,8 @@ fn parse_command_with_params(
                     state: "off".to_string(),
                 }
             } else {
-                let mut parsed: crate::parser::types::RelaySetParams = serde_yaml::from_value(params.clone())?;
+                let mut parsed: crate::parser::types::RelaySetParams =
+                    serde_yaml::from_value(params.clone())?;
                 parsed.state = "off".to_string();
                 parsed
             };
@@ -1404,7 +1419,8 @@ fn parse_command_with_params(
         }
 
         "configureServo" | "setServoConfig" => {
-            let p: crate::parser::types::ServoConfigParams = serde_yaml::from_value(params.clone())?;
+            let p: crate::parser::types::ServoConfigParams =
+                serde_yaml::from_value(params.clone())?;
             TestCommand::ConfigureServo(p)
         }
 
@@ -1453,12 +1469,14 @@ fn parse_command_with_params(
         }
 
         "setBrightnessThresholds" => {
-            let p: crate::parser::types::BrightnessThresholdsParams = serde_yaml::from_value(params.clone())?;
+            let p: crate::parser::types::BrightnessThresholdsParams =
+                serde_yaml::from_value(params.clone())?;
             TestCommand::SetBrightnessThresholds(p)
         }
 
         "waitForBrightness" => {
-            let p: crate::parser::types::WaitForBrightnessParams = serde_yaml::from_value(params.clone())?;
+            let p: crate::parser::types::WaitForBrightnessParams =
+                serde_yaml::from_value(params.clone())?;
             TestCommand::WaitForBrightness(p)
         }
 
@@ -1468,17 +1486,20 @@ fn parse_command_with_params(
         }
 
         "calibrateColor" => {
-            let p: crate::parser::types::CalibrateColorParams = serde_yaml::from_value(params.clone())?;
+            let p: crate::parser::types::CalibrateColorParams =
+                serde_yaml::from_value(params.clone())?;
             TestCommand::CalibrateColor(p)
         }
 
         "calibrateBrightness" => {
-            let p: crate::parser::types::CalibrateBrightnessParams = serde_yaml::from_value(params.clone())?;
+            let p: crate::parser::types::CalibrateBrightnessParams =
+                serde_yaml::from_value(params.clone())?;
             TestCommand::CalibrateBrightness(p)
         }
 
         "addCctPoint" => {
-            let p: crate::parser::types::AddCctPointParams = serde_yaml::from_value(params.clone())?;
+            let p: crate::parser::types::AddCctPointParams =
+                serde_yaml::from_value(params.clone())?;
             TestCommand::AddCctPoint(p)
         }
 

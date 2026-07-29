@@ -62,7 +62,7 @@ impl HardwareController {
         drop(transport);
 
         for ch in 1..=8 {
-            let _ = self.servo.set_config(ch, 72, 15, 400, 150, 300);
+            let _ = self.servo.set_config(ch, 15, 72, 400, 150, 300);
         }
 
         Ok(())
