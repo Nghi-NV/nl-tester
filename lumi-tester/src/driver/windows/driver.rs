@@ -594,13 +594,27 @@ Start-Sleep -Milliseconds {duration_ms}
     async fn take_screenshot(&self, path: &str) -> Result<()> {
         let script = format!(
             r#"
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class LumiDpi {{
+  [DllImport("user32.dll")]
+  public static extern bool SetProcessDPIAware();
+}}
+"@
+try {{ [void][LumiDpi]::SetProcessDPIAware() }} catch {{ }}
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+$targetPath = {}
+$parent = [System.IO.Path]::GetDirectoryName($targetPath)
+if ($parent -and -not (Test-Path -LiteralPath $parent)) {{
+  [void][System.IO.Directory]::CreateDirectory($parent)
+}}
 $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
 $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
 $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
-$bitmap.Save({}, [System.Drawing.Imaging.ImageFormat]::Png)
+$bitmap.Save($targetPath, [System.Drawing.Imaging.ImageFormat]::Png)
 $graphics.Dispose()
 $bitmap.Dispose()
 "#,

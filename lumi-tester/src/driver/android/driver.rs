@@ -884,17 +884,27 @@ impl AndroidDriver {
     /// Internal screenshot function that doesn't depend on PlatformDriver trait
     /// Optimized to use exec-out for direct transfer without file I/O on device
     async fn take_screenshot_internal(&self, path: &str) -> Result<()> {
-        // Try fast path: exec-out screencap with binary output (no file I/O on device)
+        if let Some(parent) = Path::new(path).parent() {
+            if !parent.as_os_str().is_empty() && !parent.exists() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+        }
+
+        // Try fast path: exec-out screencap with binary output
         let result = adb::exec_out_binary(self.serial.as_deref(), "screencap -p").await;
 
         match result {
-            Ok(data) if data.len() > 100 && data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) => {
-                // Valid PNG signature detected, write directly to local file
+            Ok(data)
+                if data.len() > 100
+                    && data.starts_with(&[0x89, 0x50, 0x4E, 0x47])
+                    && image::load_from_memory(&data).is_ok() =>
+            {
+                // Valid PNG signature and uncorrupted image data, write directly
                 std::fs::write(path, &data)?;
                 Ok(())
             }
             _ => {
-                // Fallback to file-based method
+                // Fallback to file-based method (100% reliable across all Windows ADB versions)
                 let remote_path = "/sdcard/screenshot.png";
                 adb::shell(
                     self.serial.as_deref(),
