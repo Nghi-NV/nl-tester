@@ -3084,7 +3084,7 @@ impl TestExecutor {
                     anyhow::anyhow!("Hardware controller not connected! Call connectJig first.")
                 })?;
                 let timeout_s = params.timeout_ms.unwrap_or(5000) as f64 / 1000.0;
-                let exp_colors = vec![crate::hardware::Color::Unknown];
+                let exp_colors = vec![crate::hardware::Color::Off, crate::hardware::Color::Unknown];
                 let reading = ctrl.color_sensor.wait_for_color(params.channel, Some(&exp_colors), timeout_s)?;
                 println!("  {} LED is OFF ch {}: {}", "🌑".green(), params.channel, reading.color.as_str());
                 Ok(())

@@ -78,7 +78,10 @@ impl ColorSensorControl for ColorSensorService {
         let blue = resp.get_u16("blue").unwrap_or(0);
         let clear = resp.get_u16("clear").unwrap_or(0);
 
-        let color_str = resp.get_str("stable").or_else(|| resp.get_str("color")).unwrap_or("UNKNOWN");
+        let color_str = match resp.get_str("stable") {
+            Some(s) if !s.eq_ignore_ascii_case("UNKNOWN") => s,
+            _ => resp.get_str("color").unwrap_or("UNKNOWN"),
+        };
         let confidence_str = resp.get_str("s_conf").or_else(|| resp.get_str("conf")).unwrap_or("OK");
 
         let color = Color::from_str(color_str);

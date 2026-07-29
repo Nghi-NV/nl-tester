@@ -61,6 +61,7 @@ pub enum Color {
     Magenta,
     Pink,
     White,
+    Off,
     Unknown,
 }
 
@@ -75,6 +76,7 @@ impl Color {
             Color::Magenta => "MAGENTA",
             Color::Pink => "PINK",
             Color::White => "WHITE",
+            Color::Off => "OFF",
             Color::Unknown => "UNKNOWN",
         }
     }
@@ -89,6 +91,7 @@ impl Color {
             "MAGENTA" => Color::Magenta,
             "PINK" => Color::Pink,
             "WHITE" => Color::White,
+            "OFF" | "DARK" => Color::Off,
             _ => Color::Unknown,
         }
     }
