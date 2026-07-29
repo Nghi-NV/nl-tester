@@ -95,6 +95,24 @@
             background-color: #fff8c5;
             font-weight: bold;
         }
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            padding: 4px 8px;
+            font-size: 12px;
+            background: rgba(240, 240, 240, 0.9);
+            border: 1px solid #d0d7de;
+            border-radius: 4px;
+            cursor: pointer;
+            color: #24292f;
+            transition: background 0.2s;
+        }
+        .copy-btn:hover {
+            background: #ffffff;
+            border-color: #0969da;
+            color: #0969da;
+        }
 
         @media (max-width: 768px) {
             body {
@@ -147,6 +165,60 @@
             const markdown = docs[pageKey] || '# Page not found';
             contentDiv.innerHTML = marked.parse(markdown);
             hljs.highlightAll();
+
+            // Auto-assign slug IDs to headings for anchor links
+            contentDiv.querySelectorAll('h1, h2, h3, h4').forEach(heading => {
+                if (!heading.id) {
+                    const rawText = heading.textContent.trim().toLowerCase();
+                    const slug = rawText
+                        .replace(/[^a-z0-9àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệđìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵ\s-]/g, '')
+                        .trim()
+                        .replace(/\s+/g, '-');
+                    heading.id = slug;
+                }
+            });
+
+            // Smooth scroll for inline anchor links (#...)
+            contentDiv.querySelectorAll('a[href^="#"]').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    const href = link.getAttribute('href');
+                    if (!href || href === '#') return;
+                    e.preventDefault();
+                    const targetId = href.substring(1).toLowerCase();
+                    
+                    let targetEl = document.getElementById(targetId);
+                    if (!targetEl) {
+                        // Soft matching by text content
+                        const cleanTarget = targetId.replace(/[^a-z0-9]/g, '');
+                        targetEl = Array.from(contentDiv.querySelectorAll('h1, h2, h3, h4')).find(h => {
+                            const cleanH = h.textContent.toLowerCase().replace(/[^a-z0-9]/g, '');
+                            return cleanH.includes(cleanTarget) || cleanTarget.includes(cleanH);
+                        });
+                    }
+
+                    if (targetEl) {
+                        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                });
+            });
+
+            // Add Copy Code buttons to pre code blocks
+            contentDiv.querySelectorAll('pre code').forEach(codeBlock => {
+                const pre = codeBlock.parentNode;
+                if (pre && !pre.querySelector('.copy-btn')) {
+                    const btn = document.createElement('button');
+                    btn.className = 'copy-btn';
+                    btn.innerText = 'Copy';
+                    btn.onclick = () => {
+                        navigator.clipboard.writeText(codeBlock.textContent).then(() => {
+                            btn.innerText = 'Copied!';
+                            setTimeout(() => { btn.innerText = 'Copy'; }, 2000);
+                        });
+                    };
+                    pre.style.position = 'relative';
+                    pre.appendChild(btn);
+                }
+            });
 
             // Update active sidebar state
             document.querySelectorAll('.nav-item').forEach(el => {
