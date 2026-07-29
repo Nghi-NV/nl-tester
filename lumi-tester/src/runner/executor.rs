@@ -3863,7 +3863,7 @@ impl TestExecutor {
                     }
                 } else {
                     let id = id_val
-                        .parse::<u32>()
+                        .parse::<u64>()
                         .map_err(|e| anyhow::anyhow!("Invalid display ID '{}': {}", id_val, e))?;
 
                     // If switching back to display 0, cleanup overlay display

@@ -522,12 +522,12 @@ pub trait PlatformDriver: Send + Sync {
     }
 
     /// Select target display ID (for multi-display Android/iOS)
-    async fn select_display(&self, _display_id: u32) -> Result<()> {
+    async fn select_display(&self, _display_id: u64) -> Result<()> {
         Ok(()) // Default no-op
     }
 
     /// Auto-detect Android Auto display ID
-    async fn detect_android_auto_display(&self) -> Result<Option<u32>> {
+    async fn detect_android_auto_display(&self) -> Result<Option<u64>> {
         Ok(None)
     }
 

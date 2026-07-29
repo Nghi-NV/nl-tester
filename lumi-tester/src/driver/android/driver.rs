@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use std::path::Path;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, OnceCell};
@@ -135,7 +135,7 @@ pub struct AndroidDriver {
     /// Mock location states keyed by name ("" for default)
     mock_states: Arc<Mutex<HashMap<String, MockLocationState>>>,
     /// Target display ID (default 0)
-    display_id: AtomicU32,
+    display_id: AtomicU64,
     /// Speed profile for adaptive delays
     speed_profile: SpeedProfile,
     /// Cached: whether ADBKeyBoard is available for text input
@@ -271,7 +271,7 @@ impl AndroidDriver {
             current_recording_path: Arc::new(Mutex::new(None)),
             ui_cache: Arc::new(Mutex::new(None)),
             mock_states: Arc::new(Mutex::new(HashMap::new())),
-            display_id: AtomicU32::new(0),
+            display_id: AtomicU64::new(0),
             speed_profile,
             adbkeyboard_available,
             original_ime,
@@ -288,10 +288,11 @@ impl AndroidDriver {
     }
 
     /// Get input command prefix with optional display ID flag
-    /// The -d flag is only supported on Android 10+ (API 29+)
+    /// The -d flag is only supported on Android 10+ (API 29+) and only when an explicit display ID > 0 is selected
     fn input_prefix(&self) -> String {
-        if self.sdk_version >= 29 {
-            format!("input -d {}", self.display_id.load(Ordering::Relaxed))
+        let display_id = self.display_id.load(Ordering::Relaxed);
+        if self.sdk_version >= 29 && display_id > 0 {
+            format!("input -d {}", display_id)
         } else {
             "input".to_string()
         }
@@ -882,7 +883,8 @@ impl AndroidDriver {
     }
 
     /// Internal screenshot function that doesn't depend on PlatformDriver trait
-    /// Optimized to use exec-out for direct transfer without file I/O on device
+    /// Optimized to use exec-out for direct transfer without file I/O on device,
+    /// with intelligent fallback for custom/Samsung display IDs.
     async fn take_screenshot_internal(&self, path: &str) -> Result<()> {
         if let Some(parent) = Path::new(path).parent() {
             if !parent.as_os_str().is_empty() && !parent.exists() {
@@ -890,32 +892,57 @@ impl AndroidDriver {
             }
         }
 
-        // Try fast path: exec-out screencap with binary output
-        let result = adb::exec_out_binary(self.serial.as_deref(), "screencap -p").await;
+        let display_id = self.display_id.load(Ordering::Relaxed);
 
-        match result {
-            Ok(data)
-                if data.len() > 100
-                    && data.starts_with(&[0x89, 0x50, 0x4E, 0x47])
-                    && image::load_from_memory(&data).is_ok() =>
+        // 1. Try fast path: exec-out screencap with binary output
+        let exec_cmd = if display_id == 0 {
+            "screencap -p".to_string()
+        } else {
+            format!("screencap -d {} -p", display_id)
+        };
+
+        if let Ok(data) = adb::exec_out_binary(self.serial.as_deref(), &exec_cmd).await {
+            if data.len() > 100
+                && data.starts_with(&[0x89, 0x50, 0x4E, 0x47])
+                && image::load_from_memory(&data).is_ok()
             {
                 // Valid PNG signature and uncorrupted image data, write directly
                 std::fs::write(path, &data)?;
-                Ok(())
-            }
-            _ => {
-                // Fallback to file-based method (100% reliable across all Windows ADB versions)
-                let remote_path = "/sdcard/screenshot.png";
-                adb::shell(
-                    self.serial.as_deref(),
-                    &format!("screencap -p {}", remote_path),
-                )
-                .await?;
-                adb::pull(self.serial.as_deref(), remote_path, path).await?;
-                adb::shell(self.serial.as_deref(), &format!("rm {}", remote_path)).await?;
-                Ok(())
+                return Ok(());
             }
         }
+
+        // 2. Fallback to file-based method (reliable across all Windows ADB versions and device ROMs)
+        let remote_path = "/sdcard/screenshot.png";
+        let shell_cmd = if display_id > 0 {
+            format!("screencap -d {} -p {}", display_id, remote_path)
+        } else {
+            format!("screencap -p {}", remote_path)
+        };
+
+        let shell_res = adb::shell(self.serial.as_deref(), &shell_cmd).await;
+
+        let needs_fallback = match &shell_res {
+            Err(_) => true,
+            Ok(output) => {
+                output.contains("Failed to take screenshot")
+                    || output.contains("Unable to find display")
+                    || output.contains("Status: -2")
+            }
+        };
+
+        if needs_fallback && display_id > 0 {
+            // Retry without -d parameter for default display (Samsung/ROMs requiring plain screencap)
+            let fallback_cmd = format!("screencap -p {}", remote_path);
+            adb::shell(self.serial.as_deref(), &fallback_cmd).await?;
+        } else {
+            shell_res?;
+        }
+
+        adb::pull(self.serial.as_deref(), remote_path, path).await?;
+        let _ = adb::shell(self.serial.as_deref(), &format!("rm -f {}", remote_path)).await;
+
+        Ok(())
     }
 
     fn to_ascii_fallback(&self, text: &str) -> String {
@@ -1818,26 +1845,7 @@ impl PlatformDriver for AndroidDriver {
     }
 
     async fn take_screenshot(&self, path: &str) -> Result<()> {
-        let remote_path = "/sdcard/screenshot.png";
-
-        // Take screenshot on device
-        adb::shell(
-            self.serial.as_deref(),
-            &format!(
-                "screencap -d {} -p {}",
-                self.display_id.load(Ordering::Relaxed),
-                remote_path
-            ),
-        )
-        .await?;
-
-        // Pull to local
-        adb::pull(self.serial.as_deref(), remote_path, path).await?;
-
-        // Cleanup
-        adb::shell(self.serial.as_deref(), &format!("rm {}", remote_path)).await?;
-
-        Ok(())
+        self.take_screenshot_internal(path).await
     }
 
     async fn start_recording(&self, path: &str) -> Result<()> {
@@ -2878,7 +2886,7 @@ impl PlatformDriver for AndroidDriver {
         Ok(())
     }
 
-    async fn select_display(&self, display_id: u32) -> Result<()> {
+    async fn select_display(&self, display_id: u64) -> Result<()> {
         self.display_id.store(display_id, Ordering::Relaxed);
         println!("  {} Selected Display ID: {}", "📺".cyan(), display_id);
         Ok(())
@@ -3048,7 +3056,7 @@ impl PlatformDriver for AndroidDriver {
     }
 
     /// Auto-detect Android Auto display by parsing activity and display info
-    async fn detect_android_auto_display(&self) -> Result<Option<u32>> {
+    async fn detect_android_auto_display(&self) -> Result<Option<u64>> {
         // Strategy 1: Check dumpsys activity activities for display with running gearhead activity
         // This is the most reliable method as it finds the display with actual activity
         let activities_output = adb::shell(
@@ -3058,7 +3066,7 @@ impl PlatformDriver for AndroidDriver {
         .await
         .unwrap_or_default();
 
-        let mut current_display: Option<u32> = None;
+        let mut current_display: Option<u64> = None;
         for line in activities_output.lines() {
             let line = line.trim();
             if line.starts_with("Display #") {
@@ -3067,7 +3075,7 @@ impl PlatformDriver for AndroidDriver {
                     .trim_start_matches("Display #")
                     .split_whitespace()
                     .next()
-                    .and_then(|s| s.parse::<u32>().ok());
+                    .and_then(|s| s.parse::<u64>().ok());
             } else if line.contains("gearhead") && line.contains("GhostActivity") {
                 if let Some(id) = current_display {
                     if id > 0 {
@@ -3086,17 +3094,17 @@ impl PlatformDriver for AndroidDriver {
         let output = adb::shell(self.serial.as_deref(), "dumpsys display").await?;
 
         // State machine to parse multi-line output
-        let mut current_display_id: Option<u32> = None;
+        let mut current_display_id: Option<u64> = None;
         let mut current_is_gearhead = false;
         let mut current_is_on = false;
 
-        let mut candidates: Vec<(u32, bool)> = Vec::new(); // (id, is_on)
+        let mut candidates: Vec<(u64, bool)> = Vec::new(); // (id, is_on)
 
         for line in output.lines() {
             let line = line.trim();
 
             // New display block starts with "Display ID:"
-            if line.starts_with("Display ") && line.ends_with(":") {
+            if line.starts_with("Display ") && line.contains(":") {
                 // Save previous candidate if valid
                 if let Some(id) = current_display_id {
                     if current_is_gearhead {
@@ -3107,8 +3115,11 @@ impl PlatformDriver for AndroidDriver {
                 // Reset state
                 current_display_id = line
                     .trim_start_matches("Display ")
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
                     .trim_end_matches(':')
-                    .parse::<u32>()
+                    .parse::<u64>()
                     .ok();
                 current_is_gearhead = false;
                 current_is_on = false;
@@ -3155,7 +3166,7 @@ impl PlatformDriver for AndroidDriver {
 
         // Fallback: Find any secondary display (ID > 0)
         let re = regex::Regex::new(r"Display (\d+)").unwrap();
-        let mut displays: Vec<u32> = re
+        let mut displays: Vec<u64> = re
             .captures_iter(&output)
             .filter_map(|cap| cap.get(1).and_then(|m| m.as_str().parse().ok()))
             .filter(|&id| id > 0)

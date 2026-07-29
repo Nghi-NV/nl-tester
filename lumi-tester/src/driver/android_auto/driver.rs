@@ -300,7 +300,7 @@ impl PlatformDriver for AndroidAutoDriver {
         Ok(())
     }
 
-    async fn select_display(&self, display_id: u32) -> Result<()> {
+    async fn select_display(&self, display_id: u64) -> Result<()> {
         println!(
             "  Note: Android Auto display is managed by DHU (display {})",
             display_id
@@ -308,7 +308,7 @@ impl PlatformDriver for AndroidAutoDriver {
         Ok(())
     }
 
-    async fn detect_android_auto_display(&self) -> Result<Option<u32>> {
+    async fn detect_android_auto_display(&self) -> Result<Option<u64>> {
         Ok(Some(1)) // Virtual display ID
     }
 
