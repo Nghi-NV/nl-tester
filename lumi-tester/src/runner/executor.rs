@@ -1842,6 +1842,9 @@ impl TestExecutor {
                 let params = params_input.clone().into_inner();
                 let path = params.path.clone();
                 let output_path = self.context.output_path(&path);
+                if let Some(parent) = output_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
                 self.driver
                     .take_screenshot(output_path.to_str().unwrap())
                     .await
