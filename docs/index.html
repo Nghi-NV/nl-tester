@@ -113,6 +113,16 @@
             border-color: #0969da;
             color: #0969da;
         }
+        @keyframes highlight-flash {
+            0% { background-color: #fff8c5; }
+            100% { background-color: transparent; }
+        }
+        .heading-highlight {
+            animation: highlight-flash 2s ease-out;
+            border-left: 4px solid #0969da;
+            padding-left: 8px;
+            transition: all 0.3s;
+        }
 
         @media (max-width: 768px) {
             body {
@@ -184,23 +194,49 @@
                     const href = link.getAttribute('href');
                     if (!href || href === '#') return;
                     e.preventDefault();
-                    const targetId = href.substring(1).toLowerCase();
                     
+                    const targetId = decodeURIComponent(href.substring(1)).toLowerCase();
+                    const linkText = link.textContent.trim().toLowerCase();
+
+                    // Strategy 1: Direct ID match
                     let targetEl = document.getElementById(targetId);
+
+                    // Strategy 2: Match heading by text tokens (e.g., "launchApp", "runPython", "turnOn")
                     if (!targetEl) {
-                        // Soft matching by text content
-                        const cleanTarget = targetId.replace(/[^a-z0-9]/g, '');
+                        const words = (linkText + ' ' + targetId.replace(/[^a-z0-9]/g, ' '))
+                            .split(/\s+/)
+                            .filter(w => w.length > 2 && !['chính', 'các', 'loại', 'loại-selector-chính'].includes(w));
+
                         targetEl = Array.from(contentDiv.querySelectorAll('h1, h2, h3, h4')).find(h => {
-                            const cleanH = h.textContent.toLowerCase().replace(/[^a-z0-9]/g, '');
-                            return cleanH.includes(cleanTarget) || cleanTarget.includes(cleanH);
+                            const hText = h.textContent.toLowerCase();
+                            return words.some(w => hText.includes(w));
                         });
                     }
 
                     if (targetEl) {
-                        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        scrollToHeadingElement(targetEl);
                     }
                 });
             });
+
+        function scrollToHeadingElement(targetEl) {
+            const contentDiv = document.getElementById('content');
+            if (!contentDiv || !targetEl) return;
+            
+            const contentRect = contentDiv.getBoundingClientRect();
+            const targetRect = targetEl.getBoundingClientRect();
+            const relativeTop = targetRect.top - contentRect.top + contentDiv.scrollTop - 20;
+
+            contentDiv.scrollTo({
+                top: Math.max(0, relativeTop),
+                behavior: 'smooth'
+            });
+
+            targetEl.classList.add('heading-highlight');
+            setTimeout(() => {
+                targetEl.classList.remove('heading-highlight');
+            }, 2000);
+        }
 
             // Add Copy Code buttons to pre code blocks
             contentDiv.querySelectorAll('pre code').forEach(codeBlock => {
