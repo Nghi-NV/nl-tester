@@ -472,6 +472,20 @@
           }
         }
       ]
+    },
+    "colorName": {
+      "type": "string",
+      "enum": [
+        "RED",
+        "GREEN",
+        "BLUE",
+        "YELLOW",
+        "CYAN",
+        "MAGENTA",
+        "PINK",
+        "WHITE",
+        "OFF"
+      ]
     }
   }
 }
