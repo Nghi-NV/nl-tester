@@ -1833,5 +1833,28 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Hardware Automation',
     description: 'Query hardware diagnostics from MCU',
     hasParams: false
+  },
+  {
+    name: 'runPython',
+    aliases: ['execPython', 'python'],
+    category: 'Scripting',
+    description: 'Execute Python script file or code snippet with argument passing and variable extraction',
+    hasParams: true,
+    snippet: 'runPython: "$1"',
+    params: [
+      { name: 'script', type: 'string', description: 'Path to Python script file (.py) relative to flow directory' },
+      { name: 'code', type: 'string', description: 'Inline Python code snippet to execute' },
+      { name: 'args', type: 'object', description: 'Arguments passed to Python script', snippet: 'args:\n    - "$1"' },
+      { name: 'env', type: 'object', description: 'Environment variables passed to Python process', snippet: 'env:\n    ${1:KEY}: "$2"' },
+      { name: 'timeoutMs', type: 'number', description: 'Execution timeout in ms (default: 30000)' },
+      { name: 'pythonPath', type: 'string', description: 'Custom Python binary (default: python on Windows, python3 on macOS/Linux)' },
+      { name: 'saveVar', type: 'string', description: 'Variable name to save trimmed stdout text output' },
+      {
+        name: 'saveVars',
+        type: 'object',
+        description: 'Extract multiple variables from Python JSON stdout',
+        snippet: 'saveVars:\n    ${1:var_name}: "${2:json_key}"'
+      }
+    ]
   }
 ];
