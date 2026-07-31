@@ -183,6 +183,10 @@ pub fn cmd_servo_release_all() -> String {
     "servo release_all\n".to_string()
 }
 
+pub fn cmd_mode(mode: &str) -> String {
+    format!("mode {}\n", mode.trim().to_lowercase())
+}
+
 pub fn cmd_color_select(channel: u8) -> String {
     format!("color select {}\n", channel)
 }

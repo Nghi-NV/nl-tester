@@ -10,11 +10,39 @@ use crate::hardware::types::{BlinkResult, Color, ColorConfidence, ColorReading, 
 
 pub struct ColorSensorService {
     transport: Arc<Mutex<SerialTransport>>,
+    active_channel: Mutex<Option<u8>>,
 }
 
 impl ColorSensorService {
     pub fn new(transport: Arc<Mutex<SerialTransport>>) -> Self {
-        Self { transport }
+        Self {
+            transport,
+            active_channel: Mutex::new(Some(1)), // MUX channel defaults to 1 on boot
+        }
+    }
+
+    pub fn select_channel(&self, channel: u8) -> Result<()> {
+        let mut transport = self.transport.lock().unwrap();
+        let mut active = self.active_channel.lock().unwrap();
+        if *active != Some(channel) {
+            let _ = transport.request(
+                &crate::hardware::protocol::cmd_color_select(channel),
+                |line| line.kind == "color_status" || line.kind == "color" || line.kind == "ok",
+                2.0,
+            );
+            *active = Some(channel);
+        }
+        Ok(())
+    }
+
+    pub fn set_mode(&self, mode: &str) -> Result<()> {
+        let mut transport = self.transport.lock().unwrap();
+        let _ = transport.request(
+            &crate::hardware::protocol::cmd_mode(mode),
+            |line| line.kind == "mode" || line.kind == "ok",
+            2.0,
+        );
+        Ok(())
     }
 
     pub fn light_on(&self) -> Result<()> {
@@ -61,15 +89,13 @@ impl ColorSensorControl for ColorSensorService {
     }
 
     fn read_color(&self, channel: u8) -> Result<ColorReading> {
+        // 1. Select channel only if not already active to avoid clearing firmware integration buffer
+        self.select_channel(channel)?;
+
         let mut transport = self.transport.lock().unwrap();
-        let _ = transport.request(
-            &crate::hardware::protocol::cmd_color_select(channel),
-            |line| line.kind == "color_status" || line.kind == "color" || line.kind == "ok",
-            2.0,
-        );
         let resp = transport.request(
             &cmd_color_read(channel),
-            |line| line.kind == "color",
+            |line| line.kind == "color" || line.kind == "ok",
             5.0,
         )?;
 
@@ -78,14 +104,24 @@ impl ColorSensorControl for ColorSensorService {
         let blue = resp.get_u16("blue").unwrap_or(0);
         let clear = resp.get_u16("clear").unwrap_or(0);
 
-        let color_str = match resp.get_str("stable") {
-            Some(s) if !s.eq_ignore_ascii_case("UNKNOWN") => s,
-            _ => resp.get_str("color").unwrap_or("UNKNOWN"),
+        let stable_str = resp.get_str("stable").unwrap_or("").trim();
+        let instant_str = resp.get_str("color").unwrap_or("").trim();
+
+        // 2. Resolve color string: prefer stable color, but fall back to instantaneous color if stable is UNKNOWN
+        let color_str = if !stable_str.is_empty() && !stable_str.eq_ignore_ascii_case("UNKNOWN") {
+            stable_str
+        } else if !instant_str.is_empty() && !instant_str.eq_ignore_ascii_case("UNKNOWN") {
+            instant_str
+        } else if !stable_str.is_empty() {
+            stable_str
+        } else {
+            "UNKNOWN"
         };
+
         let confidence_str = resp.get_str("s_conf").or_else(|| resp.get_str("conf")).unwrap_or("OK");
 
         let color = Color::from_str(color_str);
-        let confidence = match confidence_str.to_uppercase().as_str() {
+        let confidence = match confidence_str.trim().to_uppercase().as_str() {
             "OK" | "GOOD" => ColorConfidence::Ok,
             "LOW_CONFIDENCE" | "POOR" => ColorConfidence::LowConfidence,
             "UNCALIBRATED" => ColorConfidence::Uncalibrated,

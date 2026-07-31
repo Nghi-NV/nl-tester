@@ -82,7 +82,7 @@ impl Color {
     }
 
     pub fn from_str(s: &str) -> Self {
-        match s.to_uppercase().as_str() {
+        match s.trim().to_uppercase().as_str() {
             "RED" => Color::Red,
             "GREEN" => Color::Green,
             "BLUE" => Color::Blue,
