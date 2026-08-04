@@ -1845,9 +1845,21 @@ impl TestExecutor {
                 if let Some(parent) = output_path.parent() {
                     let _ = std::fs::create_dir_all(parent);
                 }
-                self.driver
+                let res = self
+                    .driver
                     .take_screenshot(output_path.to_str().unwrap())
-                    .await
+                    .await;
+                if res.is_ok() {
+                    self.emitter.emit(TestEvent::Log {
+                        message: format!(
+                            "{} Saved screenshot to: {}",
+                            "📸".blue(),
+                            output_path.display().to_string().cyan()
+                        ),
+                        depth: self.depth,
+                    });
+                }
+                res
             }
 
             TestCommand::AssertScreenshot(name) => {

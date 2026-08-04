@@ -424,19 +424,27 @@ impl ConsoleEventListener {
                     depth,
                 } => {
                     let indent = "    ".repeat(depth);
-                    multi
-                        .println(format!(
-                            "{}      {} {} is no longer running!",
-                            indent,
-                            "💀 APP CRASHED:".red().bold(),
-                            app_id.red()
-                        ))
-                        .ok();
+                    let msg = format!(
+                        "{}      {} {} is no longer running!",
+                        indent,
+                        "💀 APP CRASHED:".red().bold(),
+                        app_id.red()
+                    );
+                    if std::io::stdout().is_terminal() {
+                        multi.println(msg).ok();
+                    } else {
+                        println!("{}", msg);
+                    }
                 }
 
                 TestEvent::Log { message, depth } => {
                     let indent = "    ".repeat(depth);
-                    multi.println(format!("{}      {}", indent, message)).ok();
+                    let msg = format!("{}      {}", indent, message);
+                    if std::io::stdout().is_terminal() {
+                        multi.println(msg).ok();
+                    } else {
+                        println!("{}", msg);
+                    }
                 }
             }
         }

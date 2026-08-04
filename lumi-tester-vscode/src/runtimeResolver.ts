@@ -93,10 +93,16 @@ export function resolveLumiRuntime(options: RuntimeResolverOptions): LumiRuntime
   }
 
   const binaryName = options.platform === 'win32' ? 'lumi-tester.exe' : 'lumi-tester';
-  const installed = pathApi.join(options.homeDir, '.lumi-tester', 'bin', binaryName);
-  const installedRuntime = runtimeAt(installed, options);
-  if (installedRuntime) {
-    return installedRuntime;
+  const installedCandidates = [
+    pathApi.join(options.homeDir, '.lumi-tester', 'bin', binaryName),
+    pathApi.join(options.homeDir, '.local', 'bin', binaryName),
+    pathApi.join(options.homeDir, '.cargo', 'bin', binaryName)
+  ];
+  for (const installed of installedCandidates) {
+    const installedRuntime = runtimeAt(installed, options);
+    if (installedRuntime) {
+      return installedRuntime;
+    }
   }
 
   if (options.workspaceFolder) {
@@ -113,7 +119,7 @@ export function resolveLumiRuntime(options: RuntimeResolverOptions): LumiRuntime
   }
 
   throw new Error(
-    `Could not find lumi-tester CLI. Checked PATH and ${installed}. `
+    `Could not find lumi-tester CLI. Checked PATH and ${installedCandidates.join(', ')}. `
     + 'Install it with the Lumi Tester PowerShell installer or configure '
     + 'lumi-tester.lumiTesterPath.'
   );

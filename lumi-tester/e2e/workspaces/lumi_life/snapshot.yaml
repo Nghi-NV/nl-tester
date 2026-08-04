@@ -1,0 +1,12 @@
+appId: "com.lumi.aispeaker"
+platform: "android"
+device: "LMVA720251200032"
+---
+
+# - takeScreenshot: "converstation.png"
+
+# - takeScreenshot: "weather.png"
+
+- startRecording: "record_audio.mp4"
+- wait: 8000
+- stopRecording
