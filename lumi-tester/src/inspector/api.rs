@@ -239,8 +239,11 @@ async fn get_element_at(
             // Use YamlGenerator to ensure format matches recorder
             let generator = YamlGenerator::new();
 
-            let selectors: Vec<SelectorInfo> = candidates
+            // Filter out scorer's element-center-based point selectors;
+            // we replace them with click-position-based ones below.
+            let mut selectors: Vec<SelectorInfo> = candidates
                 .iter()
+                .filter(|c| c.selector_type != "point")
                 .map(|c| SelectorInfo {
                     selector_type: c.selector_type.clone(),
                     value: c.value.clone(),
@@ -250,6 +253,85 @@ async fn get_element_at(
                     description: c.reason.clone(),
                 })
                 .collect();
+
+            // If click is off-center within element bounds, suggest align and offset variants
+            let el_w = (el.bounds.right - el.bounds.left).max(1) as f64;
+            let el_h = (el.bounds.bottom - el.bounds.top).max(1) as f64;
+            let rel_x = (params.x - el.bounds.left) as f64 / el_w;
+            let rel_y = (params.y - el.bounds.top) as f64 / el_h;
+
+            let is_off_center = (rel_x - 0.5).abs() > 0.15 || (rel_y - 0.5).abs() > 0.15;
+            if is_off_center && rel_x >= 0.0 && rel_x <= 1.0 && rel_y >= 0.0 && rel_y <= 1.0 {
+                // Determine best align preset
+                let align_preset = if rel_x >= 0.70 {
+                    Some("right")
+                } else if rel_x <= 0.30 {
+                    Some("left")
+                } else if rel_y >= 0.70 {
+                    Some("bottom")
+                } else if rel_y <= 0.30 {
+                    Some("top")
+                } else {
+                    None
+                };
+
+                let offset_x_pct = (rel_x * 100.0).round() as i32;
+                let offset_y_pct = (rel_y * 100.0).round() as i32;
+
+                // For the top semantic candidates (e.g. type, id, text), generate align & offset variants
+                let semantic_candidates: Vec<_> = candidates
+                    .iter()
+                    .filter(|c| c.selector_type != "point" && c.selector_type != "relative")
+                    .take(2)
+                    .cloned()
+                    .collect();
+
+                for c in &semantic_candidates {
+                    let base_yaml = generator.generate_candidate_yaml(c, "tap");
+                    if let Some(align_name) = align_preset {
+                        let align_yaml = format!("{}\n    align: {}", base_yaml, align_name);
+                        selectors.push(SelectorInfo {
+                            selector_type: format!("{}+align", c.selector_type),
+                            value: format!("{} (align: {})", c.value, align_name),
+                            score: c.score.saturating_add(5),
+                            is_stable: c.is_stable,
+                            yaml: align_yaml,
+                            description: format!("Target {} side of {}", align_name, c.reason),
+                        });
+                    }
+
+                    let offset_val = format!("{}%,{}%", offset_x_pct, offset_y_pct);
+                    let offset_yaml = format!("{}\n    offset: \"{}\"", base_yaml, offset_val);
+                    selectors.push(SelectorInfo {
+                        selector_type: format!("{}+offset", c.selector_type),
+                        value: format!("{} (offset: {})", c.value, offset_val),
+                        score: c.score,
+                        is_stable: c.is_stable,
+                        yaml: offset_yaml,
+                        description: format!("Relative offset within element ({})", offset_val),
+                    });
+                }
+            }
+
+            // Add click-position POINT selectors (actual click coords, not element center)
+            let click_x_pct = (params.x as f64 / width as f64 * 100.0).round() as u32;
+            let click_y_pct = (params.y as f64 / height as f64 * 100.0).round() as u32;
+            selectors.push(SelectorInfo {
+                selector_type: "point".to_string(),
+                value: format!("{}%,{}%", click_x_pct, click_y_pct),
+                score: 20,
+                is_stable: false,
+                yaml: format!("- tap:\n    point: \"{}%,{}%\"", click_x_pct, click_y_pct),
+                description: "Click position (percentage)".to_string(),
+            });
+            selectors.push(SelectorInfo {
+                selector_type: "point".to_string(),
+                value: format!("{},{}", params.x, params.y),
+                score: 15,
+                is_stable: false,
+                yaml: format!("- tap:\n    point: \"{},{}\"", params.x, params.y),
+                description: "Click position (absolute pixels)".to_string(),
+            });
 
             Json(ElementResponse {
                 found: true,
@@ -289,15 +371,38 @@ async fn get_element_at(
                 },
             })
         }
-        None => Json(ElementResponse {
-            found: false,
-            selectors: vec![],
-            element_class: None,
-            element_text: None,
-            bounds: None,
-            app_id: None,
-            supported_commands: vec![],
-        }),
+        None => {
+            // No element found, but still provide click-position point selectors
+            let click_x_pct = (params.x as f64 / width as f64 * 100.0).round() as u32;
+            let click_y_pct = (params.y as f64 / height as f64 * 100.0).round() as u32;
+            let selectors = vec![
+                SelectorInfo {
+                    selector_type: "point".to_string(),
+                    value: format!("{}%,{}%", click_x_pct, click_y_pct),
+                    score: 20,
+                    is_stable: false,
+                    yaml: format!("- tap:\n    point: \"{}%,{}%\"", click_x_pct, click_y_pct),
+                    description: "Click position (percentage)".to_string(),
+                },
+                SelectorInfo {
+                    selector_type: "point".to_string(),
+                    value: format!("{},{}", params.x, params.y),
+                    score: 15,
+                    is_stable: false,
+                    yaml: format!("- tap:\n    point: \"{},{}\"", params.x, params.y),
+                    description: "Click position (absolute pixels)".to_string(),
+                },
+            ];
+            Json(ElementResponse {
+                found: false,
+                selectors,
+                element_class: None,
+                element_text: None,
+                bounds: None,
+                app_id: None,
+                supported_commands: vec![],
+            })
+        }
     }
 }
 

@@ -143,6 +143,18 @@ export const LUMI_COMMANDS: LumiCommand[] = [
       },
       { name: 'label', type: 'string', description: 'Optional label for custom logging' },
       {
+        name: 'align',
+        type: 'string',
+        description: 'Tap position alignment preset (left, right, top, bottom, center)',
+        snippet: 'align: "${1|left,right,top,bottom,center|}"'
+      },
+      {
+        name: 'offset',
+        type: 'string',
+        description: 'Relative position offset within element bounds ("X%,Y%")',
+        snippet: 'offset: "${1:90%,50%}"'
+      },
+      {
         name: 'ocr',
         type: 'object',
         description: 'Find by OCR',
@@ -204,6 +216,18 @@ export const LUMI_COMMANDS: LumiCommand[] = [
         snippet: 'below:\n    text: "${1:text}"'
       },
       { name: 'label', type: 'string', description: 'Optional label for custom logging' },
+      {
+        name: 'align',
+        type: 'string',
+        description: 'Tap position alignment preset (left, right, top, bottom, center)',
+        snippet: 'align: "${1|left,right,top,bottom,center|}"'
+      },
+      {
+        name: 'offset',
+        type: 'string',
+        description: 'Relative position offset within element bounds ("X%,Y%")',
+        snippet: 'offset: "${1:90%,50%}"'
+      },
       {
         name: 'ocr',
         type: 'object',
@@ -267,6 +291,18 @@ export const LUMI_COMMANDS: LumiCommand[] = [
       },
       { name: 'label', type: 'string', description: 'Optional label for custom logging' },
       {
+        name: 'align',
+        type: 'string',
+        description: 'Tap position alignment preset (left, right, top, bottom, center)',
+        snippet: 'align: "${1|left,right,top,bottom,center|}"'
+      },
+      {
+        name: 'offset',
+        type: 'string',
+        description: 'Relative position offset within element bounds ("X%,Y%")',
+        snippet: 'offset: "${1:90%,50%}"'
+      },
+      {
         name: 'ocr',
         type: 'object',
         description: 'Find by OCR',
@@ -329,6 +365,18 @@ export const LUMI_COMMANDS: LumiCommand[] = [
         snippet: 'below:\n    text: "${1:text}"'
       },
       { name: 'label', type: 'string', description: 'Optional label for custom logging' },
+      {
+        name: 'align',
+        type: 'string',
+        description: 'Tap position alignment preset (left, right, top, bottom, center)',
+        snippet: 'align: "${1|left,right,top,bottom,center|}"'
+      },
+      {
+        name: 'offset',
+        type: 'string',
+        description: 'Relative position offset within element bounds ("X%,Y%")',
+        snippet: 'offset: "${1:90%,50%}"'
+      },
       {
         name: 'ocr',
         type: 'object',

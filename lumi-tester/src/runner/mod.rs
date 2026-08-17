@@ -26,7 +26,9 @@ pub async fn run_tests(
     events_jsonl: bool,
     tags: Option<Vec<String>>,
     command_index: Option<usize>,
+    from_command_index: Option<usize>,
     command_name: Option<String>,
+    repeat: u32,
 ) -> Result<()> {
     let platform = platform
         .trim_matches('"')
@@ -136,6 +138,7 @@ pub async fn run_tests(
             let base_path = path_owned.clone();
             let tags_chunk = tags.clone();
             let cmd_idx = command_index;
+            let from_cmd_idx = from_command_index;
             let cmd_name = command_name.clone();
 
             let handle = tokio::spawn(async move {
@@ -152,7 +155,9 @@ pub async fn run_tests(
                     events_jsonl,
                     tags_chunk,
                     cmd_idx,
+                    from_cmd_idx,
                     cmd_name,
+                    repeat,
                 )
                 .await
             });
@@ -181,7 +186,9 @@ pub async fn run_tests(
             events_jsonl,
             tags,
             command_index,
+            from_command_index,
             command_name,
+            repeat,
         )
         .await
     }
@@ -201,7 +208,9 @@ async fn run_on_device(
     events_jsonl: bool,
     tags: Option<Vec<String>>,
     command_index: Option<usize>,
+    from_command_index: Option<usize>,
     command_name: Option<String>,
+    repeat: u32,
 ) -> Result<()> {
     // Pre-parse first file to extract web driver config (for close_when_finish support)
     let web_config = if platform == "web" && !files.is_empty() {
@@ -275,7 +284,7 @@ async fn run_on_device(
     for f in ["setup.yaml", "setup.yml"] {
         let p = base_dir.join(f);
         if p.exists() {
-            if let Err(e) = executor.run_file(&p, None, None).await {
+            if let Err(e) = executor.run_file(&p, None, None, None).await {
                 let _ = executor.finish().await;
                 return Err(e);
             }
@@ -283,14 +292,24 @@ async fn run_on_device(
         }
     }
 
-    // 2. Run Main files
-    for file in files {
-        if let Err(e) = executor
-            .run_file(file, command_index, command_name.as_deref())
-            .await
-        {
-            let _ = executor.finish().await;
-            return Err(e);
+    // 2. Run Main files (repeated N times)
+    for round in 0..repeat {
+        if repeat > 1 {
+            println!(
+                "\n{} Repeat round {}/{}",
+                "🔁".cyan(),
+                round + 1,
+                repeat
+            );
+        }
+        for file in files {
+            if let Err(e) = executor
+                .run_file(file, command_index, from_command_index, command_name.as_deref())
+                .await
+            {
+                let _ = executor.finish().await;
+                return Err(e);
+            }
         }
     }
 
@@ -298,7 +317,7 @@ async fn run_on_device(
     for f in ["teardown.yaml", "teardown.yml"] {
         let p = base_dir.join(f);
         if p.exists() {
-            if let Err(e) = executor.run_file(&p, None, None).await {
+            if let Err(e) = executor.run_file(&p, None, None, None).await {
                 let _ = executor.finish().await;
                 return Err(e);
             }

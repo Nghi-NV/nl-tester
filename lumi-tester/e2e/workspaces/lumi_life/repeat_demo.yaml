@@ -1,0 +1,11 @@
+platform: android
+appId: com.lumi.lumilife
+name: Repeat demo
+tags:
+  - repeat-demo
+  - smoke
+defaultTimeout: 10000
+---
+- launchApp
+- wait: 2000
+- takeScreenshot: "repeat_proof.png"

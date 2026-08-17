@@ -1274,6 +1274,32 @@ impl PlatformDriver for AndroidDriver {
         Ok(())
     }
 
+    async fn resolve_element_point(
+        &self,
+        selector: &Selector,
+        x_pct: f64,
+        y_pct: f64,
+    ) -> Result<Option<(i32, i32)>> {
+        // Point selector: return as-is
+        if let Selector::Point { x, y } = selector {
+            return Ok(Some((*x, *y)));
+        }
+
+        // Find the full element to access its bounds
+        let elem = match self.find_element_internal(selector).await? {
+            Some(e) => e,
+            None => return Ok(None),
+        };
+
+        let (x, y) = elem.bounds.point_at(x_pct, y_pct);
+        log::debug!(
+            "Resolved offset ({:.0}%,{:.0}%) -> ({}, {}), selector: {:?}",
+            x_pct * 100.0, y_pct * 100.0, x, y, selector
+        );
+
+        Ok(Some((x, y)))
+    }
+
     async fn long_press(&self, selector: &Selector, duration_ms: u64) -> Result<()> {
         let (x, y) = self
             .find_element(selector)

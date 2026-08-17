@@ -55,6 +55,15 @@ export class LumiCodeLensProvider implements vscode.CodeLensProvider {
           }
         ));
 
+        codeLenses.push(new vscode.CodeLens(
+          range,
+          {
+            title: `▶ Run from [${commandIndex}]`,
+            command: 'lumi-tester.runFromCommand',
+            arguments: [document.uri, commandIndex]
+          }
+        ));
+
         commandIndex++;
       }
     }

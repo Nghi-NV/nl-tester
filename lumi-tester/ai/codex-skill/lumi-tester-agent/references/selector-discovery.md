@@ -59,6 +59,17 @@ For Flutter/Compose Android apps, visible text is often exposed as
 `content-desc` instead of `text`. In those cases use `accessibilityId`, `desc`,
 or `contentDesc`.
 
+For composite items (e.g. `Switch` toggles, list rows with icons/buttons on edges),
+use `align` (`left`, `right`, `top`, `bottom`, `center`) or `offset` (`"X%,Y%"`)
+instead of raw screen `point` coordinates:
+```yaml
+# Tap toggle switch on right edge of row
+- tap:
+    type: "Switch"
+    index: 1
+    align: right
+```
+
 If the failure screenshot/UI XML belongs to a different package than the
 expected `appId`, stop selector tuning and debug app launch, crash, or wrong
 target selection.

@@ -1,0 +1,14 @@
+platform: android
+appId: com.lumi.lumilife
+name: Repeat inline demo (cách 1)
+tags:
+  - repeat-demo
+  - smoke
+defaultTimeout: 10000
+---
+- repeat:
+    times: 3
+    commands:
+      - launchApp
+      - wait: 2000
+      - takeScreenshot: "repeat_inline_proof.png"

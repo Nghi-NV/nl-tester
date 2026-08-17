@@ -19,5 +19,7 @@ ocr,,android|ios|web,7,Text visible in screenshot but absent from hierarchy,"ocr
 relative,rightOf|leftOf|above|below,android|ios|web,4,Repeated list/card rows near stable anchor,"rightOf: Bedroom","Avoid if anchor is not unique"
 scrollable,,android|ios,4,Target element inside scrollable container,"scrollable: { index: 0, itemIndex: 2 }","Avoid if scrollUntilVisible can find semantic target"
 containsChild,contains_child,android|ios|web,4,Assert/select parent by child content,"containsChild: { text: Active }","Avoid overly broad parent type"
+align,,all,3,Sub-element positioning preset within element bounds (left|right|top|bottom|center),"align: right","Do not use 0% hard coordinates when preset works"
+offset,,all,3,Relative percentage offset within element bounds,"offset: '90%,50%'","Do not confuse with absolute screen point coordinates"
 optional,,interaction,0,Skip tap when element absent,"optional: true","Do not use to hide real failures"
 label,,all,0,Human-readable command label,"label: tap login","Not a selector"

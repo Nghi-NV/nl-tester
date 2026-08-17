@@ -29,6 +29,33 @@ test('runs a configured Windows executable directly', () => {
   });
 });
 
+test('builds run invocation with fromCommandIndex', () => {
+  const invocation = buildRunInvocation({
+    runtime: {
+      kind: 'binary',
+      executable: '/usr/local/bin/lumi-tester',
+      argsPrefix: []
+    },
+    testFilePath: '/workspace/tests/login.yaml',
+    fromCommandIndex: 2,
+    device: { platform: 'android', id: 'ADE00005891' }
+  });
+
+  assert.deepEqual(invocation, {
+    executable: '/usr/local/bin/lumi-tester',
+    args: [
+      'run',
+      '/workspace/tests/login.yaml',
+      '--from-command-index',
+      '2',
+      '--platform',
+      'android',
+      '--device',
+      'ADE00005891'
+    ]
+  });
+});
+
 test('keeps cargo only for a source runtime', () => {
   const invocation = buildRunInvocation({
     runtime: {

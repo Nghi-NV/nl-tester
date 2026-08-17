@@ -205,6 +205,21 @@ Prefer stable selectors:
       region: "bottom-half"
 ```
 
+For composite elements (e.g. `Switch` toggles, list rows with icons/buttons on edges), use `align` or `offset` instead of raw coordinates:
+
+```yaml
+# Tap toggle switch on right edge of row
+- tap:
+    type: "Switch"
+    index: 1
+    align: right # Presets: left, right, top, bottom, center
+
+# Custom relative percentage within element bounds
+- tap:
+    id: "settings_row"
+    offset: "85%,50%"
+```
+
 Use coordinates only when no semantic selector exists:
 
 ```yaml

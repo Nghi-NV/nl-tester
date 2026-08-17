@@ -1,0 +1,16 @@
+appId: "com.lumi.lumilife"
+
+---
+
+- tap:
+    type: "Switch"
+    index: 1
+    align: right
+
+- tap:
+    text: "Thông báo chung"
+    align: "right"
+
+- tap:
+    text: "Thông báo chung"
+    offset: "89%,42%"

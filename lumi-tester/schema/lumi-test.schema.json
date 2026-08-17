@@ -387,6 +387,11 @@
         "type": { "type": "string" },
         "elementType": { "type": "string" },
         "point": { "type": "string" },
+        "align": {
+          "type": "string",
+          "enum": ["left", "right", "top", "bottom", "center"]
+        },
+        "offset": { "type": "string" },
         "index": { "type": "integer", "minimum": 0 },
         "exact": { "type": "boolean" },
         "optional": { "type": "boolean" },

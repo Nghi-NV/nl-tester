@@ -117,6 +117,21 @@ pub trait PlatformDriver: Send + Sync {
     /// Tap on an element or coordinate
     async fn tap(&self, selector: &Selector) -> Result<()>;
 
+    /// Resolve an element's tap point with offset within its bounds.
+    /// `x_pct` and `y_pct` are 0.0..1.0 (e.g., 0.9 = 90% from left/top).
+    /// Returns (x, y) pixel coordinates for tapping.
+    /// Default: falls back to center (0.5, 0.5).
+    async fn resolve_element_point(
+        &self,
+        selector: &Selector,
+        x_pct: f64,
+        y_pct: f64,
+    ) -> Result<Option<(i32, i32)>> {
+        // Default: ignore offset, not implemented
+        let _ = (selector, x_pct, y_pct);
+        Ok(None)
+    }
+
     /// Long press on an element
     ///
     /// # Arguments

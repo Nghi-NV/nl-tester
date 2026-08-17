@@ -46,10 +46,34 @@ Nhiều lệnh tương tác (như `tap`, `see`, `scrollTo`) sử dụng chung m�
 | `desc` | `contentDesc`, `accessibilityId` | Tìm theo mô tả nội dung (Accessibility Label). |
 | `type` | `element_type` | Loại phần tử (Class View / XCUIElement / HTML tag). |
 | `point` | - | Tọa độ tuyệt đối `"x,y"` hoặc phần trăm `"x%,y%"`. |
+| `align` | - | Căn chỉnh điểm tương tác trong bounds của element: `left` (10%), `right` (90%), `top` (10%), `bottom` (90%), `center` (50%). |
+| `offset` | - | Độ lệch tương đối % bên trong bounds của element: `"X%,Y%"` (VD: `"85%,50%"`). |
 | `css` | - | (Chỉ Web) CSS Selector. |
 | `xpath` | - | XPath Selector. |
 | `image` | - | Template matching theo ảnh mẫu. |
 | `ocr` | - | Tìm text bằng nhận diện quang học (OCR). Hỗ trợ regex. |
+
+---
+
+### 🎯 Căn chỉnh vị trí trong phần tử (`align` & `offset`)
+Khi cần tương tác vào một thành phần con trong một view/item phức hợp (ví dụ: nút gạt Switch nằm ở cạnh phải của hàng cài đặt, icon xóa ở góc, v.v.):
+- **`align` (Preset)**: `left` (10%,50%), `right` (90%,50%), `top` (50%,10%), `bottom` (50%,90%), `center` (50%,50%).
+- **`offset` (Custom %)**: Chỉ định chính xác vị trí tương đối `"X%,Y%"` tính từ góc trên-trái của phần tử (0% đến 100%).
+
+```yaml
+# Tap vào nút toggle ở cạnh phải của Switch
+- tap:
+    type: "Switch"
+    index: 1
+    align: right
+
+# Tap vào vị trí 85% chiều rộng, 50% chiều cao của hàng item
+- tap:
+    id: "settings_row"
+    offset: "85%,50%"
+```
+
+---
 
 ---
 
@@ -235,6 +259,8 @@ Ví dụ đầy đủ các tham số:
     text: "Submit"
     type: "Button"
     index: 0
+    align: right # left | right | top | bottom | center
+    offset: "85%,50%" # Custom offset trong bounds của element
     timeout: 5000
     optional: true
     scrollable:
@@ -253,6 +279,8 @@ Ví dụ đầy đủ các tham số:
 # 2. Đầy đủ các trường đối tượng
 - longPress:
     id: "item_row_1"
+    align: left
+    offset: "15%,50%"
     durationMs: 2000
     timeout: 5000
 ```
@@ -268,6 +296,7 @@ Ví dụ đầy đủ các tham số:
 # 2. Đầy đủ đối tượng
 - doubleTap:
     id: "photo_thumbnail"
+    align: center
     timeout: 3000
 ```
 
@@ -279,6 +308,7 @@ Ví dụ đầy đủ các tham số:
 - rightClick:
     text: "File.txt"
     id: "file_node_12"
+    align: right
 ```
 
 ### `click`

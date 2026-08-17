@@ -1222,6 +1222,16 @@ pub struct TapParams {
 
     #[serde(default)]
     pub scrollable: Option<ScrollableParams>,
+
+    /// Alignment preset: center (default), left, right, top, bottom
+    /// Maps to offset percentages: left=10%,50% right=90%,50% top=50%,10% bottom=50%,90%
+    #[serde(default)]
+    pub align: Option<String>,
+
+    /// Custom offset within element bounds: "X%,Y%" (e.g., "90%,50%")
+    /// Overrides align if both are specified
+    #[serde(default)]
+    pub offset: Option<String>,
 }
 
 /// Tap element by type and index (e.g., tap 2nd EditText)

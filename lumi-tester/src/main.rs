@@ -70,9 +70,17 @@ enum Commands {
         #[arg(long)]
         command_index: Option<usize>,
 
+        /// Run commands starting from this 0-based index to the end of the file
+        #[arg(long, alias = "from-index", alias = "start-from")]
+        from_command_index: Option<usize>,
+
         /// Run only a specific command by name (first match)
         #[arg(long)]
         command_name: Option<String>,
+
+        /// Repeat the entire test file N times
+        #[arg(long, default_value = "1")]
+        repeat: u32,
     },
 
     /// List connected devices
@@ -421,7 +429,9 @@ async fn async_main() -> anyhow::Result<()> {
             events_jsonl,
             tags,
             command_index,
+            from_command_index,
             command_name,
+            repeat,
         } => {
             let platform_val = if let Some(p) = platform {
                 normalize_platform(&p)
@@ -460,8 +470,14 @@ async fn async_main() -> anyhow::Result<()> {
             if let Some(idx) = command_index {
                 println!("  Command Index: {}", idx.to_string().yellow());
             }
+            if let Some(from_idx) = from_command_index {
+                println!("  From Command Index: {} to end", from_idx.to_string().yellow());
+            }
             if let Some(ref name) = command_name {
                 println!("  Command Name: {}", name.cyan());
+            }
+            if repeat > 1 {
+                println!("  Repeat: {}", format!("{}x", repeat).yellow());
             }
 
             runner::run_tests(
@@ -481,7 +497,9 @@ async fn async_main() -> anyhow::Result<()> {
                 events_jsonl,
                 tags,
                 command_index,
+                from_command_index,
                 command_name,
+                repeat,
             )
             .await?;
         }
@@ -810,7 +828,7 @@ async fn async_main() -> anyhow::Result<()> {
                 }
                 runner::run_tests(
                     &path, "android", None, &output, false, false, false, true, true, true, None,
-                    None, None,
+                    None, None, None, 1,
                 )
                 .await?;
             }

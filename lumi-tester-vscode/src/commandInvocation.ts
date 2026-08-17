@@ -10,6 +10,7 @@ export interface RunInvocationOptions {
   runtime: LumiRuntime;
   testFilePath: string;
   commandIndex?: number;
+  fromCommandIndex?: number;
   device?: {
     platform: string;
     id: string;
@@ -35,6 +36,8 @@ export function buildRunInvocation(options: RunInvocationOptions): Invocation {
   const args = [options.testFilePath];
   if (options.commandIndex !== undefined) {
     args.push('--command-index', options.commandIndex.toString());
+  } else if (options.fromCommandIndex !== undefined) {
+    args.push('--from-command-index', options.fromCommandIndex.toString());
   }
   if (options.device) {
     args.push('--platform', options.device.platform, '--device', options.device.id);

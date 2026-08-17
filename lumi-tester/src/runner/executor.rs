@@ -50,6 +50,44 @@ pub struct TestExecutor {
     hardware_controller: Option<crate::hardware::HardwareController>,
 }
 
+/// Resolve `align` and `offset` from TapParams into (x_pct, y_pct) as 0.0..1.0.
+/// Returns None if no align/offset is specified (use default center).
+fn resolve_element_offset(align: &Option<String>, offset: &Option<String>) -> Option<(f64, f64)> {
+    // offset takes priority over align
+    if let Some(ref off) = offset {
+        let parts: Vec<&str> = off.split(',').collect();
+        if parts.len() == 2 {
+            let x = parts[0]
+                .trim()
+                .trim_end_matches('%')
+                .parse::<f64>()
+                .unwrap_or(50.0)
+                / 100.0;
+            let y = parts[1]
+                .trim()
+                .trim_end_matches('%')
+                .parse::<f64>()
+                .unwrap_or(50.0)
+                / 100.0;
+            return Some((x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)));
+        }
+    }
+
+    if let Some(ref a) = align {
+        let (x, y) = match a.to_lowercase().as_str() {
+            "left" => (0.10, 0.50),
+            "right" => (0.90, 0.50),
+            "top" => (0.50, 0.10),
+            "bottom" => (0.50, 0.90),
+            "center" => (0.50, 0.50),
+            _ => return None,
+        };
+        return Some((x, y));
+    }
+
+    None
+}
+
 #[derive(Debug, Clone, Default)]
 struct FailureArtifacts {
     screenshot_path: Option<String>,
@@ -183,6 +221,7 @@ impl TestExecutor {
         &mut self,
         path: &Path,
         command_index: Option<usize>,
+        from_command_index: Option<usize>,
         command_name: Option<&str>,
     ) -> Result<()> {
         // Update base directory for relative path resolution
@@ -295,6 +334,15 @@ impl TestExecutor {
                     );
                 }
                 vec![flow.commands[idx].clone()]
+            } else if let Some(from_idx) = from_command_index {
+                if from_idx >= flow.commands.len() {
+                    anyhow::bail!(
+                        "From command index {} is out of range. File has {} commands.",
+                        from_idx,
+                        flow.commands.len()
+                    );
+                }
+                flow.commands[from_idx..].to_vec()
             } else if let Some(name) = command_name {
                 let found = flow
                     .commands
@@ -547,6 +595,29 @@ impl TestExecutor {
                     Err(e)
                 }
             }
+        }
+    }
+
+    /// Apply align/offset to a selector, returning a new selector with resolved coordinates.
+    /// If no align/offset is specified, returns the original selector unchanged.
+    async fn apply_element_offset(
+        &self,
+        selector: crate::driver::traits::Selector,
+        align: &Option<String>,
+        offset: &Option<String>,
+    ) -> Result<crate::driver::traits::Selector> {
+        if let Some((xp, yp)) = resolve_element_offset(align, offset) {
+            let (x, y) = self
+                .driver
+                .resolve_element_point(&selector, xp, yp)
+                .await?
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Element not found for offset ({:.0}%,{:.0}%): {:?}",
+                        xp * 100.0, yp * 100.0, selector)
+                })?;
+            Ok(crate::driver::traits::Selector::Point { x, y })
+        } else {
+            Ok(selector)
         }
     }
 
@@ -1302,6 +1373,9 @@ impl TestExecutor {
                         }
                     }
 
+                    // Apply align/offset to resolve final tap coordinates
+                    let selector = self.apply_element_offset(selector, &params.align, &params.offset).await?;
+
                     if params.optional {
                         if self.driver.is_visible(&selector).await? {
                             self.driver.tap(&selector).await
@@ -1344,6 +1418,7 @@ impl TestExecutor {
                         &params.ocr,
                     )
                     .ok_or_else(|| anyhow::anyhow!("No selector specified for longPressOn"))?;
+                let selector = self.apply_element_offset(selector, &params.align, &params.offset).await?;
                 let timeout = self.context.default_timeout_ms;
                 if !matches!(selector, crate::driver::traits::Selector::Point { .. }) {
                     let _ = self.driver.wait_for_element(&selector, timeout).await;
@@ -1372,6 +1447,7 @@ impl TestExecutor {
                         &params.ocr,
                     )
                     .ok_or_else(|| anyhow::anyhow!("No selector specified for doubleTapOn"))?;
+                let selector = self.apply_element_offset(selector, &params.align, &params.offset).await?;
                 let timeout = self.context.default_timeout_ms;
                 if !matches!(selector, crate::driver::traits::Selector::Point { .. }) {
                     let _ = self.driver.wait_for_element(&selector, timeout).await;
@@ -1399,6 +1475,7 @@ impl TestExecutor {
                         &params.ocr,
                     )
                     .ok_or_else(|| anyhow::anyhow!("No selector specified for rightClick"))?;
+                let selector = self.apply_element_offset(selector, &params.align, &params.offset).await?;
                 let timeout = self.context.default_timeout_ms;
                 if !matches!(selector, crate::driver::traits::Selector::Point { .. }) {
                     let _ = self.driver.wait_for_element(&selector, timeout).await;

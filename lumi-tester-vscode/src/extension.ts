@@ -100,6 +100,13 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('lumi-tester.runFromCommand', async (uri: vscode.Uri, fromCommandIndex: number) => {
+      decorationProvider?.clearDecorations();
+      await runFromCommand(uri, fromCommandIndex);
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('lumi-tester.stopTest', () => {
       if (taskExecution) {
         taskExecution.terminate();
@@ -294,15 +301,31 @@ async function runSingleCommand(uri: vscode.Uri, commandIndex: number): Promise<
   // Ensure device is selected (auto-select if only 1, prompt if multiple)
   await deviceManager?.ensureDeviceSelected();
 
-  await executeRunTask(uri, runtime, commandIndex);
+  await executeRunTask(uri, runtime, commandIndex, undefined);
 }
 
-async function executeRunTask(uri: vscode.Uri, runtime: LumiRuntime, commandIndex?: number): Promise<void> {
+async function runFromCommand(uri: vscode.Uri, fromCommandIndex: number): Promise<void> {
+  const runtime = resolveRuntimeOrShow(uri);
+  if (!runtime) return;
+
+  // Ensure device is selected (auto-select if only 1, prompt if multiple)
+  await deviceManager?.ensureDeviceSelected();
+
+  await executeRunTask(uri, runtime, undefined, fromCommandIndex);
+}
+
+async function executeRunTask(
+  uri: vscode.Uri,
+  runtime: LumiRuntime,
+  commandIndex?: number,
+  fromCommandIndex?: number
+): Promise<void> {
   try {
     const invocation = buildRunInvocation({
       runtime,
       testFilePath: uri.fsPath,
       commandIndex,
+      fromCommandIndex,
       device: deviceManager?.getSelectedDevice() ?? undefined
     });
     const execution = new vscode.ProcessExecution(
@@ -311,10 +334,16 @@ async function executeRunTask(uri: vscode.Uri, runtime: LumiRuntime, commandInde
       invocation.cwd ? { cwd: invocation.cwd } : undefined
     );
     const scope = vscode.workspace.getWorkspaceFolder(uri) ?? vscode.TaskScope.Workspace;
+    let taskName = 'Run Test File';
+    if (commandIndex !== undefined) {
+      taskName = `Run Command ${commandIndex}`;
+    } else if (fromCommandIndex !== undefined) {
+      taskName = `Run From Command ${fromCommandIndex}`;
+    }
     const task = new vscode.Task(
       { type: 'lumi-tester' },
       scope,
-      commandIndex === undefined ? 'Run Test File' : `Run Command ${commandIndex}`,
+      taskName,
       'Lumi Tester',
       execution
     );

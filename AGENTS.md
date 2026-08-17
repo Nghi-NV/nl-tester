@@ -85,6 +85,23 @@ Use stable selectors before coordinates:
 4. `ocr` when native hierarchy cannot expose the text
 5. `point` only as a last resort, preferably percentages such as `"50%,80%"`
 
+### Sub-Element Positioning (`align` / `offset`)
+
+For composite items (e.g. `Switch` toggles, list rows with icons/buttons on edges), use `align` or `offset` with semantic selectors instead of raw screen coordinates:
+
+```yaml
+# Tap right side of switch row (where the toggle toggle is)
+- tap:
+    type: "Switch"
+    index: 1
+    align: right # Presets: left (10%), right (90%), top (10%), bottom (90%), center (50%)
+
+# Custom percentage offset within element bounds:
+- tap:
+    id: "settings_row"
+    offset: "85%,50%"
+```
+
 For text entry, tap/focus the field first, then use `inputText`.
 
 ```yaml

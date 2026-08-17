@@ -2,7 +2,7 @@
   "name": "lumi-tester",
   "displayName": "Lumi Tester",
   "description": "VSCode extension for lumi-tester: YAML autocomplete, run tests, and status display",
-  "version": "0.1.22",
+  "version": "0.1.23",
   "publisher": "lumijsc",
   "icon": "resources/icon.png",
   "engines": {
@@ -42,6 +42,11 @@
         "command": "lumi-tester.runCommand",
         "title": "Lumi: Run Single Command",
         "icon": "$(debug-start)"
+      },
+      {
+        "command": "lumi-tester.runFromCommand",
+        "title": "Lumi: Run From Here to End",
+        "icon": "$(run-all)"
       },
       {
         "command": "lumi-tester.stopTest",

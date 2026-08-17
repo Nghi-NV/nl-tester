@@ -337,13 +337,52 @@ appId: com.example.heavyapp
     - tap:
         desc: "Nút Lưu"
     ```
+7.  **Căn chỉnh vị trí trong phần tử (`align` & `offset`)**: Cho phép click vào cạnh trái/phải/trên/dưới hoặc vị trí tương đối % bên trong bounds của element (hữu ích cho switch toggle, menu item có icon/nút).
+    ```yaml
+    # Tap vào toggle bên phải của Switch hàng thứ 2
+    - tap:
+        type: "Switch"
+        index: 1
+        align: right  # Presets: left (10%), right (90%), top (10%), bottom (90%), center (50%)
+
+    # Custom offset theo phần trăm kích thước element
+    - tap:
+        id: "item_row"
+        offset: "85%,50%"
+    ```
+
+---
+
+## ⚡ Thực thi & Debugging linh hoạt (Execution & Debugging)
+
+Khi phát triển hoặc gỡ lỗi kịch bản test, `lumi-tester` và VS Code Extension cung cấp các chế độ chạy nhanh:
+
+### 1. Thực thi qua CLI:
+```bash
+# Chạy toàn bộ file
+lumi-tester run path/to/test.yaml --platform android
+
+# Chỉ chạy một câu lệnh duy nhất (0-based index)
+lumi-tester run path/to/test.yaml --command-index 2
+
+# Chạy từ câu lệnh này đến hết file
+lumi-tester run path/to/test.yaml --from-command-index 2
+
+# Lặp lại test N lần liên tiếp (stress/stability testing)
+lumi-tester run path/to/test.yaml --repeat 5
+```
+
+### 2. Thực thi qua VS Code Extension:
+- **`▶ Run All`**: Chạy toàn bộ test flow (nằm ở đầu file / dòng `---`).
+- **`▷ Run [i]`**: Chỉ chạy riêng câu lệnh thứ `i` để kiểm tra nhanh selector.
+- **`▶ Run from [i]`**: Chạy từ câu lệnh thứ `i` đến hết file (tiếp tục flow từ điểm mong muốn).
 
 ---
 
 ## 🤝 Best Practices
 
 1.  **Sử dụng `setup.yaml` & `teardown.yaml`**: Để tái sử dụng code login/logout.
-2.  **Tránh Tọa độ Cứng**: Luôn ưu tiên Text, ID. Nếu dùng tọa độ, hãy dùng percentage.
+2.  **Tránh Tọa độ Cứng**: Luôn ưu tiên Text, ID, hoặc `align`/`offset`. Nếu dùng tọa độ, hãy dùng percentage.
 3.  **Sâu chuỗi sub-flows**: Dùng `runFlow` để module hóa kịch bản.
 
 ## 📁 Tổ chức thư mục

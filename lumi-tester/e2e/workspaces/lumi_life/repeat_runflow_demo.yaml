@@ -1,0 +1,12 @@
+platform: android
+appId: com.lumi.lumilife
+name: Repeat runFlow demo (cách 2)
+tags:
+  - repeat-demo
+  - smoke
+defaultTimeout: 10000
+---
+- repeat:
+    times: 3
+    commands:
+      - runFlow: "repeat_demo.yaml"

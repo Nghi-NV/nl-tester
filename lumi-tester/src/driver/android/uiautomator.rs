@@ -81,6 +81,16 @@ impl Bounds {
         (x, y)
     }
 
+    /// Get a point at relative position within the bounds.
+    /// `x_pct` and `y_pct` are 0.0..1.0 (e.g., 0.1 = 10%, 0.9 = 90%)
+    pub fn point_at(&self, x_pct: f64, y_pct: f64) -> (i32, i32) {
+        let w = (self.right - self.left) as f64;
+        let h = (self.bottom - self.top) as f64;
+        let x = self.left as f64 + w * x_pct.clamp(0.0, 1.0);
+        let y = self.top as f64 + h * y_pct.clamp(0.0, 1.0);
+        (x.round() as i32, y.round() as i32)
+    }
+
     /// Parse bounds from string like "[0,0][1080,1920]"
     pub fn from_string(s: &str) -> Option<Self> {
         let parts: Vec<&str> = s.split("][").collect();
