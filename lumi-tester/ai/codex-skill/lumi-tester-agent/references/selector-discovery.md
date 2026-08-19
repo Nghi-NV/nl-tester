@@ -1,79 +1,364 @@
 # Selector Discovery Playbook
 
-Practical guide for discovering, disambiguating, and refining stable UI selectors across platforms.
+Use this when creating tests for an unfamiliar app/page or when a selector
+fails. The goal is to find the most stable selector quickly, then verify it with
+the smallest run.
 
-## 1. Selector Priority Matrix
+## Contents
 
-Prioritize user-facing, multilingual resilient selectors:
+- Fast path
+- Selector priority
+- Inspector workflow
+- MCP selector suggestions
+- Snapshot workflow
+- Android selector examples
+- iOS selector examples
+- Web selector examples
+- Desktop selector examples
+- Relative selector pattern
+- OCR and image fallback
+- Selector debug checklist
+- Anti-patterns
 
-| Priority | Selector Type | Example / Shorthand | Practical Use |
-| :--- | :--- | :--- | :--- |
-| **1 (Recommended)** | **`regex` / Shorthand** | **`tap: "name|tên"`**<br>`see: "Accept|Đồng ý"`<br>`regex: "^Order #\\d+$"` | Universal across all platforms, robust for multi-locale & dynamic UI |
-| **2** | `id` (Resource / Test ID) | `id: "login_button"` | Use when an explicit, stable ID actually exists |
-| **3** | Exact `text` | `text: "Submit", exact: true` | Single-locale fixed labels |
-| **4** | Platform Fields (`desc`, `accessibilityId`, `contentDesc`, `placeholder`) | `desc: "Close"`<br>`accessibilityId: "Save"` | Contextual: only when exposed by OS/framework |
-| **5** | `role`, `type`, `css` | `role: "button"`, `type: "input"` | Structural & web fallback |
-| **6** | `ocr` / `image` | `ocr: "Camera Feed"` | Fallback when element tree is unavailable |
-| **7 (Last Resort)**| `point` | `point: "50%,80%"` | Canvas / DHU / graphics only |
+## Fast Path
 
-### Regex Shorthand Syntax
-Lumi Tester automatically converts strings containing regex tokens (`|`, `.*`, `.+`, `[`, `(`, `^`, `$`) into regex selectors.
+1. Run `doctor` for the platform.
+2. Confirm the target device and app identity. Use Android package name, iOS
+   bundle id, Web URL/browser, macOS `.app` path/bundle id, or Windows
+   executable path. If the user asks for the current Android app, read
+   `mCurrentFocus`/`mFocusedApp` from that device before choosing `appId`.
+3. Start from a skeleton flow with `launchApp`.
+4. Add a selector-based launch readiness wait for a stable screen element.
+5. Use Inspector if interactive discovery is possible.
+6. If Inspector is not available, run with `--snapshot` and inspect UI XML.
+7. Convert the target element into the highest-priority stable selector.
+8. Validate YAML, list indexes, then rerun only the command being tested.
+
+## Selector Priority
+
+Use the first stable selector available:
+
+1. `id`, `accessibilityId`, `contentDesc`, `desc`
+2. exact `text`
+3. `placeholder`, `role`, `css` for Web
+4. `regex` for dynamic visible text
+5. relative selector near a stable anchor
+6. `type` with `index`
+7. `ocr` on Android, iOS, or Web
+8. `image` on Android, iOS, or Web
+9. `point`
+
+Coordinates are allowed only when no semantic selector exists or when testing
+canvas/Android Auto/graphics-heavy UI.
+
+If a selector fails, do not immediately replace it with `point`. First inspect
+the failure XML and screenshot. If the element exists in XML, keep a semantic
+selector and disambiguate with `index`, `type`, or a relative anchor.
+
+For Flutter/Compose Android apps, visible text is often exposed as
+`content-desc` instead of `text`. In those cases use `accessibilityId`, `desc`,
+or `contentDesc`.
+
+For composite items (e.g. `Switch` toggles, list rows with icons/buttons on edges),
+use `align` (`left`, `right`, `top`, `bottom`, `center`) or `offset` (`"X%,Y%"`)
+instead of raw screen `point` coordinates:
 ```yaml
-# Direct string shorthand:
-- tap: "name|tên"
-- see: "Submit|Xác nhận"
-- waitUntilVisible: "^(Loading|Đang tải)..."
-
-# Structured YAML:
-- tap:
-    regex: "(Save|Lưu|Confirm)"
-```
-
-## 2. Sub-Element Positioning (`align` & `offset`)
-
-For composite controls (e.g. toggle switches or edge icons on list rows):
-
-```yaml
-# Target switch toggle on right edge of row
+# Tap toggle switch on right edge of row
 - tap:
     type: "Switch"
-    index: 0
-    align: right # Presets: left (10%), right (90%), top (10%), bottom (90%), center (50%)
-
-# Percentage offset relative to element bounding box
-- tap:
-    id: "settings_row"
-    offset: "85%,50%"
+    index: 1
+    align: right
 ```
 
-## 3. Discovery Workflows
+If the failure screenshot/UI XML belongs to a different package than the
+expected `appId`, stop selector tuning and debug app launch, crash, or wrong
+target selection.
 
-### A. Interactive Web Inspector
-Launch the visual inspector to explore UI hierarchies:
+## Inspector Workflow
+
+Start Inspector from the CLI:
+
 ```bash
 lumi-tester inspect --platform android --device <serial> --port 9333
-# Or in VS Code: Cmd+Shift+P -> "Lumi: Open Element Inspector"
 ```
 
-### B. Command-line Snapshot Discovery
-Dump UI hierarchy and capture screenshot without full flow execution:
+For Web:
+
 ```bash
-# Android
-adb exec-out uiautomator dump /dev/tty
-
-# Or run single step with snapshot:
-lumi-tester run ./test.yaml --platform android --snapshot --output ./output
-# Inspect output/ui_hierarchy.xml and screenshots
+lumi-tester inspect --platform web --port 9333
 ```
 
-## 4. Platform Quirks & Rules
+With MCP, query a running Inspector:
 
-- **Android (Compose/Flutter)**: Text often appears under `content-desc` instead of `text`. Use `accessibilityId` or `desc`.
-- **iOS**: Use `accessibilityId` (maps to `accessibilityIdentifier`) for stable test automation.
-- **Web**: Prefer accessible roles (`role: "button"`) and `text` before falling back to `css`.
-- **macOS / Windows**: Use `role` and `title`/`text` exposed via Accessibility / UI Automation tree.
+```text
+inspector_get /api/screenshot
+inspector_get /api/hierarchy
+inspector_get /api/element-at?x=100&y=200
+```
 
-## 5. Anti-Patterns to Avoid
-- ❌ Do not use screen coordinates (`point: 500,800`) for standard buttons.
-- ❌ Do not use fixed sleeps (`wait: 5000`) instead of `waitUntilVisible`.
-- ❌ Do not rely on unstable XPath selectors.
+Use `/api/element-at?x=<x>&y=<y>` when the user can point to the visual target
+or when screenshot coordinates are known. Prefer the top selector suggestion
+unless it is clearly unstable, generated, localized, or duplicated.
+
+## MCP Selector Suggestions
+
+When a failure XML exists, prefer `suggest_selectors` before manually reading a
+large hierarchy:
+
+```text
+suggest_selectors outputDir=./output file=fail_login_cmd3_ui.xml query=Login
+suggest_selectors outputDir=./output file=fail_login_cmd3_ui.xml point=540,960
+```
+
+Use `query` when you know visible text, resource id, content description, or
+class. Use `point` when you know where the target appears in the screenshot.
+The tool returns ranked selector candidates with YAML snippets.
+
+## Snapshot Workflow
+
+Run a small flow that reaches the screen and captures artifacts:
+
+```bash
+lumi-tester run ./flow.yaml --platform android --report --snapshot --events-jsonl --output ./output
+```
+
+Then inspect:
+
+- `output/run.json` for failed command and artifact paths.
+- `fail_*_cmdN_*.xml` for native hierarchy.
+- `fail_*_cmdN_*.png` for visual confirmation.
+
+In UI XML, look for:
+
+- Android: `resource-id`, `text`, `content-desc`, `class`, `clickable`, bounds.
+- iOS: accessibility identifier, label/name, value, type, visible state.
+- Web: use CSS/role/text where available.
+
+For current Android app discovery:
+
+```bash
+adb devices -l
+adb -s <serial> shell dumpsys window | rg -i 'mCurrentFocus|mFocusedApp|topResumed'
+adb -s <serial> exec-out uiautomator dump /dev/tty
+```
+
+Use `content-desc` values from the dump as `accessibilityId`/`desc` selectors.
+
+For installed Android package discovery:
+
+```bash
+adb -s <serial> shell pm list packages | rg -i '<app-or-company-name>'
+adb -s <serial> shell cmd package resolve-activity --brief <package>
+```
+
+For iOS bundle id discovery:
+
+```bash
+xcrun simctl list devices
+xcrun simctl listapps booted | rg -i 'CFBundleIdentifier|CFBundleDisplayName|CFBundleName'
+idb list-apps --udid <udid>
+```
+
+For Web, use the actual target URL. If the app is local, start the dev server
+first and wait for a stable DOM selector after `launchApp`.
+
+For macOS app identity and frontmost app discovery:
+
+```bash
+mdls -name kMDItemCFBundleIdentifier /Applications/MyApp.app
+osascript -e 'tell application "System Events" to get name of first application process whose frontmost is true'
+lumi-tester doctor --platform macos --json
+```
+
+For Windows executable and foreground window discovery:
+
+```powershell
+powershell -NoProfile -Command "Get-Process | Where-Object MainWindowTitle | Select-Object ProcessName,Id,MainWindowTitle"
+lumi-tester doctor --platform windows --json
+```
+
+## Android Selector Examples
+
+Resource id:
+
+```yaml
+- tap:
+    id: "com.example:id/login_button"
+```
+
+Content description:
+
+```yaml
+- tap:
+    desc: "Open menu"
+```
+
+Exact text:
+
+```yaml
+- see:
+    text: "Welcome"
+    exact: true
+```
+
+Dynamic text:
+
+```yaml
+- see:
+    regex: "^Order #[0-9]+$"
+```
+
+Class/type fallback:
+
+```yaml
+- tap:
+    type: "android.widget.EditText"
+    index: 0
+```
+
+## iOS Selector Examples
+
+Accessibility id:
+
+```yaml
+- tap:
+    accessibilityId: "loginButton"
+```
+
+Visible label:
+
+```yaml
+- tap:
+    text: "Log In"
+    exact: true
+```
+
+Type fallback:
+
+```yaml
+- tap:
+    type: "XCUIElementTypeTextField"
+    index: 0
+```
+
+## Web Selector Examples
+
+CSS:
+
+```yaml
+- tap:
+    css: "[data-testid='login-button']"
+```
+
+Role:
+
+```yaml
+- tap:
+    role: "button"
+    text: "Sign in"
+```
+
+Placeholder:
+
+```yaml
+- tap:
+    placeholder: "Email"
+```
+
+## Desktop Selector Examples
+
+Prefer Accessibility/UI Automation selectors over coordinates on native desktop
+apps.
+
+macOS and Windows text:
+
+```yaml
+- tap:
+    text: "Preferences"
+    exact: true
+```
+
+Role/type with index when labels repeat:
+
+```yaml
+- tap:
+    role: "button"
+    text: "OK"
+```
+
+```yaml
+- tap:
+    type: "Button"
+    index: 1
+```
+
+When desktop hierarchy cannot expose the target, inspect the screenshot and use
+screenshot/pixel assertions plus a documented `point` fallback. Do not use
+`ocr` or `image` selectors for macOS/Windows desktop flows; they are not
+implemented for macOS/Windows desktop drivers in the current runtime:
+
+In short: `ocr`/`image` are not implemented for macOS/Windows desktop drivers.
+
+```yaml
+- tap:
+    point: "50%,80%"
+```
+
+## Relative Selector Pattern
+
+Use relative selectors when repeated rows share the same text/class and there
+is a stable nearby label.
+
+```yaml
+- tap:
+    type: "android.widget.Switch"
+    rightOf:
+      text: "Bedroom"
+      exact: true
+```
+
+Prefer a relative selector over `type + index` when the screen is a list, table,
+settings page, or repeated card layout.
+
+## OCR And Image Fallback
+
+Use OCR when the text is visible in the screenshot but absent from hierarchy:
+
+```yaml
+- tap:
+    ocr: "Continue"
+```
+
+Use image matching only for icon-only UI with no id/description:
+
+```yaml
+- tap:
+    image: ./assets/settings-icon.png
+    imageRegion: top-right
+```
+
+## Selector Debug Checklist
+
+When `Element not found` happens:
+
+1. Open the failure screenshot and confirm the element is visible.
+2. Open the failure XML and check whether the element is exposed natively.
+3. Confirm the XML package matches the flow `appId`.
+4. If visible in XML, replace selector with `id`, `desc`/`accessibilityId`, or
+   exact `text`.
+5. If selector is duplicated, add `index`, `type`, or a relative anchor.
+6. If visible only in screenshot, try `ocr` or `image`.
+7. If element appears after delay, add `waitUntilVisible` before interaction.
+8. If inside a list, use `scrollUntilVisible`.
+9. Rerun only the failed command with `--command-index`.
+
+## Anti-Patterns
+
+- Do not start with `point` unless testing Android Auto/canvas.
+- Do not replace a native `content-desc`/`id` selector with coordinates.
+- Do not use translated text if stable ids/accessibility ids exist.
+- Do not use broad regex like `.*Login.*` when exact text is stable.
+- Do not fix selector failures by adding long `wait` first.
+- Do not reuse a YAML appId when the user asked for the current app; inspect
+  current focus first.
+- Do not count command indexes manually; use `list --json`.

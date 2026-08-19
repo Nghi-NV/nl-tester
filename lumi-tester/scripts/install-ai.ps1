@@ -121,6 +121,7 @@ function Install-CodexSkill {
         "references/commands.csv",
         "references/debug-artifacts.md",
         "references/desktop.md",
+        "references/hardware.md",
         "references/headers.csv",
         "references/index.md",
         "references/patterns.md",

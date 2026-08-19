@@ -1530,6 +1530,36 @@ fn parse_command_with_params(
             TestCommand::RunPython(p)
         }
 
+        "assertDeviceState" | "checkDevice" => {
+            let p: crate::parser::types::DeviceStateParams =
+                serde_yaml::from_value(params.clone())?;
+            TestCommand::AssertDeviceState(p)
+        }
+
+        "waitDeviceState" => {
+            let p: crate::parser::types::WaitDeviceStateParams =
+                serde_yaml::from_value(params.clone())?;
+            TestCommand::WaitDeviceState(p)
+        }
+
+        "assertDeviceTransition" | "assertDeviceChange" => {
+            let p: crate::parser::types::DeviceTransitionParams =
+                serde_yaml::from_value(params.clone())?;
+            TestCommand::AssertDeviceTransition(p)
+        }
+
+        "waitLedPattern" | "assertDevicePattern" => {
+            let p: crate::parser::types::LedPatternParams =
+                serde_yaml::from_value(params.clone())?;
+            TestCommand::WaitLedPattern(p)
+        }
+
+        "getDeviceState" => {
+            let p: crate::parser::types::GetDeviceStateParams =
+                serde_yaml::from_value(params.clone())?;
+            TestCommand::GetDeviceState(p)
+        }
+
         _ => return Ok(None),
     };
 

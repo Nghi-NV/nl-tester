@@ -20,7 +20,7 @@ jig: "profiles/jig_switch_sample.yaml"
 ```
 
 ### Profile Structure (`profiles/jig_switch_sample.yaml`):
-```yaml
+```text
 port: "${JIG_PORT:-COM5}"
 baudrate: 115200
 autoPowerOff: true

@@ -6,15 +6,30 @@
   "type": "object",
   "additionalProperties": true,
   "properties": {
-    "appId": { "type": "string" },
-    "url": { "type": "string" },
+    "appId": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
     "platform": {
       "type": "string",
-      "enum": ["android", "android_auto", "ios", "iOS", "web", "macos", "macOS", "windows"]
+      "enum": [
+        "android",
+        "android_auto",
+        "ios",
+        "iOS",
+        "web",
+        "macos",
+        "macOS",
+        "windows"
+      ]
     },
     "tags": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "defaultTimeout": {
       "type": "integer",
@@ -22,42 +37,89 @@
     },
     "speed": {
       "type": "string",
-      "enum": ["turbo", "fast", "normal", "safe"]
+      "enum": [
+        "turbo",
+        "fast",
+        "normal",
+        "safe"
+      ]
     },
     "browser": {
       "type": "string",
-      "enum": ["Chrome", "Firefox", "Webkit", "chrome", "firefox", "webkit", "chromium"]
+      "enum": [
+        "Chrome",
+        "Firefox",
+        "Webkit",
+        "chrome",
+        "firefox",
+        "webkit",
+        "chromium"
+      ]
     },
-    "closeWhenFinish": { "type": "boolean" },
-    "desktopState": { "$ref": "#/$defs/desktopState" },
-    "env": { "$ref": "#/$defs/env" },
-    "vars": { "$ref": "#/$defs/envMap" },
-    "camera": { "$ref": "#/$defs/cameraConfig" },
-    "cameras": { "$ref": "#/$defs/camerasConfig" },
-    "jig": { "$ref": "#/$defs/jigConfig" },
-    "data": { "type": "string" },
+    "closeWhenFinish": {
+      "type": "boolean"
+    },
+    "desktopState": {
+      "$ref": "#/$defs/desktopState"
+    },
+    "env": {
+      "$ref": "#/$defs/env"
+    },
+    "vars": {
+      "$ref": "#/$defs/envMap"
+    },
+    "camera": {
+      "$ref": "#/$defs/cameraConfig"
+    },
+    "cameras": {
+      "$ref": "#/$defs/camerasConfig"
+    },
+    "jig": {
+      "$ref": "#/$defs/jigConfig"
+    },
+    "data": {
+      "type": "string"
+    },
     "steps": {
       "type": "array",
-      "items": { "$ref": "#/$defs/command" }
+      "items": {
+        "$ref": "#/$defs/command"
+      }
     },
     "commands": {
       "type": "array",
-      "items": { "$ref": "#/$defs/command" }
+      "items": {
+        "$ref": "#/$defs/command"
+      }
     }
   },
   "anyOf": [
-    { "required": ["steps"] },
-    { "required": ["commands"] }
+    {
+      "required": [
+        "steps"
+      ]
+    },
+    {
+      "required": [
+        "commands"
+      ]
+    }
   ],
   "$defs": {
     "env": {
       "oneOf": [
-        { "$ref": "#/$defs/envMap" },
+        {
+          "$ref": "#/$defs/envMap"
+        },
         {
           "type": "object",
-          "required": ["file"],
+          "required": [
+            "file"
+          ],
           "properties": {
-            "file": { "type": "string" }
+            "file": {
+              "type": "string"
+            }
           },
           "additionalProperties": false
         }
@@ -65,44 +127,80 @@
     },
     "envMap": {
       "type": "object",
-      "additionalProperties": { "type": ["string", "number", "boolean"] }
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean"
+        ]
+      }
     },
     "cameraConfig": {
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "rtsp": { "type": "string" },
-        "profile": { "type": "string" },
+        "rtsp": {
+          "type": "string"
+        },
+        "profile": {
+          "type": "string"
+        },
         "transport": {
           "type": "string",
-          "enum": ["tcp", "udp", "TCP", "UDP"]
+          "enum": [
+            "tcp",
+            "udp",
+            "TCP",
+            "UDP"
+          ]
         },
-        "timeoutMs": { "type": "integer", "minimum": 0 }
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "camerasConfig": {
       "oneOf": [
-        { "$ref": "#/$defs/cameraConfig" },
+        {
+          "$ref": "#/$defs/cameraConfig"
+        },
         {
           "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/cameraConfig" }
+          "additionalProperties": {
+            "$ref": "#/$defs/cameraConfig"
+          }
         }
       ]
     },
     "jigConfig": {
       "oneOf": [
-        { "type": "string" },
+        {
+          "type": "string"
+        },
         {
           "type": "object",
           "properties": {
-            "port": { "type": "string" },
-            "baudrate": { "type": "integer" },
-            "autoPowerOff": { "type": "boolean" },
-            "timeoutMs": { "type": "integer" },
-            "file": { "type": "string" },
+            "port": {
+              "type": "string"
+            },
+            "baudrate": {
+              "type": "integer"
+            },
+            "autoPowerOff": {
+              "type": "boolean"
+            },
+            "timeoutMs": {
+              "type": "integer"
+            },
+            "file": {
+              "type": "string"
+            },
             "servos": {
               "type": "array",
-              "items": { "$ref": "#/$defs/servoConfig" }
+              "items": {
+                "$ref": "#/$defs/servoConfig"
+              }
             }
           },
           "additionalProperties": true
@@ -112,19 +210,33 @@
     "servoConfig": {
       "type": "object",
       "properties": {
-        "channel": { "type": "integer" },
-        "pressAngle": { "type": "integer" },
-        "releaseAngle": { "type": "integer" },
-        "pressDurationMs": { "type": "integer" },
-        "releaseDurationMs": { "type": "integer" },
-        "holdDurationMs": { "type": "integer" }
+        "channel": {
+          "type": "integer"
+        },
+        "pressAngle": {
+          "type": "integer"
+        },
+        "releaseAngle": {
+          "type": "integer"
+        },
+        "pressDurationMs": {
+          "type": "integer"
+        },
+        "releaseDurationMs": {
+          "type": "integer"
+        },
+        "holdDurationMs": {
+          "type": "integer"
+        }
       },
       "additionalProperties": true
     },
     "desktopState": {
       "type": "object",
       "properties": {
-        "clear": { "$ref": "#/$defs/desktopClear" }
+        "clear": {
+          "$ref": "#/$defs/desktopClear"
+        }
       },
       "additionalProperties": true
     },
@@ -133,19 +245,28 @@
       "properties": {
         "mode": {
           "type": "string",
-          "enum": ["autoSafe", "manual"]
+          "enum": [
+            "autoSafe",
+            "manual"
+          ]
         },
         "paths": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "keychainServices": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "registryKeys": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": true
@@ -153,7 +274,6 @@
     "commandName": {
       "type": "string",
       "enum": [
-        "addCctPoint",
         "airplaneMode",
         "assert",
         "assertClipboard",
@@ -172,8 +292,6 @@
         "back",
         "backgroundApp",
         "buildGif",
-        "calibrateBrightness",
-        "calibrateColor",
         "captureFrame",
         "captureGifFrame",
         "checkColor",
@@ -181,22 +299,15 @@
         "clear",
         "clearAppData",
         "click",
-        "clickButton",
-        "colorState",
         "conditional",
-        "configureServo",
-        "connectJig",
         "contextClick",
         "copyTextFrom",
         "createGif",
         "dbQuery",
         "deepLink",
-        "disconnectJig",
         "display",
         "doubleTap",
         "doubleTapOn",
-        "enterSafeState",
-        "eraseCalibration",
         "eraseText",
         "evalScript",
         "execPython",
@@ -206,11 +317,10 @@
         "generate",
         "getClipboard",
         "getDeviceState",
-        "getRelayState",
-        "getSensorLightState",
-        "getServoState",
+        "gps",
         "hideKbd",
         "hideKeyboard",
+        "home",
         "httpRequest",
         "hwAddCctPoint",
         "hwCalibrateBrightness",
@@ -257,8 +367,6 @@
         "installApp",
         "lark",
         "launchApp",
-        "lightState",
-        "loadCalibration",
         "locale",
         "lockDevice",
         "longPress",
@@ -273,61 +381,33 @@
         "openQuickSettings",
         "pasteText",
         "playMedia",
-        "powerCycle",
         "press",
-        "pressButton",
         "pressHome",
         "pressKey",
         "pullFile",
         "pushFile",
         "python",
-        "readColor",
-        "readColorSensor",
-        "readRelay",
-        "readSensorLight",
-        "readServo",
-        "release",
-        "releaseAll",
-        "releaseAllButtons",
-        "releaseButton",
-        "relayAllOff",
-        "relayOff",
-        "relayOn",
-        "relayState",
         "repeat",
-        "repeatClick",
-        "resetCalibration",
         "retry",
         "rightClick",
         "rotate",
         "rotateScreen",
-        "rotateServo",
         "runFlow",
         "runPython",
         "runScript",
-        "saveCalibration",
         "screenshot",
         "scrollTo",
         "scrollUntilVisible",
         "see",
-        "seeLedBlink",
-        "seeLedColor",
-        "seeLedOff",
         "selectDisplay",
         "sendLarkMessage",
         "sendlarkmessage",
-        "sensorLight",
-        "servoRotate",
-        "servoState",
-        "setBrightnessThresholds",
         "setClipboard",
         "setCpuThrottling",
         "setLocale",
         "setNetwork",
         "setNetworkConditions",
         "setOrientation",
-        "setSensorLight",
-        "setServoConfig",
         "setVar",
         "setVolume",
         "snapshot",
@@ -335,7 +415,6 @@
         "startGifCapture",
         "startProfiling",
         "startRecording",
-        "startRepeatClick",
         "stop",
         "stopApp",
         "stopAudioCapture",
@@ -346,22 +425,17 @@
         "stopProfiling",
         "stopRecord",
         "stopRecording",
-        "stopRepeatClick",
         "swipe",
         "swipeDown",
         "swipeLeft",
         "swipeRight",
         "swipeUp",
-        "systemDiagnostics",
         "takeScreenshot",
         "takeSnapshot",
         "tap",
         "tapAt",
         "tapOn",
         "toggleAirplaneMode",
-        "turnOff",
-        "turnOffAll",
-        "turnOn",
         "type",
         "uninstallApp",
         "unlockDevice",
@@ -369,8 +443,6 @@
         "wait",
         "waitDeviceState",
         "waitForAnimationToEnd",
-        "waitForBrightness",
-        "waitForCct",
         "waitForLocation",
         "waitForMockCompletion",
         "waitLedPattern",
@@ -383,49 +455,87 @@
     },
     "command": {
       "oneOf": [
-        { "$ref": "#/$defs/commandName" },
+        {
+          "$ref": "#/$defs/commandName"
+        },
         {
           "type": "object",
           "minProperties": 1,
           "maxProperties": 1,
-          "propertyNames": { "$ref": "#/$defs/commandName" },
-          "additionalProperties": { "$ref": "#/$defs/commandParams" }
+          "propertyNames": {
+            "$ref": "#/$defs/commandName"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/commandParams"
+          }
         }
       ]
     },
     "commandParams": {
       "oneOf": [
-        { "type": "null" },
-        { "type": "string" },
-        { "type": "number" },
-        { "type": "integer" },
-        { "type": "boolean" },
-        { "$ref": "#/$defs/selector" },
-        { "$ref": "#/$defs/commandArray" },
+        {
+          "type": "null"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/$defs/selector"
+        },
+        {
+          "$ref": "#/$defs/commandArray"
+        },
         {
           "type": "array",
-          "items": { "$ref": "#/$defs/value" }
+          "items": {
+            "$ref": "#/$defs/value"
+          }
         }
       ]
     },
     "commandArray": {
       "type": "array",
-      "items": { "$ref": "#/$defs/command" }
+      "items": {
+        "$ref": "#/$defs/command"
+      }
     },
     "value": {
       "oneOf": [
-        { "type": "null" },
-        { "type": "string" },
-        { "type": "number" },
-        { "type": "integer" },
-        { "type": "boolean" },
+        {
+          "type": "null"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "boolean"
+        },
         {
           "type": "array",
-          "items": { "$ref": "#/$defs/value" }
+          "items": {
+            "$ref": "#/$defs/value"
+          }
         },
         {
           "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/value" }
+          "additionalProperties": {
+            "$ref": "#/$defs/value"
+          }
         }
       ]
     },
@@ -433,72 +543,173 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "label": { "type": "string" },
-        "element": { "type": "string" },
-        "text": { "type": "string" },
-        "regex": { "type": "string" },
-        "id": { "type": "string" },
-        "resourceId": { "type": "string" },
-        "desc": { "type": "string" },
-        "description": { "type": "string" },
-        "contentDesc": { "type": "string" },
-        "accessibilityId": { "type": "string" },
-        "css": { "type": "string" },
-        "xpath": { "type": "string" },
-        "role": { "type": "string" },
-        "placeholder": { "type": "string" },
-        "type": { "type": "string" },
-        "elementType": { "type": "string" },
-        "point": { "type": "string" },
+        "label": {
+          "type": "string"
+        },
+        "element": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "regex": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "resourceId": {
+          "type": "string"
+        },
+        "desc": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "contentDesc": {
+          "type": "string"
+        },
+        "accessibilityId": {
+          "type": "string"
+        },
+        "css": {
+          "type": "string"
+        },
+        "xpath": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "placeholder": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "elementType": {
+          "type": "string"
+        },
+        "point": {
+          "type": "string"
+        },
         "align": {
           "type": "string",
-          "enum": ["left", "right", "top", "bottom", "center"]
+          "enum": [
+            "left",
+            "right",
+            "top",
+            "bottom",
+            "center"
+          ]
         },
-        "offset": { "type": "string" },
-        "index": { "type": "integer", "minimum": 0 },
-        "exact": { "type": "boolean" },
-        "optional": { "type": "boolean" },
-        "timeout": { "type": "integer", "minimum": 0 },
-        "soft": { "type": "boolean" },
-        "image": { "type": "string" },
-        "imageRegion": { "type": "string" },
-        "ocr": { "$ref": "#/$defs/ocrSelector" },
-        "relative": { "$ref": "#/$defs/relativeSelector" },
-        "rightOf": { "$ref": "#/$defs/anchor" },
-        "leftOf": { "$ref": "#/$defs/anchor" },
-        "above": { "$ref": "#/$defs/anchor" },
-        "below": { "$ref": "#/$defs/anchor" },
+        "offset": {
+          "type": "string"
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "exact": {
+          "type": "boolean"
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "soft": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "string"
+        },
+        "imageRegion": {
+          "type": "string"
+        },
+        "ocr": {
+          "$ref": "#/$defs/ocrSelector"
+        },
+        "relative": {
+          "$ref": "#/$defs/relativeSelector"
+        },
+        "rightOf": {
+          "$ref": "#/$defs/anchor"
+        },
+        "leftOf": {
+          "$ref": "#/$defs/anchor"
+        },
+        "above": {
+          "$ref": "#/$defs/anchor"
+        },
+        "below": {
+          "$ref": "#/$defs/anchor"
+        },
         "scrollable": {
           "oneOf": [
-            { "type": "boolean" },
+            {
+              "type": "boolean"
+            },
             {
               "type": "object",
               "properties": {
-                "enable": { "type": "boolean" },
-                "index": { "type": "integer", "minimum": 0 },
-                "itemIndex": { "type": "integer", "minimum": 0 }
+                "enable": {
+                  "type": "boolean"
+                },
+                "index": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "itemIndex": {
+                  "type": "integer",
+                  "minimum": 0
+                }
               },
               "additionalProperties": true
             }
           ]
         },
-        "containsChild": { "$ref": "#/$defs/selector" },
-        "contains_child": { "$ref": "#/$defs/selector" },
-        "commands": { "$ref": "#/$defs/commandArray" },
-        "then": { "$ref": "#/$defs/commandArray" },
-        "else": { "$ref": "#/$defs/commandArray" }
+        "containsChild": {
+          "$ref": "#/$defs/selector"
+        },
+        "contains_child": {
+          "$ref": "#/$defs/selector"
+        },
+        "commands": {
+          "$ref": "#/$defs/commandArray"
+        },
+        "then": {
+          "$ref": "#/$defs/commandArray"
+        },
+        "else": {
+          "$ref": "#/$defs/commandArray"
+        }
       }
     },
     "ocrSelector": {
       "oneOf": [
-        { "type": "string" },
+        {
+          "type": "string"
+        },
         {
           "type": "object",
-          "required": ["text"],
+          "required": [
+            "text"
+          ],
           "properties": {
-            "text": { "type": "string" },
-            "index": { "type": "integer", "minimum": 0 },
-            "region": { "type": "string" }
+            "text": {
+              "type": "string"
+            },
+            "index": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "region": {
+              "type": "string"
+            }
           },
           "additionalProperties": true
         }
@@ -508,38 +719,89 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "rightOf": { "$ref": "#/$defs/anchor" },
-        "leftOf": { "$ref": "#/$defs/anchor" },
-        "above": { "$ref": "#/$defs/anchor" },
-        "below": { "$ref": "#/$defs/anchor" },
-        "maxDist": { "type": "integer", "minimum": 0 },
-        "maxDistance": { "type": "integer", "minimum": 0 }
+        "rightOf": {
+          "$ref": "#/$defs/anchor"
+        },
+        "leftOf": {
+          "$ref": "#/$defs/anchor"
+        },
+        "above": {
+          "$ref": "#/$defs/anchor"
+        },
+        "below": {
+          "$ref": "#/$defs/anchor"
+        },
+        "maxDist": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxDistance": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "anchor": {
       "oneOf": [
-        { "type": "string" },
+        {
+          "type": "string"
+        },
         {
           "type": "object",
           "additionalProperties": true,
           "properties": {
-            "element": { "type": "string" },
-            "text": { "type": "string" },
-            "regex": { "type": "string" },
-            "textRegex": { "type": "string" },
-            "id": { "type": "string" },
-            "resourceId": { "type": "string" },
-            "desc": { "type": "string" },
-            "contentDesc": { "type": "string" },
-            "accessibilityId": { "type": "string" },
-            "css": { "type": "string" },
-            "xpath": { "type": "string" },
-            "placeholder": { "type": "string" },
-            "role": { "type": "string" },
-            "type": { "type": "string" },
-            "image": { "type": "string" },
-            "exact": { "type": "boolean" },
-            "index": { "type": "integer", "minimum": 0 }
+            "element": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "regex": {
+              "type": "string"
+            },
+            "textRegex": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "resourceId": {
+              "type": "string"
+            },
+            "desc": {
+              "type": "string"
+            },
+            "contentDesc": {
+              "type": "string"
+            },
+            "accessibilityId": {
+              "type": "string"
+            },
+            "css": {
+              "type": "string"
+            },
+            "xpath": {
+              "type": "string"
+            },
+            "placeholder": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "image": {
+              "type": "string"
+            },
+            "exact": {
+              "type": "boolean"
+            },
+            "index": {
+              "type": "integer",
+              "minimum": 0
+            }
           }
         }
       ]
@@ -571,12 +833,16 @@
         },
         "args": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Command line arguments passed to Python script"
         },
         "env": {
           "type": "object",
-          "additionalProperties": { "type": "string" },
+          "additionalProperties": {
+            "type": "string"
+          },
           "description": "Environment variables passed to Python process"
         },
         "timeoutMs": {
@@ -596,12 +862,16 @@
           "oneOf": [
             {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "List of JSON keys to extract into variables from Python JSON stdout"
             },
             {
               "type": "object",
-              "additionalProperties": { "type": "string" },
+              "additionalProperties": {
+                "type": "string"
+              },
               "description": "Map of varName -> jsonPath to extract into variables from Python JSON stdout"
             }
           ],
