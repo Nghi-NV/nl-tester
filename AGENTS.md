@@ -80,10 +80,24 @@ with a system that requires it.
 Use stable selectors before coordinates:
 
 1. `id`, `desc`, `accessibilityId`, `contentDesc`
-2. `text` with `exact: true` when the text is stable
-3. `regex` for dynamic text
-4. `ocr` when native hierarchy cannot expose the text
-5. `point` only as a last resort, preferably percentages such as `"50%,80%"`
+2. `regex` for dynamic, multi-language, or pattern text (e.g. `regex: "name|tên"` or direct shorthand `tap: "name|tên"`, `see: "Accept|Đồng ý"`, `tap: "^Submit.*$"`)
+3. `text` with `exact: true` when the text is single-locale and completely stable
+4. `role`, `type`, `placeholder` with optional `index`
+5. `ocr` when native hierarchy cannot expose the text
+6. `point` only as a last resort, preferably percentages such as `"50%,80%"`
+
+### Regex Selector Shorthand
+
+Lumi Tester automatically detects regex strings containing `|`, `.*`, `.+`, `[`, `(`, `^`, or `$`. You can write regex selectors directly in compact shorthand:
+
+```yaml
+- tap: "name|tên"
+- see: "Accept|Đồng ý"
+- waitUntilVisible: "^Order #\\d+$"
+# Or structured format:
+- tap:
+    regex: "(Login|Đăng nhập)"
+```
 
 ### Sub-Element Positioning (`align` / `offset`)
 

@@ -68,7 +68,24 @@ python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-check path
    cargo run -- run path/to/test.yaml --platform <platform> --command-index <N> --output ./output
    ```
 
-## 4. Reference Map
+## 4. Selector Priority & Regex Power
+
+Prioritize stable identifiers and flexible regex patterns:
+
+1. **`id` / `accessibilityId` / `desc`**: Stable native IDs.
+2. **`regex` (High Priority)**: Dynamic, multilingual, or pattern matching. Write in structured form or **direct shorthand string**:
+   ```yaml
+   - tap: "name|tên"              # Shorthand regex (auto-detected on |, .*, .+, [, (, ^, $)
+   - see: "Accept|Đồng ý"         # Multilingual assertion
+   - waitUntilVisible: "^Order #\\d+$"
+   - tap: { regex: "(Login|Đăng nhập)" }
+   ```
+3. **`text` (`exact: true`)**: Single-locale stable labels.
+4. **Sub-Element Alignment**: `align: right | left | top | bottom | center` or `offset: "85%,50%"`.
+5. **`role` / `type`** with `index`: Component classifications.
+6. **`ocr` / `point`**: Fallback only when hierarchy is missing.
+
+## 5. Reference Map
 
 Consult specialized reference files for in-depth rules and syntax (all under 200 lines):
 

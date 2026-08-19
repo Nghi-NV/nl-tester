@@ -6,15 +6,28 @@ Practical guide for discovering, disambiguating, and refining stable UI selector
 
 Always prefer semantic and accessibility identifiers over coordinates:
 
-| Priority | Selector Type | Example | Platform Support |
+| Priority | Selector Type | Example / Shorthand | Platform Support |
 | :--- | :--- | :--- | :--- |
 | **1 (Highest)** | `id` / `accessibilityId` / `desc` | `id: "login_button"`<br>`accessibilityId: "Save"` | Android, iOS, Desktop |
-| **2** | Exact `text` | `text: "Submit", exact: true` | All platforms |
-| **3** | `role`, `placeholder`, `css` | `role: "button", text: "Login"`<br>`css: ".primary-btn"` | Web |
-| **4** | `regex` | `regex: "(Submit|Xác nhận)"` | Dynamic / Multilingual |
+| **2 (High)** | **`regex` / Shorthand** | **`tap: "name|tên"`**<br>`see: "Accept|Đồng ý"`<br>`regex: "^Order #\\d+$"` | All platforms |
+| **3** | Exact `text` | `text: "Submit", exact: true` | All platforms |
+| **4** | `role`, `placeholder`, `css` | `role: "button", text: "Login"`<br>`css: ".primary-btn"` | Web |
 | **5** | `type` with `index` | `type: "input", index: 0` | All platforms |
 | **6** | `ocr` / `image` | `ocr: "Camera Feed"` | Fallback when tree is unavailable |
 | **7 (Last Resort)**| `point` | `point: "50%,80%"` | Canvas / DHU only |
+
+### Regex Shorthand Syntax
+Lumi Tester automatically converts strings containing regex tokens (`|`, `.*`, `.+`, `[`, `(`, `^`, `$`) into regex selectors.
+```yaml
+# Direct string shorthand:
+- tap: "name|tên"
+- see: "Submit|Xác nhận"
+- waitUntilVisible: "^(Loading|Đang tải)..."
+
+# Structured YAML:
+- tap:
+    regex: "(Save|Lưu|Confirm)"
+```
 
 ## 2. Sub-Element Positioning (`align` & `offset`)
 

@@ -17,12 +17,21 @@ defaultTimeout: 15000
 - tap: { id: "password_input" }
 - inputText: "${USER_PASS:-secret123}"
 - hideKeyboard
-- tap: { id: "submit_btn" }
-- waitUntilVisible: { text: "Dashboard", exact: true }
-- see: { text: "Dashboard" }
+- tap: "Submit|Xác nhận|Đăng nhập" # Multilingual regex shorthand
+- waitUntilVisible: "^(Dashboard|Trang chủ)"
+- see: "Welcome|Xin chào"
 ```
 
-## 2. Sub-Element Positioning Pattern (`align` & `offset`)
+## 2. Multilingual & Dynamic Regex Pattern
+
+```yaml
+# Shorthand regex allows tests to pass seamlessly across English and Vietnamese locales
+- tap: "Accept|Đồng ý|Cho phép"
+- waitUntilVisible: "^(Welcome|Chào mừng).*$"
+- see: "Success|Thành công"
+```
+
+## 3. Sub-Element Positioning Pattern (`align` & `offset`)
 
 For toggles, checkboxes, or icon buttons located on row edges:
 
@@ -39,7 +48,7 @@ For toggles, checkboxes, or icon buttons located on row edges:
     offset: "85%,50%"
 ```
 
-## 3. Hardware + App Hybrid Verification Pattern
+## 4. Hardware + App Hybrid Verification Pattern
 
 For IoT/Smart devices requiring physical interaction + App assertion:
 
@@ -57,7 +66,7 @@ jig: "profiles/jig_switch_sample.yaml"
 - hwSeeLedOff: 1
 ```
 
-## 4. GPS Navigation Simulation Pattern
+## 5. GPS Navigation Simulation Pattern
 
 ```yaml
 platform: android
@@ -72,7 +81,7 @@ appId: com.example.map
 - stopMockLocation
 ```
 
-## 5. Subflow & Error Recovery Pattern
+## 6. Subflow & Error Recovery Pattern
 
 ```yaml
 # Main test flow reusing subflow
@@ -88,7 +97,7 @@ appId: com.example.map
       - waitUntilVisible: { id: "content_list" }
 ```
 
-## 6. Web & Desktop Pattern
+## 7. Web & Desktop Pattern
 
 ```yaml
 platform: web # or macos / windows
