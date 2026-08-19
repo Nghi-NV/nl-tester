@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.17] / [extension-v0.1.25] - 2026-08-19
+
+### 🚀 Highlights & Features
+
+#### 1. Resilient Hardware Serial Communication & Dynamic RS485 Addressing
+- **Serial Line Stabilization**: Added 100ms startup line stabilization delay and full buffer flush upon opening serial ports, preventing MCU DTR reset noise on Windows and STM32 Virtual COM.
+- **Dynamic RS485 Multi-drop Addressing (`nodeId`)**:
+  - Automatically prefixes wire commands with `@{node_id} ` (defaults to Node 1).
+  - Configurable via YAML Header (`nodeId: 2`), Profile (`nodeId: 2`), and CLI (`lumi-tester jig ping COM5 --node 2`).
+  - Response parser dynamically strips and extracts addressed node IDs from firmware output.
+- **Wire Framing Template Engine (`wireFormat`)**:
+  - Customizable wire framing template in Jig profiles (`wireFormat: "@{node} {command}\n"`).
+  - Allows seamless adaptation to future firmware protocol format changes (`[NODE:{node}] {command}`, `NODE#{node}>{command}`, etc.) without altering any test YAML flow.
+
+#### 2. VS Code Extension `v0.1.25`
+- Added `nodeId` and `wireFormat` parameters to `hwConnect` autocomplete schema and snippet suggestions.
+- Integrated automated marketplace publishing pipeline via GitHub Actions using `secrets.VSCE_PAT`.
+
+---
+
 ## [v0.1.16] / [extension-v0.1.24] - 2026-08-19
 
 ### 🚀 Highlights & Features

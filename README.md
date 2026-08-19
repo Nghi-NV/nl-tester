@@ -155,10 +155,10 @@ Manual download from the [lumi-tester Releases](https://github.com/Nghi-NV/nl-te
 
 Download the latest `.vsix` package from the [Extension Releases](https://github.com/Nghi-NV/nl-tester/releases?q=extension-v):
 
-- **Extension Package**: `lumi-tester-0.1.24.vsix`
+- **Extension Package**: `lumi-tester-0.1.25.vsix`
 - **Installation in VS Code**:
   ```bash
-  code --install-extension lumi-tester-0.1.24.vsix
+  code --install-extension lumi-tester-0.1.25.vsix
   ```
 
 ## 🛠️ Development
