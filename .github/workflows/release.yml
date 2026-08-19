@@ -18,6 +18,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
 
@@ -72,6 +73,7 @@ jobs:
     name: Build ${{ matrix.target }}
     needs: test
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -138,15 +140,13 @@ jobs:
 
       - name: Pack self-contained MCP package
         shell: bash
-        working-directory: lumi-tester-mcp
         run: |
-          npm ci
-          npm test
-          npm run stage-binary -- "../dist/${{ matrix.asset_name }}"
-          npm pack
-          mv lumi-tester-mcp-*.tgz "../dist/${{ matrix.mcp_asset_name }}"
+          mkdir -p dist
+          bash lumi-tester/scripts/pack-mcp-bundle.sh \
+            --target "${{ matrix.target }}" \
+            --output-tar "dist/${{ matrix.mcp_asset_name }}"
 
-      - name: Upload CLI asset
+      - name: Upload binary
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset_name }}
@@ -162,6 +162,7 @@ jobs:
     name: Publish GitHub Release
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
     steps:
