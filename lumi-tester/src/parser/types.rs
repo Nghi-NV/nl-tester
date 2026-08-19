@@ -102,6 +102,7 @@ impl JigConfig {
                     Ok(HardwareConnectParams {
                         port: path_or_port.clone(),
                         baudrate: None,
+                        node_id: None,
                         auto_power_off: Some(true),
                         timeout_ms: None,
                         file: None,
@@ -126,6 +127,9 @@ impl JigConfig {
                     if p.baudrate.is_some() {
                         loaded.baudrate = p.baudrate;
                     }
+                    if p.node_id.is_some() {
+                        loaded.node_id = p.node_id;
+                    }
                     if p.auto_power_off.is_some() {
                         loaded.auto_power_off = p.auto_power_off;
                     }
@@ -148,6 +152,7 @@ impl JigConfig {
             JigConfig::PortOrProfile(port) => HardwareConnectParams {
                 port: port.clone(),
                 baudrate: None,
+                node_id: None,
                 auto_power_off: Some(true),
                 timeout_ms: None,
                 file: None,
@@ -842,6 +847,8 @@ pub struct HardwareConnectParams {
     pub port: String,
     #[serde(default)]
     pub baudrate: Option<u32>,
+    #[serde(default, alias = "node_id", alias = "nodeId", alias = "node")]
+    pub node_id: Option<u8>,
     #[serde(default)]
     pub auto_power_off: Option<bool>,
     #[serde(default)]

@@ -149,8 +149,12 @@ impl ResponseLine {
 }
 
 // Protocol Command Builders
-pub fn cmd_ping() -> String {
-    "ping\n".to_string()
+pub fn cmd_ping(node_id: Option<u8>) -> String {
+    if let Some(id) = node_id {
+        format!("@{} ping\n", id)
+    } else {
+        "ping\n".to_string()
+    }
 }
 
 pub fn cmd_servo_press(channel: u8) -> String {

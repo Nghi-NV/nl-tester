@@ -29,6 +29,7 @@ impl Default for ServoChannelConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HardwareConfig {
     pub baudrate: u32,
+    pub node_id: Option<u8>,
     pub command_timeout_s: f64,
     pub sensor_timeout_s: f64,
     pub handshake_timeout_s: f64,
@@ -41,6 +42,7 @@ impl Default for HardwareConfig {
     fn default() -> Self {
         Self {
             baudrate: 115200,
+            node_id: Some(1),
             command_timeout_s: 2.0,
             sensor_timeout_s: 5.0,
             handshake_timeout_s: 2.0,

@@ -238,6 +238,10 @@ enum JigCommands {
         /// Serial port name (e.g. COM5, /dev/ttyUSB0) or Jig profile file path (e.g. profiles/jig_switch_sample.yaml)
         port: Option<String>,
 
+        /// RS485 Node ID to address (e.g. 1, 2, 7; optional, default: broadcast or from profile)
+        #[arg(short, long)]
+        node: Option<u8>,
+
         /// Baudrate (default: 115200)
         #[arg(short, long, default_value = "115200")]
         baudrate: u32,
@@ -947,35 +951,36 @@ async fn async_main() -> anyhow::Result<()> {
                     println!();
                 }
             }
-            JigCommands::Ping { port, baudrate, json } => {
-                let target_port = if let Some(p) = port {
+            JigCommands::Ping { port, node, baudrate, json } => {
+                let (target_port, target_node) = if let Some(p) = port {
                     if p.ends_with(".yaml") || p.ends_with(".yml") || p.ends_with(".json") || std::path::Path::new(&p).exists() {
                         if let Ok(content) = std::fs::read_to_string(&p) {
                             if let Ok(params) = serde_yaml::from_str::<lumi_tester::parser::types::HardwareConnectParams>(&content) {
-                                resolve_env_string(&params.port)
+                                (resolve_env_string(&params.port), node.or(params.node_id))
                             } else {
-                                resolve_env_string(&p)
+                                (resolve_env_string(&p), node)
                             }
                         } else {
-                            resolve_env_string(&p)
+                            (resolve_env_string(&p), node)
                         }
                     } else {
-                        resolve_env_string(&p)
+                        (resolve_env_string(&p), node)
                     }
                 } else {
                     let ports = lumi_tester::hardware::list_serial_ports();
                     if let Some(first) = ports.first() {
-                        first.port_name.clone()
+                        (first.port_name.clone(), node)
                     } else {
                         anyhow::bail!("No serial ports found. Connect a Jig or specify a port manually.");
                     }
                 };
 
                 if !json {
-                    println!("\n{} Testing connection to Jig on {} ({} baud)...", "🔌".cyan(), target_port, baudrate);
+                    let node_info = if let Some(n) = target_node { format!(" (Node @{})", n) } else { String::new() };
+                    println!("\n{} Testing connection to Jig on {}{} ({} baud)...", "🔌".cyan(), target_port, node_info, baudrate);
                 }
 
-                match lumi_tester::hardware::ping_details(&target_port, Some(baudrate)) {
+                match lumi_tester::hardware::ping_details(&target_port, Some(baudrate), target_node) {
                     Ok(res) => {
                         if json {
                             println!("{}", serde_json::to_string_pretty(&res)?);

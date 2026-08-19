@@ -1180,6 +1180,7 @@ fn parse_command_with_params(
                 crate::parser::types::HardwareConnectParams {
                     port: params.as_str().unwrap().to_string(),
                     baudrate: None,
+                    node_id: None,
                     auto_power_off: Some(true),
                     timeout_ms: None,
                     file: None,
