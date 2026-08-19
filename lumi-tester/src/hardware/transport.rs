@@ -9,6 +9,7 @@ use crate::hardware::protocol::ResponseLine;
 pub struct SerialTransport {
     port: Option<Box<dyn serialport::SerialPort>>,
     port_name: Option<String>,
+    pub node_id: Option<u8>,
     log_file: Option<File>,
     log_path: PathBuf,
 }
@@ -21,6 +22,7 @@ impl SerialTransport {
         Self {
             port: None,
             port_name: None,
+            node_id: Some(1),
             log_file: None,
             log_path,
         }
@@ -95,7 +97,18 @@ impl SerialTransport {
     where
         F: Fn(&ResponseLine) -> bool,
     {
-        self.log_event("TX", cmd.trim());
+        let trimmed = cmd.trim();
+        let wire_cmd = if let Some(nid) = self.node_id {
+            if !trimmed.starts_with('@') && !trimmed.is_empty() {
+                format!("@{} {}\n", nid, trimmed)
+            } else {
+                format!("{}\n", trimmed)
+            }
+        } else {
+            format!("{}\n", trimmed)
+        };
+
+        self.log_event("TX", wire_cmd.trim());
 
         let port = self
             .port
@@ -106,7 +119,7 @@ impl SerialTransport {
         let _ = port.clear(serialport::ClearBuffer::Input);
 
         // Write command
-        port.write_all(cmd.as_bytes())
+        port.write_all(wire_cmd.as_bytes())
             .with_context(|| "Failed to write command to serial port")?;
         port.flush()?;
 

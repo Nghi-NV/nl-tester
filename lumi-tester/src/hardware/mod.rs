@@ -30,7 +30,9 @@ pub struct HardwareController {
 impl HardwareController {
     pub fn new(config: Option<HardwareConfig>) -> Self {
         let cfg = config.unwrap_or_default();
-        let transport = Arc::new(Mutex::new(SerialTransport::new()));
+        let mut tr = SerialTransport::new();
+        tr.node_id = cfg.node_id.or(Some(1));
+        let transport = Arc::new(Mutex::new(tr));
 
         let servo = ServoService::new(Arc::clone(&transport));
         let relay = RelayService::new(Arc::clone(&transport));
@@ -50,14 +52,13 @@ impl HardwareController {
     pub fn connect(&self, port: &str, baudrate: Option<u32>) -> Result<()> {
         let baud = baudrate.unwrap_or(self.config.baudrate);
         let mut transport = self.transport.lock().unwrap();
+        transport.node_id = self.config.node_id.or(Some(1));
         transport.connect(port, baud)
             .map_err(|e| anyhow::anyhow!("Failed to connect to hardware Jig on '{}' (baudrate: {}): {}", port, baud, e))?;
 
         // Send ping handshake with configured node_id (defaults to node 1 for RS485)
-        let ping_node = self.config.node_id.or(Some(1));
-        let ping_cmd = protocol::cmd_ping(ping_node);
         let ping_resp = transport.request(
-            &ping_cmd,
+            "ping\n",
             |line| line.kind == "system" || line.kind == "ok" || line.kind == "version" || line.kind == "info",
             2.5,
         ).map_err(|e| anyhow::anyhow!("Connected to Jig on '{}', but handshake failed (no valid response from MCU): {}", port, e))?;
@@ -177,12 +178,15 @@ pub fn ping_details(port: &str, baudrate: Option<u32>, node_id: Option<u8>) -> R
     let baud = baudrate.unwrap_or(115200);
     let ping_node = node_id.or(Some(1));
     let start = std::time::Instant::now();
-    let controller = HardwareController::new(None);
+    let controller = HardwareController::new(Some(HardwareConfig {
+        node_id: ping_node,
+        ..Default::default()
+    }));
     let mut transport = controller.transport.lock().unwrap();
+    transport.node_id = ping_node;
     transport.connect(port, baud)?;
-    let ping_cmd = protocol::cmd_ping(ping_node);
     let resp = transport.request(
-        &ping_cmd,
+        "ping\n",
         |line| line.kind == "system" || line.kind == "ok" || line.kind == "version" || line.kind == "info",
         2.5,
     )?;
