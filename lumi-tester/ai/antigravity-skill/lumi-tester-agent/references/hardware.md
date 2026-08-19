@@ -22,6 +22,7 @@ jig: "profiles/jig_switch_sample.yaml"
 ### Profile Structure (`profiles/jig_switch_sample.yaml`):
 ```text
 port: "${JIG_PORT:-COM5}"
+nodeId: 1
 baudrate: 115200
 autoPowerOff: true
 timeoutMs: 4000
@@ -52,8 +53,9 @@ servos:
 lumi-tester jig ports
 lumi-tester jig ports --json
 
-# Ping Jig controller and check firmware / latency
+# Ping Jig controller and check firmware / latency (default node 1)
 lumi-tester jig ping COM5
+lumi-tester jig ping COM5 --node 2
 lumi-tester jig ping profiles/jig_switch_sample.yaml
 ```
 

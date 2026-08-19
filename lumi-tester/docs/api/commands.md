@@ -883,6 +883,7 @@ jig: "profiles/jig_switch_sample.yaml"
 # 3. Khai báo nâng cao kèm biến môi trường:
 jig:
   port: "${JIG_PORT:-COM5}"
+  nodeId: 1
   baudrate: 115200
   autoPowerOff: true
   timeoutMs: 4000

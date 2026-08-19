@@ -18,7 +18,12 @@ Lumi Tester sẽ:
 ```yaml
 platform: android
 appId: com.lumi.lifenext
-jig: "COM5"   # Cổng Serial kết nối Jig phần cứng (Windows: COM5, Linux/macOS: /dev/ttyUSB0)
+jig:
+  port: "${JIG_PORT:-COM5}"     # Truyền biến môi trường CI/CD (mặc định COM5)
+  nodeId: 1                    # Địa chỉ Node RS485 (Mặc định: 1)
+  baudrate: 115200             # Tốc độ Baud (Mặc định: 115200)
+  autoPowerOff: true           # Tự động tắt toàn bộ rơ-le nguồn khi kết thúc test (Mặc định: true)
+  timeoutMs: 4000              # Custom thời gian timeout chờ phản hồi từ vi điều khiển (ms)
 ---
 - hwPowerOn: 1
 - hwClick: 1
@@ -32,6 +37,7 @@ appId: com.lumi.lifenext
 
 jig:
   port: "${JIG_PORT:-COM5}"     # Truyền biến môi trường CI/CD (mặc định COM5)
+  nodeId: 1                    # Địa chỉ Node RS485 (Mặc định: 1)
   baudrate: 115200             # Tốc độ Baud (Mặc định: 115200)
   autoPowerOff: true           # Tự động tắt toàn bộ rơ-le nguồn khi kết thúc test (Mặc định: true)
   timeoutMs: 4000              # Custom thời gian timeout chờ phản hồi từ vi điều khiển (ms)
@@ -47,6 +53,7 @@ jig:
 ```yaml
 # profiles/jig_switch_sample.yaml
 port: "${JIG_PORT:-COM5}"
+nodeId: 1                      # Địa chỉ Node RS485 (Mặc định: 1)
 baudrate: 115200
 autoPowerOff: true
 timeoutMs: 4000
@@ -58,6 +65,7 @@ servos:
   - channel: 2
     pressAngle: 72
     releaseAngle: 15
+    pressDurationMs: 400
 ```
 
 Trong tất cả các file test kịch bản, chỉ cần trỏ tới file profile:
@@ -82,8 +90,11 @@ jig: "profiles/jig_switch_sample.yaml"
   ```
 * **Ping và kiểm tra kết nối với Jig phần cứng:**
   ```bash
-  # Ping cổng COM trực tiếp
+  # Ping cổng COM trực tiếp (mặc định Node 1)
   lumi-tester jig ping COM5
+
+  # Ping chỉ định Node ID cụ thể trên bus RS485 (ví dụ: Node 2)
+  lumi-tester jig ping COM5 --node 2
 
   # Hoặc ping theo file profile YAML
   lumi-tester jig ping profiles/jig_switch_sample.yaml
