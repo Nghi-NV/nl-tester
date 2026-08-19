@@ -1,313 +1,101 @@
 # Lumi Tester Flow Patterns
 
-Use these patterns as starting points. Always replace selectors with discovered
-stable selectors from `selectors.csv` and validate before running.
+Canonical flow templates and best practices for creating automated tests across platforms.
 
-## Contents
-
-- Current Android app smoke
-- Login
-- Onboarding skip
-- Search
-- Settings toggle
-- Permission dialog
-- GPS route
-- Web form
-- Failure recovery pattern
-
-## Current Android App Smoke
-
-Use when the user asks to test the app currently open on a connected Android
-device, especially when multiple devices are attached.
-
-Discover the target first:
-
-```bash
-adb devices -l
-adb -s <serial> shell dumpsys window | rg -i 'mCurrentFocus|mFocusedApp|topResumed'
-adb -s <serial> exec-out uiautomator dump /dev/tty
-```
-
-Then write the flow with the discovered package and semantic selectors:
-
-```yaml
-platform: android
-appId: com.example.current
-tags:
-  - smoke
-  - current-app
-defaultTimeout: 10000
----
-- launchApp:
-    appId: com.example.current
-    permissions:
-      all: allow
-- waitUntilVisible:
-    accessibilityId: "Screen title"
-- waitUntilVisible:
-    accessibilityId: "Primary action"
-- tap:
-    accessibilityId: "Primary action"
-- waitForAnimationToEnd
-- screenshot: "current_app_smoke.png"
-```
-
-Adaptation rules:
-
-- Use current focus as the source of truth for `appId`; do not reuse a nearby
-  YAML file unless it targets the same package.
-- If launch restores a nested screen, inspect the hierarchy first and navigate
-  back with a real command such as `back` or a semantic button tap. Do not use
-  coordinates.
-- `conditional.condition.visible` checks visible text, not Android
-  `content-desc`; do not use it for `accessibilityId` readiness.
-- When UI XML exposes `content-desc`, use `accessibilityId` or `desc`.
-- Avoid `point` selectors unless the hierarchy and OCR expose no stable target.
-- If the failure XML package is not the expected `appId`, debug launch/crash or
-  wrong target before changing selectors.
-
-## Login
-
-Use when the user asks for sign in, authentication, or account smoke tests.
+## 1. Authentication & Form Input Pattern
 
 ```yaml
 platform: android
 appId: com.example.app
-tags:
-  - smoke
-  - login
+tags: [smoke, login]
 defaultTimeout: 15000
-env: { file: ".env" }
 ---
 - launchApp
-- waitUntilVisible:
-    id: "email"
-- tap:
-    id: "email"
-- inputText: "${USER_EMAIL}"
-- tap:
-    id: "password"
-- inputText: "${USER_PASSWORD}"
+- waitUntilVisible: { id: "email_input" }
+- tap: { id: "email_input" }
+- inputText: "${USER_EMAIL:-test@example.com}"
+- tap: { id: "password_input" }
+- inputText: "${USER_PASS:-secret123}"
 - hideKeyboard
+- tap: { id: "submit_btn" }
+- waitUntilVisible: { text: "Dashboard", exact: true }
+- see: { text: "Dashboard" }
+```
+
+## 2. Sub-Element Positioning Pattern (`align` & `offset`)
+
+For toggles, checkboxes, or icon buttons located on row edges:
+
+```yaml
+# Tap toggle switch on the right side of a list row
 - tap:
-    id: "login_button"
-- waitUntilVisible:
-    text: "Home"
-    exact: true
-- see:
-    text: "Home"
-    exact: true
+    type: "Switch"
+    index: 0
+    align: right # Presets: left (10%), right (90%), top (10%), bottom (90%), center (50%)
+
+# Custom percentage offset within element bounds
+- tap:
+    id: "settings_item"
+    offset: "85%,50%"
 ```
 
-Adaptation rules:
+## 3. Hardware + App Hybrid Verification Pattern
 
-- If credentials are sensitive, use `env: { file: ".env" }` and keep
-  `USER_EMAIL`/`USER_PASSWORD` out of committed YAML.
-- If keyboard covers the button, use `hideKeyboard` before `tap`.
-- If login sometimes shows onboarding, use `conditional` or `runFlow`.
-
-## Onboarding Skip
-
-Use for first-run screens, tutorials, and permission prompts.
+For IoT/Smart devices requiring physical interaction + App assertion:
 
 ```yaml
 platform: android
-appId: com.example.app
-tags:
-  - onboarding
----
-- launchApp:
-    clearState: true
-- retry:
-    maxRetries: 3
-    commands:
-      - conditional:
-          condition:
-            visible: "Skip"
-          then:
-            - tap:
-                text: "Skip"
-                exact: true
-- waitUntilVisible:
-    text: "Home"
-    exact: true
-```
-
-Adaptation rules:
-
-- Prefer exact text for buttons like Skip/Next only if the app language is fixed.
-- For permission dialogs, prefer `text` because system dialogs often lack app ids.
-
-## Search
-
-Use for search boxes, filtering lists, or command palette style flows.
-
-```yaml
-platform: android
-appId: com.example.app
-tags:
-  - search
+appId: com.lumi.lifenext
+jig: "profiles/jig_switch_sample.yaml"
 ---
 - launchApp
-- tap:
-    id: "search"
-- inputText: "bedroom"
-- waitUntilVisible:
-    text: "Bedroom"
-    exact: true
-- see:
-    text: "Bedroom"
-    exact: true
+- hwPowerOn: 1
+- hwClick: 1 # Physical button pressed via Servo
+- waitUntilVisible: { text: "Light 1 is ON" }
+- hwSeeLedBlink: { channel: 1, color: "BLUE", count: 2 } # LED assertion
+- tap: { id: "turn_off_btn" }
+- hwSeeLedOff: 1
 ```
 
-Adaptation rules:
-
-- If results load remotely, use `waitUntilVisible`, not fixed `wait`.
-- If the target is below the fold, use `scrollUntilVisible`.
-- For dynamic result counts, use `regex`.
-
-## Settings Toggle
-
-Use for settings lists, switches, and repeated rows.
+## 4. GPS Navigation Simulation Pattern
 
 ```yaml
 platform: android
-appId: com.example.app
-tags:
-  - settings
----
-- launchApp
-- tap:
-    desc: "Open menu"
-- tap:
-    text: "Settings"
-    exact: true
-- scrollUntilVisible:
-    text: "Bedroom"
-    direction: down
-- tap:
-    rightOf:
-      text: "Bedroom"
-      exact: true
-    type: "android.widget.Switch"
-- see:
-    text: "Bedroom"
-    exact: true
-```
-
-Adaptation rules:
-
-- In repeated rows, prefer relative selectors over `type + index`.
-- Use `scrollUntilVisible` before relative row actions.
-
-## Permission Dialog
-
-Use when flows trigger OS permission prompts.
-
-```yaml
-platform: android
-appId: com.example.app
-tags:
-  - permission
----
-- launchApp
-- conditional:
-    condition:
-      visible: "While using the app"
-    then:
-      - tap:
-          text: "While using the app"
-          exact: true
-- conditional:
-    condition:
-      visible: "Allow"
-    then:
-      - tap:
-          text: "Allow"
-          exact: true
-```
-
-Adaptation rules:
-
-- Permission text varies by OS version; inspect screenshot/XML before hardcoding.
-- Keep permission handling in a reusable `runFlow`.
-
-## GPS Route
-
-Use for location playback, maps, navigation, and geofence tests.
-
-```yaml
-platform: android
-appId: com.example.app
-tags:
-  - gps
+appId: com.example.map
 ---
 - launchApp
 - mockLocation:
-    file: ./routes/home-to-office.gpx
-    speed: 30
+    file: "./routes/commute.gpx"
+    speed: 45
     loop: false
-- waitForLocation:
-    lat: 21.0278
-    lon: 105.8342
-    tolerance: 80
-    timeout: 60000
-- see:
-    text: "Arrived"
+- waitUntilVisible: { id: "speedometer" }
 - stopMockLocation
 ```
 
-Adaptation rules:
-
-- Always stop mock location in cleanup flows.
-- Use `waitForMockCompletion` for full route playback assertions.
-
-## Web Form
-
-Use for browser tests.
+## 5. Subflow & Error Recovery Pattern
 
 ```yaml
-platform: web
-url: https://example.com/login
-browser: chromium
-tags:
-  - web
+# Main test flow reusing subflow
+- runFlow: ./subflows/login.yaml
+- conditional:
+    condition: { visible: "Rate App" }
+    then:
+      - tap: { text: "Later" }
+- retry:
+    maxRetries: 2
+    commands:
+      - tap: { id: "refresh_btn" }
+      - waitUntilVisible: { id: "content_list" }
+```
+
+## 6. Web & Desktop Pattern
+
+```yaml
+platform: web # or macos / windows
+url: "https://example.com/dashboard"
 ---
 - launchApp
-- tap:
-    css: "[data-testid='email']"
-- inputText: "test@example.com"
-- tap:
-    css: "[data-testid='password']"
-- inputText: "secret"
-- tap:
-    role: "button"
-    text: "Sign in"
-- waitUntilVisible:
-    text: "Dashboard"
-    exact: true
+- waitUntilVisible: { role: "button", text: "Get Started" }
+- tap: { role: "button", text: "Get Started" }
+- screenshot: "web_dashboard.png"
 ```
-
-Adaptation rules:
-
-- Prefer `css: [data-testid=...]` over visual text when available.
-- Use `role + text` for accessible buttons and links.
-- Avoid brittle `xpath` or deep CSS chains.
-
-## Failure Recovery Pattern
-
-Use after any failed run:
-
-```bash
-lumi-tester list ./flow.yaml --json
-lumi-tester run ./flow.yaml --platform android --command-index <failedIndex> --report --snapshot --events-jsonl --output ./output
-```
-
-Process:
-
-1. Read `run.json`.
-2. Read the failed command screenshot/XML/log.
-3. If selector failed, use `suggest_selectors` on the XML artifact when MCP is available.
-4. Patch the smallest selector or wait issue.
-5. Rerun the failed command.
-6. Rerun the whole flow.

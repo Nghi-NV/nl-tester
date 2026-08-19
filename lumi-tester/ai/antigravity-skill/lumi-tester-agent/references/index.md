@@ -33,3 +33,6 @@ needed.
   commands, and debug limits.
 - `desktop.md`: macOS/Windows desktop app identity, permissions, selectors,
   screenshots/pixel checks, and `desktopState.clear`.
+- `hardware.md`: physical IoT/Smart devices automation, standardized `hw*` commands,
+  shared Jig profiles, servo calibration, and TCS34725 LED blink verification.
+
