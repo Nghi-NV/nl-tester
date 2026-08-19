@@ -53,12 +53,22 @@ impl HardwareController {
         transport.connect(port, baud)
             .map_err(|e| anyhow::anyhow!("Failed to connect to hardware Jig on '{}' (baudrate: {}): {}", port, baud, e))?;
 
-        // Send ping handshake (accept system status or ok)
-        let ping_resp = transport.request(
+        // Send ping handshake (accept system, ok, version, or info with ready)
+        let ping_resp = match transport.request(
             &protocol::cmd_ping(),
-            |line| line.kind == "system" || line.kind == "ok",
-            2.0,
-        ).map_err(|e| anyhow::anyhow!("Connected to Jig on '{}', but handshake failed (no valid response from MCU): {}", port, e))?;
+            |line| line.kind == "system" || line.kind == "ok" || line.kind == "version" || line.kind == "info",
+            1.5,
+        ) {
+            Ok(r) => r,
+            Err(_) => {
+                // Fallback to addressed @1 ping for RS485 multi-drop buses
+                transport.request(
+                    "@1 ping\n",
+                    |line| line.kind == "system" || line.kind == "ok" || line.kind == "version" || line.kind == "info",
+                    2.0,
+                ).map_err(|e| anyhow::anyhow!("Connected to Jig on '{}', but handshake failed (no valid response from MCU): {}", port, e))?
+            }
+        };
 
         if ping_resp.kind == "system" && ping_resp.get_str("status") != Some("ready") {
             log::warn!("Handshake returned status: {:?}", ping_resp.raw);
@@ -177,16 +187,45 @@ pub fn ping_details(port: &str, baudrate: Option<u32>) -> Result<JigPingResult> 
     let controller = HardwareController::new(None);
     let mut transport = controller.transport.lock().unwrap();
     transport.connect(port, baud)?;
-    let resp = transport.request(
+    let resp = match transport.request(
         &protocol::cmd_ping(),
-        |line| line.kind == "system" || line.kind == "ok" || line.kind == "version",
-        2.0,
-    )?;
+        |line| line.kind == "system" || line.kind == "ok" || line.kind == "version" || line.kind == "info",
+        1.5,
+    ) {
+        Ok(r) => r,
+        Err(_) => {
+            // Fallback to addressed @1 ping for RS485 multi-drop buses
+            transport.request(
+                "@1 ping\n",
+                |line| line.kind == "system" || line.kind == "ok" || line.kind == "version" || line.kind == "info",
+                2.0,
+            )?
+        }
+    };
     let latency_ms = start.elapsed().as_millis() as u64;
 
-    let node_id = resp.get_u32("node_id").map(|n| n as u8);
-    let firmware_version = resp.get_str("version").or_else(|| resp.get_str("fw")).map(|s| s.to_string());
-    let system_status = resp.get_str("status").map(|s| s.to_string());
+    let node_id = resp.get_u32("node_id").map(|n| n as u8).or_else(|| {
+        if resp.raw.starts_with("@1") {
+            Some(1)
+        } else {
+            None
+        }
+    });
+    let firmware_version = resp
+        .get_str("firmware")
+        .or_else(|| resp.get_str("version"))
+        .or_else(|| resp.get_str("fw"))
+        .map(|s| s.to_string());
+    let system_status = resp
+        .get_str("status")
+        .or_else(|| {
+            if resp.kind == "ok" || resp.raw.to_lowercase().contains("ready") {
+                Some("ready")
+            } else {
+                None
+            }
+        })
+        .map(|s| s.to_string());
 
     Ok(JigPingResult {
         port: port.to_string(),

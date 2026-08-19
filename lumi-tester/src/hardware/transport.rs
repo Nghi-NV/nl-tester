@@ -27,10 +27,14 @@ impl SerialTransport {
     }
 
     pub fn connect(&mut self, port_name: &str, baudrate: u32) -> Result<()> {
-        let port = serialport::new(port_name, baudrate)
+        let mut port = serialport::new(port_name, baudrate)
             .timeout(Duration::from_millis(100))
             .open()
             .with_context(|| format!("Failed to open serial port '{}'", port_name))?;
+
+        // Allow USB-Serial / MCU DTR line to stabilize and clear startup noise
+        std::thread::sleep(Duration::from_millis(100));
+        let _ = port.clear(serialport::ClearBuffer::All);
 
         self.port = Some(port);
         self.port_name = Some(port_name.to_string());

@@ -25,9 +25,8 @@ impl ResponseLine {
         }
 
         if !trimmed.starts_with('[') {
-            // Handle plain OK / ERROR
+            let mut fields = HashMap::new();
             if trimmed.eq_ignore_ascii_case("ok") {
-                let mut fields = HashMap::new();
                 fields.insert("status".to_string(), "ok".to_string());
                 return Ok(Self {
                     kind: "ok".to_string(),
@@ -35,7 +34,25 @@ impl ResponseLine {
                     raw: trimmed.to_string(),
                 });
             }
-            anyhow::bail!("Line does not start with tag bracket: {}", line);
+            if trimmed.eq_ignore_ascii_case("ready") || trimmed.to_lowercase().contains("ready") {
+                fields.insert("status".to_string(), "ready".to_string());
+                return Ok(Self {
+                    kind: "system".to_string(),
+                    fields,
+                    raw: trimmed.to_string(),
+                });
+            }
+            for token in trimmed.split_whitespace() {
+                if let Some((k, v)) = token.split_once('=') {
+                    fields.insert(k.to_lowercase(), v.trim_matches(',').to_string());
+                }
+            }
+            fields.insert("message".to_string(), trimmed.to_string());
+            return Ok(Self {
+                kind: "info".to_string(),
+                fields,
+                raw: trimmed.to_string(),
+            });
         }
 
         let end_tag = trimmed
