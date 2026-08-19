@@ -282,7 +282,11 @@ impl TestExecutor {
             } else {
                 raw_port
             };
-            let controller = crate::hardware::HardwareController::new(None);
+            let mut hw_config = crate::hardware::HardwareConfig::default();
+            if let Some(nid) = params.node_id {
+                hw_config.node_id = Some(nid);
+            }
+            let controller = crate::hardware::HardwareController::new(Some(hw_config));
             if let Err(e) = controller.connect(&port, params.baudrate) {
                 let err_msg = format!("Hardware Jig connection failed on '{}': {}", port, e);
                 self.emitter.emit(TestEvent::Log {
@@ -3054,7 +3058,11 @@ impl TestExecutor {
                 };
 
                 let port = self.context.substitute_vars(&resolved_params.port);
-                let controller = crate::hardware::HardwareController::new(None);
+                let mut hw_config = crate::hardware::HardwareConfig::default();
+                if let Some(nid) = resolved_params.node_id {
+                    hw_config.node_id = Some(nid);
+                }
+                let controller = crate::hardware::HardwareController::new(Some(hw_config));
                 controller.connect(&port, resolved_params.baudrate)?;
 
                 if let Some(ref servos) = resolved_params.servos {
