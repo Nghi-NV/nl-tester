@@ -4,17 +4,17 @@ Practical guide for discovering, disambiguating, and refining stable UI selector
 
 ## 1. Selector Priority Matrix
 
-Always prefer semantic and accessibility identifiers over coordinates:
+Prioritize user-facing, multilingual resilient selectors:
 
-| Priority | Selector Type | Example / Shorthand | Platform Support |
+| Priority | Selector Type | Example / Shorthand | Practical Use |
 | :--- | :--- | :--- | :--- |
-| **1 (Highest)** | `id` / `accessibilityId` / `desc` | `id: "login_button"`<br>`accessibilityId: "Save"` | Android, iOS, Desktop |
-| **2 (High)** | **`regex` / Shorthand** | **`tap: "name|tên"`**<br>`see: "Accept|Đồng ý"`<br>`regex: "^Order #\\d+$"` | All platforms |
-| **3** | Exact `text` | `text: "Submit", exact: true` | All platforms |
-| **4** | `role`, `placeholder`, `css` | `role: "button", text: "Login"`<br>`css: ".primary-btn"` | Web |
-| **5** | `type` with `index` | `type: "input", index: 0` | All platforms |
-| **6** | `ocr` / `image` | `ocr: "Camera Feed"` | Fallback when tree is unavailable |
-| **7 (Last Resort)**| `point` | `point: "50%,80%"` | Canvas / DHU only |
+| **1 (Recommended)** | **`regex` / Shorthand** | **`tap: "name|tên"`**<br>`see: "Accept|Đồng ý"`<br>`regex: "^Order #\\d+$"` | Universal across all platforms, robust for multi-locale & dynamic UI |
+| **2** | `id` (Resource / Test ID) | `id: "login_button"` | Use when an explicit, stable ID actually exists |
+| **3** | Exact `text` | `text: "Submit", exact: true` | Single-locale fixed labels |
+| **4** | Platform Fields (`desc`, `accessibilityId`, `contentDesc`, `placeholder`) | `desc: "Close"`<br>`accessibilityId: "Save"` | Contextual: only when exposed by OS/framework |
+| **5** | `role`, `type`, `css` | `role: "button"`, `type: "input"` | Structural & web fallback |
+| **6** | `ocr` / `image` | `ocr: "Camera Feed"` | Fallback when element tree is unavailable |
+| **7 (Last Resort)**| `point` | `point: "50%,80%"` | Canvas / DHU / graphics only |
 
 ### Regex Shorthand Syntax
 Lumi Tester automatically converts strings containing regex tokens (`|`, `.*`, `.+`, `[`, `(`, `^`, `$`) into regex selectors.

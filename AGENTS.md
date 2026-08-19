@@ -77,14 +77,15 @@ with a system that requires it.
 
 ## Selector Priority
 
-Use stable selectors before coordinates:
+Prioritize user-facing, multi-language resilient selectors:
 
-1. `id`, `desc`, `accessibilityId`, `contentDesc`
-2. `regex` for dynamic, multi-language, or pattern text (e.g. `regex: "name|tên"` or direct shorthand `tap: "name|tên"`, `see: "Accept|Đồng ý"`, `tap: "^Submit.*$"`)
-3. `text` with `exact: true` when the text is single-locale and completely stable
-4. `role`, `type`, `placeholder` with optional `index`
-5. `ocr` when native hierarchy cannot expose the text
-6. `point` only as a last resort, preferably percentages such as `"50%,80%"`
+1. **`regex` / Shorthand (Recommended for most cases)**: Highly recommended for general UI, multi-language (e.g. `tap: "name|tên"`, `see: "Accept|Đồng ý"`), and dynamic text (`tap: "^Submit.*$"`).
+2. **`id`**: Use when a stable, explicit resource ID / test ID actually exists in the hierarchy.
+3. **`text` (`exact: true`)**: Single-locale stable text labels.
+4. **Platform fields (`desc`, `accessibilityId`, `contentDesc`, `placeholder`)**: Use when specifically exposed by the platform/framework (Android, iOS, Web, Desktop).
+5. **`role` / `type`** with `index`: Component structure fallback.
+6. **`ocr`**: When native hierarchy cannot expose the text.
+7. **`point`**: Last resort (percentages e.g. `"50%,80%"`).
 
 ### Regex Selector Shorthand
 

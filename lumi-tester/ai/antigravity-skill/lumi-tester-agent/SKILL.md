@@ -70,20 +70,21 @@ python3 ~/.codex/skills/lumi-tester-agent/scripts/lumi_agent.py agent-check path
 
 ## 4. Selector Priority & Regex Power
 
-Prioritize stable identifiers and flexible regex patterns:
+Prioritize user-facing, multilingual resilient selectors:
 
-1. **`id` / `accessibilityId` / `desc`**: Stable native IDs.
-2. **`regex` (High Priority)**: Dynamic, multilingual, or pattern matching. Write in structured form or **direct shorthand string**:
+1. **`regex` / Direct Shorthand (Recommended)**: Universal across all platforms, resilient to multi-language and dynamic text:
    ```yaml
    - tap: "name|tên"              # Shorthand regex (auto-detected on |, .*, .+, [, (, ^, $)
    - see: "Accept|Đồng ý"         # Multilingual assertion
    - waitUntilVisible: "^Order #\\d+$"
    - tap: { regex: "(Login|Đăng nhập)" }
    ```
-3. **`text` (`exact: true`)**: Single-locale stable labels.
+2. **`id`**: Use when an explicit, stable resource ID exists in the hierarchy.
+3. **`text` (`exact: true`)**: Single-locale fixed labels.
 4. **Sub-Element Alignment**: `align: right | left | top | bottom | center` or `offset: "85%,50%"`.
-5. **`role` / `type`** with `index`: Component classifications.
-6. **`ocr` / `point`**: Fallback only when hierarchy is missing.
+5. **Platform attributes (`desc`, `accessibilityId`, `contentDesc`, `placeholder`)**: When specifically available in native tree.
+6. **`role` / `type`** with `index`: Structural fallback.
+7. **`ocr` / `point`**: Fallback only when hierarchy is missing.
 
 ## 5. Reference Map
 
