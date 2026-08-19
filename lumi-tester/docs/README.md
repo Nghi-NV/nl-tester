@@ -26,6 +26,9 @@ controller…) để verify phần cứng: lệnh `camera calibrate/detect` và 
 ### [Tự động hóa Phần cứng (Hardware Automation)](hardware-control.md)
 Tự động hóa gạt công tắc vật lý (Servo), điều khiển nguồn (Relay) và đọc trạng thái màu sắc/chớp tắt LED (Color Sensor) trực tiếp bằng 100% Native Rust qua truyền thông RS485/Serial.
 
+### [Tích hợp Kỹ năng AI (AI Skills & MCP)](ai-skills-integration.md)
+Hướng dẫn tích hợp kỹ năng kiểm thử tự động Lumi Tester vào Google Antigravity, OpenAI Codex, Claude Code, Cursor và cấu hình Lumi Tester MCP Server.
+
 ### [Luồng thực thi Test](flows/test_execution_flow.md)
 Hiểu về vòng đời của một phiên test, từ lúc đọc file YAML đến khi tương tác thiết bị.
 

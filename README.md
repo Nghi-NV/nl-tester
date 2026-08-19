@@ -192,6 +192,8 @@ cargo build --release
 ## 📚 Documentation
 
 - [Lumi Tester Documentation](lumi-tester/docs/)
+- [AI Skills & MCP Integration Guide](lumi-tester/docs/ai-skills-integration.md)
+- [Hardware Automation Guide](lumi-tester/docs/hardware-control.md)
 - [CI/CD Integration Guide](lumi-tester-studio/docs/CICD_GUIDE.md)
 - [Writing Tests Guide](lumi-tester/docs/writing_tests.md)
 - [Commands Reference](lumi-tester/docs/api/commands.md)
