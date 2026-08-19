@@ -134,4 +134,5 @@ assertDeviceState,checkDevice,camera,Assert camera profile region LED state,obje
 waitDeviceState,,camera,Wait for camera profile region LED state,object,button|expect,camera|withinMs,no,all,"- waitDeviceState: { button: btn1, expect: GREEN }",""
 assertDeviceTransition,assertDeviceChange,camera,Assert LED state transition from state to state,object,button|from|to,camera|withinMs,no,all,"- assertDeviceTransition: { button: btn1, from: OFF, to: RED }",""
 waitLedPattern,assertDevicePattern,camera,Wait for camera LED blink pattern,object,button|expect|count,withinMs|pulseMinMs|pulseMaxMs,no,all,"- waitLedPattern: { button: btn1, expect: PINK, count: 3 }",""
-getDeviceState,,camera,Read all camera profile region states into JSON var,object,saveAs,camera,no,all,"- getDeviceState: { saveAs: state }",""
+drag,dragFromTo,interaction,Continuous drag / Slider gesture,object,from|to,duration|durationMs,no,android|ios|web|macos|windows,"- drag: { from: { id: slider, offset: ""0%,50%"" }, to: { id: slider, offset: ""80%,50%"" }, duration: 500 }","Controls sliders seekbars and drag gestures"
+setWindowSize,resizeWindow|windowSize|setWindow,system,Resize desktop or browser window,string|object,width|height,size,no,web|macos|windows,"- setWindowSize: { width: 1280, height: 800 }",""
