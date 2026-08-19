@@ -189,30 +189,26 @@ appId: com.example.iotapp
 ```yaml
 platform: android
 appId: com.lumi.smarthome
+jig: "profiles/jig_switch_sample.yaml" # hoặc jig: "COM5"
 ---
-# 1. Kết nối mạch điều khiển Jig qua USB Serial
-- connectJig:
-    port: "COM5"
-    baudrate: 115200
-
-# 2. Cấp nguồn rơ-le kênh 1 cho thiết bị Smart Switch
-- turnOn: 1
+# 1. Cấp nguồn rơ-le kênh 1 cho thiết bị Smart Switch
+- hwPowerOn: 1
 - wait: 2000
 
-# 3. Điều khiển động cơ Servo nhấn giữ nút Pairing trong 5 giây
-- holdButton: 1
+# 2. Điều khiển động cơ Servo nhấn giữ nút Pairing trong 5 giây
+- hwPress: 1
 - wait: 5000
-- releaseButton: 1
+- hwRelease: 1
 
-# 4. Kiểm tra đèn LED phần cứng nhấp nháy màu xanh dương (Pairing Mode)
-- seeLedColor:
+# 3. Kiểm tra đèn LED phần cứng nhấp nháy màu xanh dương (Pairing Mode)
+- hwSeeLedBlink:
     channel: 1
-    expected: "BLUE"
+    color: "BLUE"
+    count: 2
     timeoutMs: 8000
 
-# 5. Ngắt nguồn hoàn toàn sau khi hoàn tất test
-- turnOffAll
-- disconnectJig
+# 4. Ngắt nguồn hoàn toàn sau khi hoàn tất test
+- hwPowerOffAll
 ```
 
 ---

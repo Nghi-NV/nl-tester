@@ -870,24 +870,40 @@ Ví dụ đầy đủ các tham số:
 
 Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch nạp và bộ Jig điều khiển phần cứng tự động hóa cho thiết bị IoT / Smart Home. Tất cả các lệnh phần cứng đều sử dụng tiền tố **`hw*`** để phân biệt rõ ràng với các lệnh UI.
 
+### 🔌 Cấu hình Jig ở Header (Khuyến nghị dùng Header)
+Khai báo cổng COM hoặc file Profile chung ở Header YAML (trước dấu `---`):
+
+```yaml
+# 1. Khai báo cổng COM ngắn gọn:
+jig: "COM5"
+
+# 2. Khai báo file Profile Jig & Servo dùng chung:
+jig: "profiles/jig_switch_sample.yaml"
+
+# 3. Khai báo nâng cao kèm biến môi trường:
+jig:
+  port: "${JIG_PORT:-COM5}"
+  baudrate: 115200
+  autoPowerOff: true
+  timeoutMs: 4000
+```
+
 ### `hwConnect` / `hwDisconnect`
-**Mô tả**: Kết nối tới mạch phần cứng Jig Controller qua cổng RS232/USB Serial.
+**Mô tả**: Kết nối thủ công tới mạch phần cứng Jig Controller qua cổng RS232/USB Serial (nếu không khai báo ở Header).
 
 Ví dụ đầy đủ các tham số:
 ```yaml
 # 1. Viết tắt cổng COM
 - hwConnect: "COM5"
 
-# 2. Đầy đủ các tham số đối tượng (hỗ trợ nạp file Profile chung hoặc cấu hình servos)
+# 2. Nạp file Profile chung
+- hwConnect: "profiles/jig_switch_sample.yaml"
+
+# 3. Đầy đủ các tham số đối tượng
 - hwConnect:
     port: "COM5"
     baudrate: 115200
     timeoutMs: 3000
-    file: "profiles/jig_switch_sample.yaml"
-    servos:
-      - channel: 1
-        pressAngle: 75
-        releaseAngle: 15
 ```
 
 ### `hwPowerOn` / `hwPowerOff` / `hwPowerOffAll` / `hwPowerCycle`
