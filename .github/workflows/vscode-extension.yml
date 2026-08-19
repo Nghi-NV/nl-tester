@@ -45,3 +45,9 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: lumi-tester-vscode/lumi-tester-*.vsix
           fail_on_unmatched_files: true
+      - name: Publish to Visual Studio Marketplace
+        if: startsWith(github.ref, 'refs/tags/extension-v') && env.VSCE_PAT != ''
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx @vscode/vsce publish --packagePath lumi-tester-*.vsix
+
