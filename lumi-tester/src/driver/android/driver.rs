@@ -1702,6 +1702,21 @@ impl PlatformDriver for AndroidDriver {
         Ok(())
     }
 
+    async fn drag(&self, from: (i32, i32), to: (i32, i32), duration_ms: u64) -> Result<()> {
+        let cmd = format!(
+            "{} swipe {} {} {} {} {}",
+            self.input_prefix(),
+            from.0,
+            from.1,
+            to.0,
+            to.1,
+            duration_ms
+        );
+        adb::shell(self.serial.as_deref(), &cmd).await?;
+        self.invalidate_cache().await;
+        Ok(())
+    }
+
     async fn scroll_until_visible(
         &self,
         selector: &Selector,
@@ -3206,10 +3221,17 @@ impl PlatformDriver for AndroidDriver {
 /// Map common element type aliases to Android widget classes
 fn map_android_type(t: &str) -> &str {
     match t.to_lowercase().as_str() {
-        "input" | "edittext" | "textfield" => "android.widget.EditText",
+        "input" | "edittext" | "textfield" | "text_field" | "edit" | "textbox" | "textarea" => {
+            "android.widget.EditText"
+        }
         "button" | "btn" => "android.widget.Button",
-        "image" | "img" | "icon" => "android.widget.ImageView",
-        "text" | "label" | "textview" => "android.widget.TextView",
+        "image" | "img" | "icon" | "imageview" => "android.widget.ImageView",
+        "text" | "label" | "textview" | "statictext" => "android.widget.TextView",
+        "switch" | "toggle" => "android.widget.Switch",
+        "checkbox" | "check_box" => "android.widget.CheckBox",
+        "radio" | "radiobutton" => "android.widget.RadioButton",
+        "select" | "dropdown" | "spinner" => "android.widget.Spinner",
+        "slider" | "seekbar" => "android.widget.SeekBar",
         "view" => "android.view.View",
         _ => t,
     }

@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.18] / [extension-v0.1.28] - 2026-08-19
+
+### 🚀 Highlights & Features
+
+#### 1. Continuous Drag & Slider Control (`drag`)
+- **Universal Multi-Platform Support**: Added `drag` command across **Android** (ADB drag gestures), **iOS** (WDA/idb drag), **Web** (Playwright mouse continuous actions), **macOS** (MacosBridge drag), and **Windows** (UIAutomation drag).
+- **Flexible Drag Points**: Supports dragging from/to semantic selectors, relative positioning, offsets, and coordinates with customizable `duration` (ms).
+- **Seekbar & Progress Control**: Easily control continuous UI sliders (e.g. brightness, volume, seekbars, reorderable lists).
+
+#### 2. Relative Positioning & Sibling Indexing (`below`, `above`, `rightOf`, `leftOf`)
+- **Flutter & Compose Label Discovery**: Automatically detects `content_desc` labels (e.g. `"30%"`, `"Brightness"`) as valid relative anchor points alongside standard `text`.
+- **Automatic Relative Index Calculation**:
+  - Distance-based sorting from anchors.
+  - Automatically emits `index: N` if and only if multiple matching sibling elements exist (`index > 0`), keeping `index == 0` YAML minimal and clean.
+- **Inspector UI Enhancement**: Displays clear relation titles on relative cards (e.g. `type: View, below: "30%" (index 1)`).
+
+#### 3. Standard Hardware Jig Profile (`profiles/jig_config.yaml`) & Flexible Color Assertions
+- **Standard Profile**: Created [`profiles/jig_config.yaml`](file:///Users/nghinguyen/Desktop/MyOpenSource/nl-tester/profiles/jig_config.yaml) containing complete connection parameters and Servo channel definitions.
+- **Flexible `hwSeeLed`**: Accepts both single string (e.g. `expected: "BLUE"`) and string arrays (e.g. `expected: ["BLUE", "GREEN"]`).
+
+#### 4. VS Code Extension `v0.1.28`
+- **Hierarchical Auto-Completion**: Unrestricted completion on all keystrokes with nested parameter tree resolution (`drag.from`, `drag.to`, `scrollable`, `permissions`, etc.).
+- **Reusable `SELECTOR_PARAMS`**: Schema updated with recursive sub-properties.
+- **Built & Packaged**: `lumi-tester-0.1.28.vsix`.
+
+---
+
 ## [v0.1.17] / [extension-v0.1.25] - 2026-08-19
 
 ### 🚀 Highlights & Features

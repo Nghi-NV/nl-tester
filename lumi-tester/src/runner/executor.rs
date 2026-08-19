@@ -264,8 +264,15 @@ impl TestExecutor {
             self.camera_configs.clear();
             self.camera_sessions.clear();
         }
+        self.driver.set_active_app(flow.app_id.as_deref());
         self.driver
             .set_desktop_state(flow.desktop_state.clone(), &self.context.base_dir)?;
+
+        if let Some(ref ws) = flow.window_size {
+            if let Some((w, h)) = ws.to_dimensions() {
+                let _ = self.driver.set_window_size(w, h).await;
+            }
+        }
 
         // Auto connect global hardware Jig if declared in flow header (e.g. jig: "COM5" or jig: "profiles/jig_switch.yaml")
         if let Some(jig_config) = &flow.jig {
@@ -776,9 +783,16 @@ impl TestExecutor {
                         return p;
                     }
                 }
-                crate::parser::types::AssertParams {
-                    text: Some(subst),
-                    ..Default::default()
+                if crate::parser::types::is_regex_string(&subst) {
+                    crate::parser::types::AssertParams {
+                        regex: Some(subst),
+                        ..Default::default()
+                    }
+                } else {
+                    crate::parser::types::AssertParams {
+                        text: Some(subst),
+                        ..Default::default()
+                    }
                 }
             }
         };
@@ -3622,6 +3636,18 @@ impl TestExecutor {
                 Ok(())
             }
 
+            TestCommand::SetWindowSize(params_input) => {
+                if let Some((w, h)) = params_input.to_dimensions() {
+                    self.driver.set_window_size(w, h).await?;
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    self.emitter.emit(TestEvent::Log {
+                        message: format!("  {} Window size set to {}x{}", "✓".green(), w, h),
+                        depth: self.depth,
+                    });
+                }
+                Ok(())
+            }
+
             // GIF Recording
             TestCommand::CaptureGifFrame(params_input) => {
                 let params = params_input.clone().into_inner();
@@ -3847,6 +3873,86 @@ impl TestExecutor {
                     };
 
                 self.driver.swipe(direction, duration, from_selector).await
+            }
+
+            // Drag / DragFromTo command
+            TestCommand::Drag(params) => {
+                let from_params = self.resolve_tap_params(&params.from);
+                let to_params = self.resolve_tap_params(&params.to);
+
+                let from_selector = self
+                    .build_selector(
+                        &from_params.text,
+                        &from_params.regex,
+                        &from_params.id,
+                        &from_params.description,
+                        &from_params.relative,
+                        &from_params.css,
+                        &from_params.xpath,
+                        &from_params.placeholder,
+                        &from_params.role,
+                        &from_params.element_type,
+                        &from_params.image,
+                        from_params.index,
+                        &from_params.scrollable,
+                        from_params.exact,
+                        &from_params.ocr,
+                    )
+                    .ok_or_else(|| anyhow::anyhow!("No 'from' selector specified for drag"))?;
+
+                let to_selector = self
+                    .build_selector(
+                        &to_params.text,
+                        &to_params.regex,
+                        &to_params.id,
+                        &to_params.description,
+                        &to_params.relative,
+                        &to_params.css,
+                        &to_params.xpath,
+                        &to_params.placeholder,
+                        &to_params.role,
+                        &to_params.element_type,
+                        &to_params.image,
+                        to_params.index,
+                        &to_params.scrollable,
+                        to_params.exact,
+                        &to_params.ocr,
+                    )
+                    .ok_or_else(|| anyhow::anyhow!("No 'to' selector specified for drag"))?;
+
+                let from_sel = self
+                    .apply_element_offset(from_selector, &from_params.align, &from_params.offset)
+                    .await?;
+                let to_sel = self
+                    .apply_element_offset(to_selector, &to_params.align, &to_params.offset)
+                    .await?;
+
+                let (from_x, from_y) = match from_sel {
+                    crate::driver::traits::Selector::Point { x, y } => (x, y),
+                    _ => {
+                        let timeout = self.context.default_timeout_ms;
+                        let _ = self.driver.wait_for_element(&from_sel, timeout).await;
+                        self.driver
+                            .resolve_element_point(&from_sel, 0.5, 0.5)
+                            .await?
+                            .ok_or_else(|| anyhow::anyhow!("'from' element not found for drag: {:?}", from_sel))?
+                    }
+                };
+
+                let (to_x, to_y) = match to_sel {
+                    crate::driver::traits::Selector::Point { x, y } => (x, y),
+                    _ => {
+                        let timeout = self.context.default_timeout_ms;
+                        let _ = self.driver.wait_for_element(&to_sel, timeout).await;
+                        self.driver
+                            .resolve_element_point(&to_sel, 0.5, 0.5)
+                            .await?
+                            .ok_or_else(|| anyhow::anyhow!("'to' element not found for drag: {:?}", to_sel))?
+                    }
+                };
+
+                let duration = params.duration.unwrap_or(500);
+                self.driver.drag((from_x, from_y), (to_x, to_y), duration).await
             }
 
             // Mock Location Synchronization

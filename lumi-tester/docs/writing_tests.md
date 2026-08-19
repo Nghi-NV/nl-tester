@@ -322,11 +322,19 @@ appId: com.example.heavyapp
     - see:
         regex: "OTP: \\d{6}"
     ```
-5.  **Theo Vị trí tương đối**: (Aliases: `rightOf`, `leftOf`, `above`, `below`)
+5.  **Theo Vị trí tương đối**: (Aliases: `rightOf`, `leftOf`, `above`, `below`). Tự động tìm kiếm các thành phần không tên/id nằm cạnh các nhãn (text, contentDesc) ổn định.
     ```yaml
+    # Tap vào Slider nằm dưới nhãn "30%"
     - tap:
-        rightOf: "Username"
-        type: "EditText"
+        type: "View"
+        below: "30%"
+        offset: "50%,50%"
+
+    # Nếu có nhiều hơn 1 phần tử cùng loại trong hướng đó, chỉ định index:
+    - tap:
+        type: "View"
+        index: 1
+        below: "Brightness"
     ```
 6.  **Theo Mô tả (Accessibility)**: (Aliases: `desc`, `contentDesc`, `accessibilityId`)
     ```yaml
@@ -345,6 +353,20 @@ appId: com.example.heavyapp
     - tap:
         id: "item_row"
         offset: "85%,50%"
+    ```
+8.  **Kéo vuốt liên tục (`drag`)**: Dùng cho các thanh trượt Slider, Seekbar, sắp xếp kéo thả (Reorder), vẽ Canvas mượt mà trên **Android**, **iOS**, **Web**, **macOS**, **Windows**.
+    ```yaml
+    # Kéo thanh trượt từ mốc 0% sang 80%
+    - drag:
+        from:
+          type: "View"
+          below: "Brightness"
+          offset: "0%,50%"
+        to:
+          type: "View"
+          below: "Brightness"
+          offset: "80%,50%"
+        duration: 500 # ms
     ```
 
 ---

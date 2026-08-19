@@ -141,9 +141,26 @@ impl IosElement {
 
     /// Check if element matches the given type
     pub fn matches_type(&self, element_type: &str) -> bool {
-        self.element_type.as_ref().map_or(false, |t| {
-            t.eq_ignore_ascii_case(element_type) || t.ends_with(element_type)
-        })
+        let Some(t) = &self.element_type else { return false };
+        let req = element_type.to_lowercase();
+        let act = t.to_lowercase();
+
+        match req.as_str() {
+            "input" | "textfield" | "text_field" | "edit" | "edittext" | "textbox" | "textarea" => {
+                act.contains("textfield") || act.contains("textview") || act.contains("securetextfield")
+            }
+            "button" | "btn" => act.contains("button") || act == "btn",
+            "text" | "label" | "statictext" | "static_text" | "textview" => {
+                act.contains("statictext") || act.contains("label") || act.contains("text")
+            }
+            "switch" | "toggle" => act.contains("switch") || act.contains("toggle"),
+            "checkbox" | "check_box" => act.contains("checkbox") || act.contains("check_box"),
+            "image" | "img" | "icon" | "imageview" => act.contains("image") || act.contains("icon"),
+            "select" | "dropdown" | "picker" => act.contains("picker") || act.contains("popup"),
+            "slider" => act.contains("slider"),
+            "table" | "list" | "cell" => act.contains(&req),
+            _ => t.eq_ignore_ascii_case(element_type) || t.ends_with(element_type) || act.contains(&req),
+        }
     }
 
     /// Check if element matches placeholder text

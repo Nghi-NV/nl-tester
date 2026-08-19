@@ -3,11 +3,57 @@
 
 export interface CommandParam {
   name: string;
-  type: 'string' | 'number' | 'boolean' | 'object';
+  type: 'string' | 'number' | 'boolean' | 'object' | 'array';
   description: string;
   required?: boolean;
   snippet?: string;
+  params?: CommandParam[];
 }
+
+export const SELECTOR_PARAMS: CommandParam[] = [
+  { name: 'id', type: 'string', description: 'Find element by resource ID', snippet: 'id: "$1"' },
+  { name: 'text', type: 'string', description: 'Find element by exact text', snippet: 'text: "$1"' },
+  { name: 'regex', type: 'string', description: 'Find element by regex pattern', snippet: 'regex: "$1"' },
+  { name: 'type', type: 'string', description: 'Element type (Slider, Button, View, Input, Text, Switch, CheckBox, ComboBox, List, Row, Cell, ScrollView, Image)', snippet: 'type: "${1|Slider,Button,View,Input,Text,Switch,CheckBox,ComboBox,List,Row,Cell,ScrollView,Image|}"' },
+  { name: 'offset', type: 'string', description: 'Relative percentage offset within element bounds (e.g. "0%,50%" or "20%,50%")', snippet: 'offset: "${1:20%},${2:50%}"' },
+  { name: 'align', type: 'string', description: 'Tap position alignment preset (left, right, top, bottom, center)', snippet: 'align: ${1|left,right,top,bottom,center|}' },
+  { name: 'xpath', type: 'string', description: 'Find element by XPath expression', snippet: 'xpath: "$1"' },
+  { name: 'point', type: 'string', description: 'Direct coordinate (x,y or x%,y%)', snippet: 'point: "${1:50%},${2:50%}"' },
+  { name: 'index', type: 'number', description: 'Element index (0-based)', snippet: 'index: ${1:1}' },
+  { name: 'desc', type: 'string', description: 'Find element by accessibility content description', snippet: 'desc: "$1"' },
+  { name: 'css', type: 'string', description: 'Find element by CSS selector (Web only)', snippet: 'css: "$1"' },
+  { name: 'placeholder', type: 'string', description: 'Find element by placeholder text', snippet: 'placeholder: "$1"' },
+  { name: 'role', type: 'string', description: 'Find element by accessibility role', snippet: 'role: "$1"' },
+  { name: 'image', type: 'string', description: 'Find element by template image matching', snippet: 'image: "$1"' },
+  { name: 'ocr', type: 'string', description: 'Find text on screen via OCR engine', snippet: 'ocr: "$1"' },
+  { name: 'exact', type: 'boolean', description: 'Match text exactly (case-sensitive)' },
+  { name: 'optional', type: 'boolean', description: 'Skip command if element is not found' },
+  {
+    name: 'scrollable',
+    type: 'object',
+    description: 'Auto-scroll configuration',
+    snippet: 'scrollable:\n    index: ${1:0}\n    direction: "${2|down,up,right,left|}"',
+    params: [
+      { name: 'index', type: 'number', description: 'Scrollable container index' },
+      { name: 'direction', type: 'string', description: 'Scroll direction (down, up, right, left)' },
+      { name: 'itemIndex', type: 'number', description: 'Target item index' },
+      { name: 'maxScrolls', type: 'number', description: 'Maximum scrolls allowed' }
+    ]
+  },
+  {
+    name: 'relative',
+    type: 'object',
+    description: 'Relative element search (RightOf, LeftOf, Above, Below)',
+    snippet: 'relative:\n    rightOf:\n      text: "$1"',
+    params: [
+      { name: 'rightOf', type: 'object', description: 'Anchor element to the left', snippet: 'rightOf:\n    text: "$1"' },
+      { name: 'leftOf', type: 'object', description: 'Anchor element to the right', snippet: 'leftOf:\n    text: "$1"' },
+      { name: 'above', type: 'object', description: 'Anchor element below', snippet: 'above:\n    text: "$1"' },
+      { name: 'below', type: 'object', description: 'Anchor element above', snippet: 'below:\n    text: "$1"' },
+      { name: 'maxDistance', type: 'number', description: 'Maximum pixel distance from anchor' }
+    ]
+  }
+];
 
 export interface LumiCommand {
   name: string;
@@ -465,17 +511,45 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     hasParams: false
   },
 
-  // Scroll & Swipe
   {
     name: 'swipe',
     category: 'Scroll & Swipe',
-    description: 'Swipe the screen',
+    description: 'Swipe the screen or element',
     hasParams: true,
     snippet: 'swipe:\n    direction: "${1|up,down,left,right|}"',
     params: [
       { name: 'direction', type: 'string', description: 'up, down, left, right' },
       { name: 'duration', type: 'number', description: 'Swipe duration in ms' },
-      { name: 'distance', type: 'number', description: 'Swipe distance (0-1)' }
+      { name: 'distance', type: 'number', description: 'Swipe distance (0-1)' },
+      {
+        name: 'from',
+        type: 'object',
+        description: 'Starting element selector or coordinates for swipe',
+        params: SELECTOR_PARAMS
+      }
+    ]
+  },
+  {
+    name: 'drag',
+    aliases: ['dragFromTo'],
+    category: 'Scroll & Swipe',
+    description: 'Drag smoothly from one element/coordinate to another (ideal for sliders, seekbars, reordering)',
+    hasParams: true,
+    snippet: 'drag:\n    from:\n      ${1:id}: "${2:slider}"\n      offset: "0%,50%"\n    to:\n      ${1:id}: "${2:slider}"\n      offset: "${3:20%},50%"\n    duration: 500',
+    params: [
+      {
+        name: 'from',
+        type: 'object',
+        description: 'Starting element selector or coordinates',
+        params: SELECTOR_PARAMS
+      },
+      {
+        name: 'to',
+        type: 'object',
+        description: 'Target destination element selector or coordinates',
+        params: SELECTOR_PARAMS
+      },
+      { name: 'duration', type: 'number', description: 'Drag duration in ms (default: 500)' }
     ]
   },
   {
@@ -1062,6 +1136,21 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     description: 'Control GPS playback (speed, pause)',
     hasParams: true,
     snippet: 'mockLocationControl:\n    speed: ${1:60}'
+  },
+
+  // Window & Responsive
+  {
+    name: 'setWindowSize',
+    aliases: ['resizeWindow', 'windowSize', 'setWindow'],
+    category: 'System',
+    description: 'Set or resize application/browser window dimensions',
+    hasParams: true,
+    snippet: 'setWindowSize:\n    width: ${1:1280}\n    height: ${2:800}',
+    params: [
+      { name: 'width', type: 'number', description: 'Window width in pixels', required: true },
+      { name: 'height', type: 'number', description: 'Window height in pixels', required: true }
+    ],
+    platforms: ['macos', 'windows', 'web']
   },
 
   // System

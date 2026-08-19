@@ -1087,6 +1087,33 @@ impl PlatformDriver for IosDriver {
         Ok(())
     }
 
+    async fn drag(&self, from: (i32, i32), to: (i32, i32), duration_ms: u64) -> Result<()> {
+        let (x1, y1) = from;
+        let (x2, y2) = to;
+        println!(
+            "    {} Dragging from ({}, {}) to ({}, {}) [{}ms]",
+            "ℹ".blue(),
+            x1,
+            y1,
+            x2,
+            y2,
+            duration_ms
+        );
+
+        if self.is_simulator {
+            idb::swipe(&self.udid, x1, y1, x2, y2, Some(duration_ms)).await?;
+        } else {
+            let mut wda = self.wda_client.lock().await;
+            if let Some(ref mut client) = *wda {
+                client.swipe(x1, y1, x2, y2, Some(duration_ms)).await?;
+            } else {
+                idb::swipe(&self.udid, x1, y1, x2, y2, Some(duration_ms)).await?;
+            }
+        }
+        self.invalidate_cache().await;
+        Ok(())
+    }
+
     async fn scroll_until_visible(
         &self,
         selector: &Selector,

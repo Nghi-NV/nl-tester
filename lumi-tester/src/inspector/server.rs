@@ -55,6 +55,7 @@ impl InspectorServer {
             screen_capture,
             yaml_file: std::sync::Mutex::new(self.config.output_file.clone()),
             device_serial: self.config.device_serial.clone(),
+            current_target_app: std::sync::Mutex::new(self.config.device_serial.clone()),
             cached_hierarchy: std::sync::Mutex::new(None),
         });
 

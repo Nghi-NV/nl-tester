@@ -56,6 +56,30 @@ test('builds run invocation with fromCommandIndex', () => {
   });
 });
 
+test('does not append mobile device flags for desktop platform', () => {
+  const invocation = buildRunInvocation({
+    runtime: {
+      kind: 'binary',
+      executable: '/usr/local/bin/lumi-tester',
+      argsPrefix: []
+    },
+    testFilePath: '/workspace/tests/desktop.yaml',
+    commandIndex: 0,
+    targetPlatform: 'macos',
+    device: { platform: 'android', id: 'ADE00005891' }
+  });
+
+  assert.deepEqual(invocation, {
+    executable: '/usr/local/bin/lumi-tester',
+    args: [
+      'run',
+      '/workspace/tests/desktop.yaml',
+      '--command-index',
+      '0'
+    ]
+  });
+});
+
 test('keeps cargo only for a source runtime', () => {
   const invocation = buildRunInvocation({
     runtime: {

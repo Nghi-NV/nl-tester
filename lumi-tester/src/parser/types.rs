@@ -56,10 +56,45 @@ pub struct TestFlow {
     #[serde(default, alias = "camera")]
     pub cameras: Option<CamerasConfig>,
 
+    /// Window size for desktop or browser (e.g. `windowSize: { width: 1280, height: 800 }` or `window: "1280x800"`)
+    #[serde(default, alias = "window", alias = "windowSize")]
+    pub window_size: Option<WindowSizeConfig>,
+
     /// Global Hardware Jig configuration (e.g. `jig: "COM5"` or `jig: { port: "COM5", baudrate: 115200 }`).
     /// Automatically connects before test flow runs, and automatically disconnects when test finishes.
     #[serde(default)]
     pub jig: Option<JigConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum WindowSizeConfig {
+    String(String),
+    Struct { width: u32, height: u32 },
+}
+
+impl WindowSizeConfig {
+    pub fn to_dimensions(&self) -> Option<(u32, u32)> {
+        match self {
+            WindowSizeConfig::Struct { width, height } => Some((*width, *height)),
+            WindowSizeConfig::String(s) => {
+                let parts: Vec<&str> = if s.contains('x') || s.contains('X') {
+                    s.split(|c| c == 'x' || c == 'X').collect()
+                } else {
+                    s.split(',').collect()
+                };
+                if parts.len() == 2 {
+                    if let (Ok(w), Ok(h)) = (
+                        parts[0].trim().parse::<u32>(),
+                        parts[1].trim().parse::<u32>(),
+                    ) {
+                        return Some((w, h));
+                    }
+                }
+                None
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -613,13 +648,15 @@ pub enum TestCommand {
     TapAt(TapAtParams),
     InputAt(InputAtParams),
 
-    // Swipe/Scroll
+    // Swipe/Scroll/Drag
     SwipeLeft,
     SwipeRight,
     SwipeUp,
     SwipeDown,
     #[serde(alias = "swipe")]
     ManualScroll(Option<ScrollParams>),
+    #[serde(alias = "drag", alias = "dragFromTo")]
+    Drag(DragParams),
     #[serde(alias = "scrollTo")]
     ScrollUntilVisible(ScrollUntilVisibleInput),
 
@@ -839,6 +876,53 @@ pub enum TestCommand {
     HwDiagnostics,
 
     RunPython(RunPythonParams),
+
+    // Window control / Responsive testing
+    #[serde(
+        rename = "setWindowSize",
+        alias = "resizeWindow",
+        alias = "windowSize",
+        alias = "setWindow"
+    )]
+    SetWindowSize(SetWindowSizeParamsInput),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum SetWindowSizeParamsInput {
+    String(String),
+    Struct(SetWindowSizeParams),
+}
+
+impl SetWindowSizeParamsInput {
+    pub fn to_dimensions(&self) -> Option<(u32, u32)> {
+        match self {
+            SetWindowSizeParamsInput::Struct(p) => Some((p.width, p.height)),
+            SetWindowSizeParamsInput::String(s) => {
+                let parts: Vec<&str> = if s.contains('x') || s.contains('X') {
+                    s.split(|c| c == 'x' || c == 'X').collect()
+                } else {
+                    s.split(',').collect()
+                };
+                if parts.len() == 2 {
+                    if let (Ok(w), Ok(h)) = (
+                        parts[0].trim().parse::<u32>(),
+                        parts[1].trim().parse::<u32>(),
+                    ) {
+                        return Some((w, h));
+                    }
+                }
+                None
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SetWindowSizeParams {
+    pub width: u32,
+    pub height: u32,
 }
 
 fn default_channel_one() -> u8 {
@@ -900,12 +984,31 @@ pub struct RelaySetParams {
     pub state: String,
 }
 
+fn deserialize_opt_string_or_vec<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StrOrVec {
+        Str(String),
+        Vec(Vec<String>),
+    }
+
+    let opt: Option<StrOrVec> = Option::deserialize(deserializer)?;
+    match opt {
+        Some(StrOrVec::Str(s)) => Ok(Some(vec![s])),
+        Some(StrOrVec::Vec(v)) => Ok(Some(v)),
+        None => Ok(None),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SeeColorParams {
     #[serde(default = "default_channel_one")]
     pub channel: u8,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_opt_string_or_vec")]
     pub expected: Option<Vec<String>>,
     #[serde(default)]
     pub timeout_ms: Option<u64>,
@@ -1439,6 +1542,16 @@ pub struct ScrollParams {
 
     #[serde(default)]
     pub from: Option<TapParams>,
+}
+
+/// Parameters for dragging from one element/coordinate to another
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DragParams {
+    pub from: TapParamsInput,
+    pub to: TapParamsInput,
+    #[serde(default)]
+    pub duration: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2123,6 +2236,7 @@ impl TestCommand {
             TestCommand::SwipeUp => "swipeUp".to_string(),
             TestCommand::SwipeDown => "swipeDown".to_string(),
             TestCommand::ManualScroll(_) => "scroll".to_string(),
+            TestCommand::Drag(_) => "drag".to_string(),
             TestCommand::ScrollUntilVisible(p_input) => {
                 let p = p_input.clone().into_inner();
                 if let Some(label) = &p.label {
@@ -2529,6 +2643,10 @@ impl TestCommand {
             TestCommand::HwSafeState => "hwSafeState".to_string(),
             TestCommand::HwDiagnostics => "hwDiagnostics".to_string(),
             TestCommand::RunPython(_) => "runPython".to_string(),
+            TestCommand::SetWindowSize(p) => match p.to_dimensions() {
+                Some((w, h)) => format!("setWindowSize({}x{})", w, h),
+                None => "setWindowSize".to_string(),
+            },
         }
     }
 }

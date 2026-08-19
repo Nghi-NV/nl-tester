@@ -48,32 +48,36 @@ jig:
 ```
 
 ### c. Cấu hình Jig & Servo Profile Dùng chung (Shared Reusable Profile)
-Để không phải lặp lại cấu hình cổng COM và các thông số `hwConfigureServo` trong từng file test, bạn có thể tạo một file profile dùng chung (ví dụ: `profiles/jig_switch_sample.yaml`):
+Để không phải lặp lại cấu hình cổng COM và các thông số `hwConfigureServo` trong từng file test, bạn có thể tạo một file profile chuẩn dùng chung tại [`profiles/jig_config.yaml`](file:///Users/nghinguyen/Desktop/MyOpenSource/nl-tester/profiles/jig_config.yaml):
 
 ```yaml
-# profiles/jig_switch_sample.yaml
+# profiles/jig_config.yaml
 port: "${JIG_PORT:-COM5}"
-nodeId: 1                      # Địa chỉ Node RS485 (Mặc định: 1)
-wireFormat: "@{node} {command}\n" # Mẫu định dạng khung truyền (tùy biến linh hoạt nếu MCU đổi định dạng)
 baudrate: 115200
-autoPowerOff: true
+nodeId: 1                          # Địa chỉ Node RS485 (Mặc định: 1)
+wireFormat: "@{node} {command}\n"  # Mẫu định dạng khung truyền giao tiếp MCU
+autoPowerOff: true                 # Tự động ngắt toàn bộ rơ-le khi test xong
 timeoutMs: 4000
 servos:
   - channel: 1
     pressAngle: 75
-    releaseAngle: 15
-    pressDurationMs: 400
+    releaseAngle: 0
+    pressDurationMs: 300
+    releaseDurationMs: 300
+    holdDurationMs: 200
   - channel: 2
-    pressAngle: 72
-    releaseAngle: 15
-    pressDurationMs: 400
+    pressAngle: 80
+    releaseAngle: 0
+    pressDurationMs: 300
+    releaseDurationMs: 300
+    holdDurationMs: 200
 ```
 
 Trong tất cả các file test kịch bản, chỉ cần trỏ tới file profile:
 ```yaml
 platform: android
 appId: com.lumi.lifenext
-jig: "profiles/jig_switch_sample.yaml"
+jig: "profiles/jig_config.yaml"
 ---
 - hwPowerOn: 1
 - hwClick: 1        # Servo đã tự động được nạp đúng góc gạt từ profile

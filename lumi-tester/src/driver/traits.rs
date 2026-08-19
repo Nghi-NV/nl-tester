@@ -104,6 +104,14 @@ pub trait PlatformDriver: Send + Sync {
         Ok(())
     }
 
+    /// Set active application identifier or path for the current flow.
+    fn set_active_app(&self, _app_id: Option<&str>) {}
+
+    /// Set or resize application/browser window dimensions (width, height)
+    async fn set_window_size(&self, _width: u32, _height: u32) -> Result<()> {
+        Ok(())
+    }
+
     /// Launch an application
     ///
     /// # Arguments
@@ -169,6 +177,33 @@ pub trait PlatformDriver: Send + Sync {
         duration_ms: Option<u64>,
         from: Option<Selector>,
     ) -> Result<()>;
+
+    /// Drag from one coordinate to another
+    async fn drag(&self, from: (i32, i32), to: (i32, i32), duration_ms: u64) -> Result<()> {
+        let (x1, y1) = from;
+        let (x2, y2) = to;
+        let dist_x = (x2 - x1).abs();
+        let dist_y = (y2 - y1).abs();
+        let dir = if dist_x > dist_y {
+            if x2 > x1 {
+                SwipeDirection::Right
+            } else {
+                SwipeDirection::Left
+            }
+        } else {
+            if y2 > y1 {
+                SwipeDirection::Down
+            } else {
+                SwipeDirection::Up
+            }
+        };
+        self.swipe(
+            dir,
+            Some(duration_ms),
+            Some(Selector::Point { x: x1, y: y1 }),
+        )
+        .await
+    }
 
     /// Scroll until an element becomes visible
     ///

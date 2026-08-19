@@ -8,9 +8,9 @@ import { resolveAdbExecutable, RuntimeResolverOptions } from './runtimeResolver'
 export interface Device {
   id: string;
   name: string;
-  platform: 'android' | 'ios' | 'web';
+  platform: 'android' | 'ios' | 'macos' | 'windows' | 'web';
   state: string;
-  type: 'physical' | 'simulator' | 'emulator' | 'browser';
+  type: 'physical' | 'simulator' | 'emulator' | 'browser' | 'desktop';
 }
 
 export class DeviceManager {
@@ -63,15 +63,18 @@ export class DeviceManager {
     });
 
     if (availableDevices.length > 0) {
-      // Priority: physical devices first, then emulators/simulators, then web
+      // Priority: physical devices first, then emulators/simulators, then desktop/web
       const physicalDevices = availableDevices.filter(d => d.type === 'physical');
       const emulatorDevices = availableDevices.filter(d => d.type === 'emulator' || d.type === 'simulator');
+      const desktopDevices = availableDevices.filter(d => d.type === 'desktop');
       const webDevices = availableDevices.filter(d => d.type === 'browser');
 
       if (physicalDevices.length > 0) {
         this.setSelectedDevice(physicalDevices[0]);
       } else if (emulatorDevices.length > 0) {
         this.setSelectedDevice(emulatorDevices[0]);
+      } else if (desktopDevices.length > 0) {
+        this.setSelectedDevice(desktopDevices[0]);
       } else if (webDevices.length > 0) {
         this.setSelectedDevice(webDevices[0]);
       }
@@ -119,6 +122,17 @@ export class DeviceManager {
     }
 
     const devices: Device[] = [];
+
+    // Add macOS Desktop destination on macOS hosts
+    if (process.platform === 'darwin') {
+      devices.push({
+        id: 'macos',
+        name: 'macOS Desktop (Local Host)',
+        platform: 'macos',
+        state: 'Available',
+        type: 'desktop'
+      });
+    }
 
     const [androidDevices, iosDevices] = await Promise.all([
       this.fetchAndroidDevices(),

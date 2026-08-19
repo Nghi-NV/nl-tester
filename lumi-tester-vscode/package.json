@@ -2,7 +2,7 @@
   "name": "lumi-tester",
   "displayName": "Lumi Tester",
   "description": "VSCode extension for lumi-tester: YAML autocomplete, run tests, and status display",
-  "version": "0.1.25",
+  "version": "0.1.28",
   "publisher": "lumijsc",
   "icon": "resources/icon.png",
   "engines": {
@@ -55,8 +55,13 @@
       },
       {
         "command": "lumi-tester.selectDevice",
-        "title": "Lumi: Select Device",
+        "title": "Lumi: Select Device / Destination",
         "icon": "$(device-mobile)"
+      },
+      {
+        "command": "lumi-tester.selectApp",
+        "title": "Lumi: Select Application / Package (appId)",
+        "icon": "$(package)"
       },
       {
         "command": "lumi-tester.refreshDevices",

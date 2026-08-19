@@ -117,6 +117,46 @@ For composite items (e.g. `Switch` toggles, list rows with icons/buttons on edge
     offset: "85%,50%"
 ```
 
+### Relative Positioning (`below`, `above`, `rightOf`, `leftOf`)
+
+Target unlabeled or anonymous elements (e.g. Sliders, Icons, Input fields) by their relationship to nearby stable labels/anchors:
+
+```yaml
+# Tap/interact with Slider or View below the "30%" label:
+- tap:
+    type: "View"
+    below: "30%"
+    offset: "50%,50%"
+
+# When multiple elements match in that direction, index > 0 is required:
+- tap:
+    type: "View"
+    index: 1
+    below: "Brightness"
+```
+
+### Continuous Drag & Slider Control (`drag`)
+
+Use `drag` for sliders, seekbars, progress controls, canvas interactions, or reordering elements. Supported across **Android**, **iOS**, **Web**, **macOS**, and **Windows**:
+
+```yaml
+# Drag slider thumb from 0% (start) to 80% position:
+- drag:
+    from:
+      type: "View"
+      below: "Brightness"
+      offset: "0%,50%"
+    to:
+      type: "View"
+      below: "Brightness"
+      offset: "80%,50%"
+    duration: 500 # ms
+```
+
+### Index Rule
+- Omit `index` when `index == 0` (or element is unique) to keep YAML clean.
+- Always include explicit `index: N` when `index > 0` (when multiple matching elements exist).
+
 For text entry, tap/focus the field first, then use `inputText`.
 
 ```yaml

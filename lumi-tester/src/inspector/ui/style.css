@@ -69,6 +69,7 @@ body {
   right: 12px;
   z-index: 100;
   display: flex;
+  align-items: center;
   gap: 8px;
   background: rgba(22, 27, 34, 0.85);
   padding: 4px 10px;
@@ -76,6 +77,135 @@ body {
   backdrop-filter: blur(8px);
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
+}
+
+.app-search-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.app-search-input {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  width: 220px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.app-search-input:focus {
+  border-color: var(--accent);
+  width: 280px;
+  box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+}
+
+.clear-app-btn {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+
+.clear-app-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.app-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 320px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  z-index: 200;
+}
+
+.app-dropdown-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+  transition: background 0.15s ease;
+}
+
+.app-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.app-dropdown-item:hover {
+  background: var(--card);
+}
+
+.app-item-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-icon-box {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 16px;
+}
+
+.app-icon-img {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+.app-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.app-dropdown-item .app-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.app-dropdown-item .app-detail {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-badge-running {
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(63, 185, 80, 0.2);
+  color: var(--green);
+  border: 1px solid rgba(63, 185, 80, 0.4);
 }
 
 .canvas-container {

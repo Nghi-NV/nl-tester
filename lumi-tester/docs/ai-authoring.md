@@ -153,6 +153,7 @@ Use these names for new files:
 | --- | --- |
 | Launch app or URL | `launchApp` |
 | Tap | `tap` |
+| Continuous drag / Slider control | `drag` |
 | Enter text into focused field | `inputText` |
 | Assert visible | `see` |
 | Assert not visible | `notSee` |
@@ -219,6 +220,34 @@ For composite elements (e.g. `Switch` toggles, list rows with icons/buttons on e
     id: "settings_row"
     offset: "85%,50%"
 ```
+
+For anonymous or dynamic elements relative to nearby stable text/labels:
+
+```yaml
+- tap:
+    type: "View"
+    below: "Brightness"
+    offset: "50%,50%"
+```
+
+For slider adjustments, seekbars, progress bars, and drag gestures:
+
+```yaml
+- drag:
+    from:
+      type: "View"
+      below: "Brightness"
+      offset: "0%,50%"
+    to:
+      type: "View"
+      below: "Brightness"
+      offset: "80%,50%"
+    duration: 500
+```
+
+### Index Rule for AI Generators
+- Omit `index` when `index == 0` (or the element is unique) to produce minimal, robust YAML.
+- Always include `index: N` when `index > 0` (when multiple matching elements exist).
 
 Use coordinates only when no semantic selector exists:
 

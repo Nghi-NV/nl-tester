@@ -942,6 +942,24 @@ impl PlatformDriver for WebDriver {
         Ok(())
     }
 
+    async fn drag(&self, from: (i32, i32), to: (i32, i32), duration_ms: u64) -> Result<()> {
+        let page = self.page.lock().await;
+        page.mouse.r#move(from.0 as f64, from.1 as f64, None).await?;
+        page.mouse.down(None, None).await?;
+
+        let steps = (duration_ms / 25).max(5) as i32;
+        for i in 1..=steps {
+            let t = i as f64 / steps as f64;
+            let cx = from.0 as f64 + (to.0 as f64 - from.0 as f64) * t;
+            let cy = from.1 as f64 + (to.1 as f64 - from.1 as f64) * t;
+            page.mouse.r#move(cx, cy, None).await?;
+            tokio::time::sleep(tokio::time::Duration::from_millis((duration_ms / steps as u64).max(10))).await;
+        }
+
+        page.mouse.up(None, None).await?;
+        Ok(())
+    }
+
     async fn scroll_until_visible(
         &self,
         selector: &Selector,

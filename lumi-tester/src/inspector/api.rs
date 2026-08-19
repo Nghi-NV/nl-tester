@@ -16,12 +16,14 @@ use super::screen_capture::{self, ScreenCapture};
 use crate::driver::android::uiautomator;
 use crate::recorder::selector_scorer::SelectorScorer;
 use crate::recorder::yaml_generator::YamlGenerator;
+use crate::recorder::SelectorCandidate;
 
 /// Shared state for API handlers
 pub struct AppState {
     pub screen_capture: ScreenCapture,
     pub yaml_file: std::sync::Mutex<Option<std::path::PathBuf>>,
     pub device_serial: Option<String>,
+    pub current_target_app: std::sync::Mutex<Option<String>>,
     /// Cached UI hierarchy (dumped during screenshot capture)
     pub cached_hierarchy: std::sync::Mutex<Option<CachedHierarchy>>,
 }
@@ -59,6 +61,8 @@ pub struct SelectorInfo {
     pub is_stable: bool,
     pub yaml: String,
     pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index: Option<usize>,
 }
 
 #[derive(Serialize)]
@@ -114,6 +118,11 @@ pub struct FileResponse {
     pub message: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct TargetAppRequest {
+    pub app_id: String,
+}
+
 /// Build API router
 pub fn api_router() -> Router<Arc<AppState>> {
     Router::new()
@@ -121,12 +130,57 @@ pub fn api_router() -> Router<Arc<AppState>> {
         .route("/api/element-at", get(get_element_at))
         .route("/api/hierarchy", get(get_hierarchy))
         .route("/api/packages", get(get_packages))
+        .route("/api/app-icon", get(get_app_icon))
+        .route("/api/target-app", post(set_target_app))
         .route("/api/command", post(manage_command))
         .route("/api/append-command", post(append_command))
         .route("/api/file", post(select_file))
         .route("/api/file/commands", get(get_commands))
         .route("/api/play-command/:index", post(play_command))
         .route("/api/execute", post(execute_action))
+}
+
+#[derive(Deserialize)]
+pub struct AppIconQuery {
+    pub path: String,
+}
+
+async fn get_app_icon(Query(query): Query<AppIconQuery>) -> impl IntoResponse {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(png_bytes) = crate::driver::macos::MacosBridge::get_app_icon_png(&query.path) {
+            return (
+                StatusCode::OK,
+                [
+                    ("Content-Type", "image/png"),
+                    ("Cache-Control", "public, max-age=86400"),
+                ],
+                png_bytes,
+            )
+                .into_response();
+        }
+    }
+    (StatusCode::NOT_FOUND, "Icon not found").into_response()
+}
+
+async fn set_target_app(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<TargetAppRequest>,
+) -> impl IntoResponse {
+    {
+        let mut target = state.current_target_app.lock().unwrap();
+        *target = if req.app_id.is_empty() {
+            None
+        } else {
+            Some(req.app_id.clone())
+        };
+    }
+    // Invalidate hierarchy cache
+    {
+        let mut cache = state.cached_hierarchy.lock().unwrap();
+        *cache = None;
+    }
+    (StatusCode::OK, "Target app updated").into_response()
 }
 
 #[derive(Deserialize)]
@@ -141,14 +195,25 @@ async fn get_screenshot(
 ) -> impl IntoResponse {
     let skip_hierarchy = params.skip_hierarchy.unwrap_or(false);
 
-    let screenshot_future = state.screen_capture.capture_base64();
+    let platform = state.screen_capture.platform().to_string();
+    let target_app = {
+        let cur = state.current_target_app.lock().unwrap();
+        cur.clone().or_else(|| state.device_serial.clone())
+    };
+    let target_app_clone = target_app.clone();
+    let screenshot_future = state.screen_capture.capture_base64_with_target(target_app_clone.as_deref());
+    let serial = target_app.clone();
 
     // If skipping hierarchy, use a dummy future that returns "skipped" immediately
-    let hierarchy_future = async {
+    let hierarchy_future = async move {
         if skip_hierarchy {
             Err("Skipped".to_string())
+        } else if platform == "macos" {
+            screen_capture::get_hierarchy_macos(serial.as_deref())
+                .await
+                .map_err(|e| e.to_string())
         } else {
-            screen_capture::get_hierarchy_android(state.device_serial.as_deref())
+            screen_capture::get_hierarchy_android(serial.as_deref())
                 .await
                 .map_err(|e| e.to_string())
         }
@@ -159,15 +224,23 @@ async fn get_screenshot(
 
     // Update cache if we got new hierarchy
     if let Ok(hierarchy_xml) = hierarchy_result {
-        if let Ok(elements) = uiautomator::parse_hierarchy(&hierarchy_xml) {
+        let elements_res = if state.screen_capture.platform() == "macos" {
+            Ok(screen_capture::parse_macos_hierarchy_to_ui_elements(
+                &hierarchy_xml,
+                target_app.as_deref().unwrap_or(""),
+            ))
+        } else {
+            uiautomator::parse_hierarchy(&hierarchy_xml)
+        };
+
+        if let Ok(elements) = elements_res {
             let mut cache = state.cached_hierarchy.lock().unwrap();
             *cache = Some(CachedHierarchy { elements });
         }
     }
 
     match screenshot_result {
-        Ok(data) => {
-            let (width, height) = state.screen_capture.dimensions();
+        Ok((data, width, height)) => {
             Json(ScreenshotResponse {
                 data,
                 width,
@@ -191,14 +264,19 @@ async fn get_element_at(
         cache.as_ref().map(|c| c.elements.clone())
     };
 
+    let target_app = {
+        let cur = state.current_target_app.lock().unwrap();
+        cur.clone().or_else(|| state.device_serial.clone())
+    };
+
     let elements = match cached_elements {
         Some(e) => e,
         None => {
             // No cache, need to dump (first time)
-            let hierarchy =
-                match screen_capture::get_hierarchy_android(state.device_serial.as_deref()).await {
+            if state.screen_capture.platform() == "macos" {
+                let hierarchy = match screen_capture::get_hierarchy_macos(target_app.as_deref()).await {
                     Ok(h) => h,
-                    Err(_e) => {
+                    Err(_) => {
                         return Json(ElementResponse {
                             found: false,
                             selectors: vec![],
@@ -210,18 +288,39 @@ async fn get_element_at(
                         });
                     }
                 };
-            match uiautomator::parse_hierarchy(&hierarchy) {
-                Ok(e) => e,
-                Err(_) => {
-                    return Json(ElementResponse {
-                        found: false,
-                        selectors: vec![],
-                        element_class: None,
-                        element_text: None,
-                        bounds: None,
-                        app_id: None,
-                        supported_commands: vec![],
-                    });
+                screen_capture::parse_macos_hierarchy_to_ui_elements(
+                    &hierarchy,
+                    target_app.as_deref().unwrap_or(""),
+                )
+            } else {
+                let hierarchy =
+                    match screen_capture::get_hierarchy_android(target_app.as_deref()).await {
+                        Ok(h) => h,
+                        Err(_e) => {
+                            return Json(ElementResponse {
+                                found: false,
+                                selectors: vec![],
+                                element_class: None,
+                                element_text: None,
+                                bounds: None,
+                                app_id: None,
+                                supported_commands: vec![],
+                            });
+                        }
+                    };
+                match uiautomator::parse_hierarchy(&hierarchy) {
+                    Ok(e) => e,
+                    Err(_) => {
+                        return Json(ElementResponse {
+                            found: false,
+                            selectors: vec![],
+                            element_class: None,
+                            element_text: None,
+                            bounds: None,
+                            app_id: None,
+                            supported_commands: vec![],
+                        });
+                    }
                 }
             }
         }
@@ -241,28 +340,72 @@ async fn get_element_at(
 
             // Filter out scorer's element-center-based point selectors;
             // we replace them with click-position-based ones below.
+            // Helper to get formatted display value
+            let format_val = |c: &SelectorCandidate| -> String {
+                match c.selector_type.as_str() {
+                    "relative" => {
+                        if let (Some(anchor), Some(dir)) = (&c.relative_anchor, &c.relative_direction) {
+                            let type_prefix = if !c.value.is_empty() && c.value != "unknown" {
+                                format!("type: {}, ", c.value)
+                            } else {
+                                String::new()
+                            };
+                            let index_suffix = if let Some(idx) = c.index {
+                                if idx > 0 { format!(" (index {})", idx) } else { String::new() }
+                            } else {
+                                String::new()
+                            };
+                            format!("{}{}: \"{}\"{}", type_prefix, dir, anchor.value, index_suffix)
+                        } else {
+                            c.value.clone()
+                        }
+                    }
+                    "type" => {
+                        if let Some(idx) = c.index {
+                            if idx > 0 {
+                                format!("{} (index {})", c.value, idx)
+                            } else {
+                                c.value.clone()
+                            }
+                        } else {
+                            c.value.clone()
+                        }
+                    }
+                    _ => {
+                        if let Some(idx) = c.index {
+                            if idx > 0 {
+                                format!("{} (index {})", c.value, idx)
+                            } else {
+                                c.value.clone()
+                            }
+                        } else {
+                            c.value.clone()
+                        }
+                    }
+                }
+            };
+
             let mut selectors: Vec<SelectorInfo> = candidates
                 .iter()
                 .filter(|c| c.selector_type != "point")
                 .map(|c| SelectorInfo {
                     selector_type: c.selector_type.clone(),
-                    value: c.value.clone(),
+                    value: format_val(c),
                     score: c.score,
                     is_stable: c.is_stable,
                     yaml: generator.generate_candidate_yaml(c, "tap"),
                     description: c.reason.clone(),
+                    index: c.index,
                 })
                 .collect();
 
-            // If click is off-center within element bounds, suggest align and offset variants
+            // Always generate align and offset variants for semantic candidates
             let el_w = (el.bounds.right - el.bounds.left).max(1) as f64;
             let el_h = (el.bounds.bottom - el.bounds.top).max(1) as f64;
             let rel_x = (params.x - el.bounds.left) as f64 / el_w;
             let rel_y = (params.y - el.bounds.top) as f64 / el_h;
 
-            let is_off_center = (rel_x - 0.5).abs() > 0.15 || (rel_y - 0.5).abs() > 0.15;
-            if is_off_center && rel_x >= 0.0 && rel_x <= 1.0 && rel_y >= 0.0 && rel_y <= 1.0 {
-                // Determine best align preset
+            if rel_x >= 0.0 && rel_x <= 1.0 && rel_y >= 0.0 && rel_y <= 1.0 {
                 let align_preset = if rel_x >= 0.70 {
                     Some("right")
                 } else if rel_x <= 0.30 {
@@ -272,31 +415,33 @@ async fn get_element_at(
                 } else if rel_y <= 0.30 {
                     Some("top")
                 } else {
-                    None
+                    Some("center")
                 };
 
                 let offset_x_pct = (rel_x * 100.0).round() as i32;
                 let offset_y_pct = (rel_y * 100.0).round() as i32;
 
-                // For the top semantic candidates (e.g. type, id, text), generate align & offset variants
+                // For the top semantic candidates (e.g. text, id, type, relative), generate align & offset variants
                 let semantic_candidates: Vec<_> = candidates
                     .iter()
-                    .filter(|c| c.selector_type != "point" && c.selector_type != "relative")
-                    .take(2)
+                    .filter(|c| c.selector_type != "point")
+                    .take(3)
                     .cloned()
                     .collect();
 
                 for c in &semantic_candidates {
                     let base_yaml = generator.generate_candidate_yaml(c, "tap");
+                    let base_val = format_val(c);
                     if let Some(align_name) = align_preset {
                         let align_yaml = format!("{}\n    align: {}", base_yaml, align_name);
                         selectors.push(SelectorInfo {
                             selector_type: format!("{}+align", c.selector_type),
-                            value: format!("{} (align: {})", c.value, align_name),
+                            value: format!("{} (align: {})", base_val, align_name),
                             score: c.score.saturating_add(5),
                             is_stable: c.is_stable,
                             yaml: align_yaml,
-                            description: format!("Target {} side of {}", align_name, c.reason),
+                            description: format!("Target {} of {}", align_name, c.reason),
+                            index: c.index,
                         });
                     }
 
@@ -304,11 +449,12 @@ async fn get_element_at(
                     let offset_yaml = format!("{}\n    offset: \"{}\"", base_yaml, offset_val);
                     selectors.push(SelectorInfo {
                         selector_type: format!("{}+offset", c.selector_type),
-                        value: format!("{} (offset: {})", c.value, offset_val),
+                        value: format!("{} (offset: {})", base_val, offset_val),
                         score: c.score,
                         is_stable: c.is_stable,
                         yaml: offset_yaml,
                         description: format!("Relative offset within element ({})", offset_val),
+                        index: c.index,
                     });
                 }
             }
@@ -323,6 +469,7 @@ async fn get_element_at(
                 is_stable: false,
                 yaml: format!("- tap:\n    point: \"{}%,{}%\"", click_x_pct, click_y_pct),
                 description: "Click position (percentage)".to_string(),
+                index: None,
             });
             selectors.push(SelectorInfo {
                 selector_type: "point".to_string(),
@@ -331,6 +478,7 @@ async fn get_element_at(
                 is_stable: false,
                 yaml: format!("- tap:\n    point: \"{},{}\"", params.x, params.y),
                 description: "Click position (absolute pixels)".to_string(),
+                index: None,
             });
 
             Json(ElementResponse {
@@ -354,18 +502,21 @@ async fn get_element_at(
                     Some(el.package.clone())
                 },
                 supported_commands: {
-                    let mut cmds = vec!["see".to_string(), "wait".to_string()];
-                    if el.clickable {
+                    let mut cmds = vec!["see".to_string(), "wait".to_string(), "waitUntilVisible".to_string()];
+                    let is_input = el.class == "Input" || el.class == "TextField" || el.class.contains("Edit");
+                    if el.clickable || el.focusable || is_input || el.class == "Button" {
                         cmds.push("tap".to_string());
                         cmds.push("doubleTap".to_string());
                         cmds.push("longPress".to_string());
                         cmds.push("rightClick".to_string());
                     }
+                    if is_input || el.focusable || el.class.contains("Field") {
+                        cmds.push("inputText".to_string());
+                        cmds.push("clearText".to_string());
+                    }
                     if el.scrollable {
                         cmds.push("scrollTo".to_string());
-                    }
-                    if el.class.contains("EditText") || el.class.contains("Input") {
-                        cmds.push("inputText".to_string());
+                        cmds.push("swipe".to_string());
                     }
                     cmds
                 },
@@ -383,6 +534,7 @@ async fn get_element_at(
                     is_stable: false,
                     yaml: format!("- tap:\n    point: \"{}%,{}%\"", click_x_pct, click_y_pct),
                     description: "Click position (percentage)".to_string(),
+                    index: None,
                 },
                 SelectorInfo {
                     selector_type: "point".to_string(),
@@ -391,6 +543,7 @@ async fn get_element_at(
                     is_stable: false,
                     yaml: format!("- tap:\n    point: \"{},{}\"", params.x, params.y),
                     description: "Click position (absolute pixels)".to_string(),
+                    index: None,
                 },
             ];
             Json(ElementResponse {
@@ -668,14 +821,18 @@ async fn select_file(
     let path = std::path::PathBuf::from(&request.path);
 
     if !path.exists() && request.create_if_missing {
-        // Create new file with header
+        let plat = state.screen_capture.platform();
+        let app_line = if let Some(ref dev) = state.device_serial {
+            format!("appId: {}\n", dev)
+        } else {
+            String::new()
+        };
         let header = format!(
-            r#"name: "{}"
-platform: android
-# Auto-generated by lumi-tester inspect
+            r#"platform: {}
+{}# Auto-generated by lumi-tester inspect
 ---
 "#,
-            path.file_stem().unwrap_or_default().to_string_lossy()
+            plat, app_line
         );
 
         if let Err(e) = std::fs::write(&path, header) {
@@ -822,8 +979,88 @@ async fn execute_action(
     State(state): State<Arc<AppState>>,
     Json(request): Json<ExecuteRequest>,
 ) -> impl IntoResponse {
-    use crate::driver::android::adb;
+    let platform = state.screen_capture.platform();
 
+    if platform == "macos" {
+        #[cfg(target_os = "macos")]
+        {
+            let target_app = {
+                let cur = state.current_target_app.lock().unwrap();
+                cur.clone().or_else(|| state.device_serial.clone())
+            };
+            let (offset_x, offset_y) = if let Some(app) = target_app.as_deref().filter(|s| !s.trim().is_empty()) {
+                if let Some((_win_id, x, y, _w, _h)) = crate::driver::macos::MacosBridge::get_app_window_info(app) {
+                    (x as i32, y as i32)
+                } else {
+                    let bridge = crate::driver::macos::MacosBridge::new();
+                    if let Some(bounds) = bridge.get_window_bounds(app) {
+                        if bounds.width > 0.0 && bounds.height > 0.0 {
+                            (bounds.x as i32, bounds.y as i32)
+                        } else {
+                            (0, 0)
+                        }
+                    } else {
+                        (0, 0)
+                    }
+                }
+            } else {
+                (0, 0)
+            };
+
+            let actual_x = request.x + offset_x;
+            let actual_y = request.y + offset_y;
+
+            let result: anyhow::Result<()> = (|| {
+                match request.action.as_str() {
+                    "tap" => {
+                        crate::driver::macos::MacosBridge::click_at(actual_x, actual_y, true)?
+                    }
+                    "doubleTap" => {
+                        crate::driver::macos::MacosBridge::double_click_at(actual_x, actual_y)?
+                    }
+                    "rightClick" => {
+                        crate::driver::macos::MacosBridge::right_click_at(actual_x, actual_y)?
+                    }
+                    "inputText" => {
+                        if let Some(text) = &request.text {
+                            crate::driver::macos::MacosBridge::click_at(
+                                actual_x, actual_y, true,
+                            )?;
+                            std::thread::sleep(std::time::Duration::from_millis(150));
+                            let target = target_app.as_deref().unwrap_or("");
+                            let bridge = crate::driver::macos::MacosBridge::new();
+                            if let Some(pid) = bridge.find_app_pid(target).ok().flatten() {
+                                bridge.post_key_events(pid, text)?;
+                            } else {
+                                bridge.post_key(text)?;
+                            }
+                        }
+                    }
+                    "hideKeyboard" => {
+                        crate::driver::macos::MacosBridge::new().post_key("escape")?
+                    }
+                    "see" | "notSee" | "wait" => {}
+                    _ => {}
+                }
+                Ok(())
+            })();
+
+            return match result {
+                Ok(_) => (StatusCode::OK, "Action executed").into_response(),
+                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+            };
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            return (
+                StatusCode::BAD_REQUEST,
+                "macOS is only supported on macOS hosts",
+            )
+                .into_response();
+        }
+    }
+
+    use crate::driver::android::adb;
     let serial = state.device_serial.as_deref();
 
     let result = match request.action.as_str() {
@@ -877,6 +1114,26 @@ async fn execute_action(
 
 /// GET /api/packages - List installed packages
 async fn get_packages(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let platform = state.screen_capture.platform();
+
+    if platform == "macos" {
+        #[cfg(target_os = "macos")]
+        {
+            match crate::driver::macos::MacosBridge::list_running_apps() {
+                Ok(packages) => {
+                    return Json(serde_json::json!({ "packages": packages })).into_response();
+                }
+                Err(e) => {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
+                }
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            return Json(serde_json::json!({ "packages": Vec::<String>::new() })).into_response();
+        }
+    }
+
     use crate::driver::android::adb;
     let serial = state.device_serial.as_deref();
 
@@ -902,13 +1159,70 @@ fn find_element_at(
     y: i32,
 ) -> Option<uiautomator::UiElement> {
     let mut best: Option<&uiautomator::UiElement> = None;
+    let mut best_priority = -1;
     let mut best_area = i64::MAX;
 
     for el in elements {
         let bounds = &el.bounds;
         if x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom {
             let area = (bounds.right - bounds.left) as i64 * (bounds.bottom - bounds.top) as i64;
-            if area < best_area {
+            if area <= 0 {
+                continue;
+            }
+
+            let is_generic_system_id = el.resource_id == "android:id/content"
+                || el.resource_id == "android:id/decor_content_parent"
+                || el.resource_id == "android:id/navigationBarBackground"
+                || el.resource_id == "android:id/statusBarBackground"
+                || el.resource_id == "android:id/custom";
+
+            let is_input = el.class == "Input"
+                || el.class == "TextField"
+                || el.class.contains("Edit")
+                || el.class.to_lowercase().contains("edittext");
+
+            let is_control = is_input
+                || el.class == "Button"
+                || el.class == "CheckBox"
+                || el.class == "RadioButton"
+                || el.class == "Switch"
+                || el.class == "ComboBox"
+                || el.class == "Link"
+                || el.class == "Slider"
+                || el.class.contains("SeekBar")
+                || el.clickable
+                || el.scrollable
+                || el.focusable;
+
+            let has_semantic_id = !el.resource_id.trim().is_empty() && !is_generic_system_id;
+            let has_text = !el.text.trim().is_empty()
+                || !el.content_desc.trim().is_empty()
+                || !el.hint.trim().is_empty()
+                || has_semantic_id;
+
+            let is_container = el.class == "Group"
+                || el.class == "Window"
+                || el.class == "WebArea"
+                || el.class == "ScrollArea"
+                || el.class == "ScrollView"
+                || el.class == "android.widget.FrameLayout"
+                || el.class.ends_with("Layout")
+                || el.class.ends_with("ViewGroup")
+                || is_generic_system_id;
+
+            let priority = match (is_input, is_control, has_text, is_container) {
+                (true, _, _, _) => 6,           // Highest priority: input fields
+                (_, true, true, false) => 5,    // Interactive controls with label / semantic id
+                (_, true, false, false) => 4,   // Interactive controls without label (e.g. slider, clickable view)
+                (_, false, true, false) => 3,   // Text labels, icons, headings
+                (_, false, false, false) => 2,  // Specific leaf elements
+                (_, _, true, true) => 1,        // Containers with label
+                (_, _, false, true) => 0,       // Pure containers (FrameLayout, Window, android:id/content)
+            };
+
+            // Choose higher priority, or if same priority, choose the more specific (smaller area) element
+            if priority > best_priority || (priority == best_priority && area < best_area) {
+                best_priority = priority;
                 best_area = area;
                 best = Some(el);
             }

@@ -3,8 +3,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { getMacosApplications } from './appDiscovery';
 import { LumiCodeLensProvider } from './codeLensProvider';
-import { buildRunInvocation } from './commandInvocation';
+import { buildRunInvocation, parseYamlPlatform } from './commandInvocation';
 import { LumiCompletionProvider } from './completionProvider';
 import { LumiDecorationProvider } from './decorationProvider';
 import { parseAdbDevices } from './deviceDiscovery';
@@ -56,13 +57,12 @@ export function activate(context: vscode.ExtensionContext) {
   );
   updateStatusBarVisibility();
 
-  // Register completion provider for YAML files
+  // Register completion provider for YAML files (triggers on all keystrokes)
   const completionProvider = new LumiCompletionProvider();
   context.subscriptions.push(
     vscode.languages.registerCompletionItemProvider(
       { language: 'yaml', scheme: 'file' },
-      completionProvider,
-      '-', ' ', ':'
+      completionProvider
     )
   );
 
@@ -119,6 +119,66 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('lumi-tester.selectDevice', async () => {
       await deviceManager?.showDevicePicker();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lumi-tester.selectApp', async () => {
+      const editor = vscode.window.activeTextEditor;
+      const apps = await getMacosApplications();
+      if (apps.length === 0) {
+        vscode.window.showInformationMessage('No macOS applications found.');
+        return;
+      }
+
+      interface AppQuickPickItem extends vscode.QuickPickItem {
+        appPath: string;
+        bundleId?: string;
+      }
+
+      const items: AppQuickPickItem[] = apps.map(app => {
+        const item: AppQuickPickItem = {
+          label: `${app.isRunning ? '$(check) ' : ''}${app.name}`,
+          description: app.bundleId || app.path,
+          detail: `${app.path}${app.isRunning ? ' [Running]' : ''}`,
+          appPath: app.path,
+          bundleId: app.bundleId
+        };
+        if (app.iconPath) {
+          item.iconPath = vscode.Uri.file(app.iconPath);
+        } else {
+          item.iconPath = new vscode.ThemeIcon(app.isRunning ? 'check' : 'package');
+        }
+        return item;
+      });
+
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Search & select application for appId (type to filter)...',
+        matchOnDescription: true,
+        matchOnDetail: true
+      });
+
+      if (!selected) return;
+
+      const chosenAppId = selected.appPath;
+
+      if (editor && editor.document.languageId === 'yaml') {
+        const text = editor.document.getText();
+        const appIdMatch = text.match(/^appId:\s*.*$/m);
+        await editor.edit(editBuilder => {
+          if (appIdMatch && appIdMatch.index !== undefined) {
+            const startPos = editor.document.positionAt(appIdMatch.index);
+            const endPos = editor.document.positionAt(appIdMatch.index + appIdMatch[0].length);
+            editBuilder.replace(new vscode.Range(startPos, endPos), `appId: ${chosenAppId}`);
+          } else {
+            editBuilder.insert(new vscode.Position(0, 0), `appId: ${chosenAppId}\n`);
+          }
+        });
+        vscode.window.showInformationMessage(`Updated appId: ${chosenAppId}`);
+      } else {
+        await vscode.env.clipboard.writeText(chosenAppId);
+        vscode.window.showInformationMessage(`Copied appId: ${chosenAppId}`);
+      }
     })
   );
 
@@ -516,8 +576,12 @@ async function runTestFile(uri: vscode.Uri): Promise<void> {
     // Ignore read errors
   }
 
-  // Ensure device is selected (auto-select if only 1, prompt if multiple)
-  await deviceManager?.ensureDeviceSelected();
+  // Ensure device is selected (auto-select if only 1, prompt if multiple) for mobile platforms
+  const targetPlatform = parseYamlPlatform(filePath);
+  const isDesktopOrWeb = targetPlatform === 'macos' || targetPlatform === 'windows' || targetPlatform === 'desktop' || targetPlatform === 'web';
+  if (!isDesktopOrWeb) {
+    await deviceManager?.ensureDeviceSelected();
+  }
 
   await executeRunTask(uri, runtime);
 }
@@ -526,8 +590,11 @@ async function runSingleCommand(uri: vscode.Uri, commandIndex: number): Promise<
   const runtime = resolveRuntimeOrShow(uri);
   if (!runtime) return;
 
-  // Ensure device is selected (auto-select if only 1, prompt if multiple)
-  await deviceManager?.ensureDeviceSelected();
+  const targetPlatform = parseYamlPlatform(uri.fsPath);
+  const isDesktopOrWeb = targetPlatform === 'macos' || targetPlatform === 'windows' || targetPlatform === 'desktop' || targetPlatform === 'web';
+  if (!isDesktopOrWeb) {
+    await deviceManager?.ensureDeviceSelected();
+  }
 
   await executeRunTask(uri, runtime, commandIndex, undefined);
 }
@@ -536,8 +603,11 @@ async function runFromCommand(uri: vscode.Uri, fromCommandIndex: number): Promis
   const runtime = resolveRuntimeOrShow(uri);
   if (!runtime) return;
 
-  // Ensure device is selected (auto-select if only 1, prompt if multiple)
-  await deviceManager?.ensureDeviceSelected();
+  const targetPlatform = parseYamlPlatform(uri.fsPath);
+  const isDesktopOrWeb = targetPlatform === 'macos' || targetPlatform === 'windows' || targetPlatform === 'desktop' || targetPlatform === 'web';
+  if (!isDesktopOrWeb) {
+    await deviceManager?.ensureDeviceSelected();
+  }
 
   await executeRunTask(uri, runtime, undefined, fromCommandIndex);
 }
@@ -549,11 +619,13 @@ async function executeRunTask(
   fromCommandIndex?: number
 ): Promise<void> {
   try {
+    const targetPlatform = parseYamlPlatform(uri.fsPath);
     const invocation = buildRunInvocation({
       runtime,
       testFilePath: uri.fsPath,
       commandIndex,
       fromCommandIndex,
+      targetPlatform,
       device: deviceManager?.getSelectedDevice() ?? undefined
     });
     const execution = new vscode.ProcessExecution(

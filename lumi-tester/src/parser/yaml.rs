@@ -47,6 +47,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
                 close_when_finish: None,
                 desktop_state: None,
                 cameras: None,
+                window_size: None,
                 jig: None,
             }
         };
@@ -72,6 +73,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
             close_when_finish: None,
             desktop_state: None,
             cameras: None,
+            window_size: None,
             jig: None,
         });
     }
@@ -106,6 +108,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
             close_when_finish: None,
             desktop_state: None,
             cameras: None,
+            window_size: None,
             jig: None,
         };
 
@@ -242,6 +245,8 @@ fn parse_header(header: &str, base_path: &Path) -> Result<TestFlow> {
         desktop_state: Option<crate::parser::types::DesktopState>,
         #[serde(default, alias = "camera")]
         cameras: Option<crate::parser::types::CamerasConfig>,
+        #[serde(default, alias = "window", alias = "windowSize")]
+        window_size: Option<crate::parser::types::WindowSizeConfig>,
         #[serde(default)]
         jig: Option<crate::parser::types::JigConfig>,
     }
@@ -309,6 +314,7 @@ fn parse_header(header: &str, base_path: &Path) -> Result<TestFlow> {
         close_when_finish: parsed.close_when_finish,
         desktop_state: parsed.desktop_state,
         cameras: parsed.cameras,
+        window_size: parsed.window_size,
         jig: parsed.jig,
     })
 }
@@ -570,6 +576,11 @@ fn parse_command_with_params(
         "swipe" => {
             let p = serde_yaml::from_value(params.clone()).ok();
             TestCommand::ManualScroll(p)
+        }
+
+        "drag" | "dragFromTo" => {
+            let p: crate::parser::types::DragParams = serde_yaml::from_value(params.clone())?;
+            TestCommand::Drag(p)
         }
 
         "scrollUntilVisible" | "scrollTo" => {
@@ -1556,10 +1567,14 @@ fn parse_command_with_params(
             TestCommand::WaitLedPattern(p)
         }
 
-        "getDeviceState" => {
-            let p: crate::parser::types::GetDeviceStateParams =
-                serde_yaml::from_value(params.clone())?;
-            TestCommand::GetDeviceState(p)
+        "setWindowSize" | "resizeWindow" | "windowSize" | "setWindow" => {
+            let p: crate::parser::types::SetWindowSizeParamsInput =
+                if let Some(s) = params.as_str() {
+                    crate::parser::types::SetWindowSizeParamsInput::String(s.to_string())
+                } else {
+                    serde_yaml::from_value(params.clone())?
+                };
+            TestCommand::SetWindowSize(p)
         }
 
         _ => return Ok(None),

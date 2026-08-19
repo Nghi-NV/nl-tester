@@ -1,0 +1,60 @@
+# ==============================================================================
+# 🔌 Lumi Tester - Hardware Jig Standard Configuration Profile
+# ==============================================================================
+# File này định nghĩa cấu hình kết nối chuẩn tới bộ Jig Controller phần cứng (STM32/RS485/Relay/Servo).
+# Bạn có thể tái sử dụng file này trong header của bất kỳ test flow nào:
+#
+#   jig: "profiles/jig_config.yaml"
+#
+# Hoặc override từng trường cụ thể:
+#
+#   jig:
+#     file: "profiles/jig_config.yaml"
+#     port: "COM7"
+# ==============================================================================
+
+# Cổng COM Serial (hỗ trợ Windows "COMx", macOS "/dev/tty.usbserial-*", Linux "/dev/ttyUSB*")
+# Sử dụng cú pháp ${ENV_VAR:-DEFAULT} để linh hoạt chạy trên local hoặc CI/CD
+port: "${JIG_PORT:-COM5}"
+
+# Tốc độ Baudrate giao tiếp Serial (mặc định: 115200)
+baudrate: 115200
+
+# Địa chỉ Node ID trên mạng RS485 (mặc định: 1)
+nodeId: 1
+
+# Định dạng khung truyền (wire format) giao tiếp với vi điều khiển
+# Mặc định: "@{node} {command}\n"
+wireFormat: "@{node} {command}\n"
+
+# Tự động ngắt toàn bộ rơ-le nguồn (hwPowerOffAll) và ngắt kết nối an toàn khi test kết thúc
+autoPowerOff: true
+
+# Thời gian chờ phản hồi tối đa từ vi điều khiển MCU (milliseconds)
+timeoutMs: 4000
+
+# Cấu hình danh sách các động cơ Servo vật lý gắn trên Jig
+servos:
+  # Kênh 1: Nút nhấn số 1 / Công tắc 1 (Switch 1.1 / Power Button)
+  - channel: 1
+    pressAngle: 75          # Góc gạt khi nhấn nút (độ)
+    releaseAngle: 0         # Góc nghỉ khi nhả nút (độ)
+    pressDurationMs: 300    # Thời gian di chuyển đến vị trí nhấn (ms)
+    releaseDurationMs: 300  # Thời gian di chuyển về vị trí nghỉ (ms)
+    holdDurationMs: 200     # Thời gian giữ tại vị trí nhấn trước khi nhả (ms)
+
+  # Kênh 2: Nút nhấn số 2 / Công tắc 2 (Switch 1.2 / Pairing Button)
+  - channel: 2
+    pressAngle: 80
+    releaseAngle: 0
+    pressDurationMs: 300
+    releaseDurationMs: 300
+    holdDurationMs: 200
+
+  # Kênh 3: Nút Reset / Factory Reset (Nút nhấn giữ lâu)
+  - channel: 3
+    pressAngle: 85
+    releaseAngle: 0
+    pressDurationMs: 400
+    releaseDurationMs: 400
+    holdDurationMs: 5000

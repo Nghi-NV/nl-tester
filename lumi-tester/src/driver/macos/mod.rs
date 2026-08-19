@@ -1,5 +1,7 @@
-//! Native macOS desktop driver.
+pub mod accessibility;
+pub mod bridge;
+pub mod driver;
 
-mod driver;
-
+pub use accessibility::{AXNode, MacosAccessibility};
+pub use bridge::{MacosBridge, WindowBounds};
 pub use driver::MacosDriver;

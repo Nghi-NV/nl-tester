@@ -11,6 +11,7 @@ export interface RunInvocationOptions {
   testFilePath: string;
   commandIndex?: number;
   fromCommandIndex?: number;
+  targetPlatform?: string;
   device?: {
     platform: string;
     id: string;
@@ -32,6 +33,22 @@ function buildCommand(runtime: LumiRuntime, name: string, args: string[]): Invoc
   };
 }
 
+export function parseYamlPlatform(filePath: string): string | undefined {
+  try {
+    const fs = require('fs');
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, 'utf8');
+      const match = content.match(/^platform:\s*([a-zA-Z0-9_-]+)/m);
+      if (match) {
+        return match[1].trim().toLowerCase();
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return undefined;
+}
+
 export function buildRunInvocation(options: RunInvocationOptions): Invocation {
   const args = [options.testFilePath];
   if (options.commandIndex !== undefined) {
@@ -39,7 +56,13 @@ export function buildRunInvocation(options: RunInvocationOptions): Invocation {
   } else if (options.fromCommandIndex !== undefined) {
     args.push('--from-command-index', options.fromCommandIndex.toString());
   }
-  if (options.device) {
+  
+  const platform = (options.targetPlatform || parseYamlPlatform(options.testFilePath))?.toLowerCase();
+  const isDesktopOrWeb = platform === 'macos' || platform === 'windows' || platform === 'desktop' || platform === 'web';
+
+  if (isDesktopOrWeb) {
+    // For desktop/web tests, platform is determined by the test YAML header, do not override with mobile device
+  } else if (options.device && (!platform || platform === options.device.platform.toLowerCase())) {
     args.push('--platform', options.device.platform, '--device', options.device.id);
   }
   return buildCommand(options.runtime, 'run', args);
@@ -47,7 +70,7 @@ export function buildRunInvocation(options: RunInvocationOptions): Invocation {
 
 export function buildInspectInvocation(options: InspectInvocationOptions): Invocation {
   const args = ['--platform', options.platform, '--port', options.port.toString()];
-  if (options.deviceId) {
+  if (options.deviceId && options.deviceId !== 'macos' && options.deviceId !== 'chrome') {
     args.push('--device', options.deviceId);
   }
   return buildCommand(options.runtime, 'inspect', args);

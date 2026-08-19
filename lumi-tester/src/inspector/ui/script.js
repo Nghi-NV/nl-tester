@@ -2,12 +2,15 @@
 let showBoxes = true;
 let cachedElements = [];
 let currentSelectors = [];
+let allApps = [];
+let selectedAppTarget = null;
 let scaleX = 1;
 let scaleY = 1;
 
 // Init
 window.addEventListener('DOMContentLoaded', () => {
   capture();
+  loadPackages();
 
   // Interaction listeners
   const overlay = document.getElementById('overlay');
@@ -326,21 +329,19 @@ function renderDetails(selectors) {
     // Format value more nicely for "type" or "regex" or "point"
     let displayValue = escapeHtml(s.value);
 
-    // Suggest the key: value format
+    // Format syntax highlight prefix
     if (s.selector_type === 'type') {
       displayValue = `<span style="color:#79c0ff">type:</span> ${displayValue}`;
-      if (s.index) {
-        displayValue += ` <span style="color:#79c0ff">index:</span> ${s.index}`;
-      }
     } else if (s.selector_type === 'text') {
       displayValue = `<span style="color:#79c0ff">text:</span> ${displayValue}`;
-      if (s.index) {
-        displayValue += ` <span style="color:#79c0ff">index:</span> ${s.index}`;
-      }
     } else if (s.selector_type === 'point') {
       displayValue = `<span style="color:#79c0ff">point:</span> ${displayValue}`;
     } else if (s.selector_type === 'id') {
       displayValue = `<span style="color:#79c0ff">id:</span> ${displayValue}`;
+    } else if (s.selector_type === 'regex') {
+      displayValue = `<span style="color:#79c0ff">regex:</span> ${displayValue}`;
+    } else if (s.selector_type.startsWith('relative')) {
+      displayValue = `<span style="color:#79c0ff">${displayValue}</span>`;
     }
 
     return `
@@ -388,3 +389,167 @@ function insertToEditor(idx) {
   }, '*');
   showToast('Inserted to VSCode');
 }
+
+// App Selection & Search
+async function loadPackages() {
+  try {
+    const res = await fetch('/api/packages');
+    if (!res.ok) return;
+    const data = await res.json();
+    const rawList = data.packages || [];
+    allApps = rawList.map(item => {
+      if (item.includes('|')) {
+        const parts = item.split('|').map(s => s.trim());
+        const namePart = parts[0] || '';
+        const isRunning = namePart.includes('[Running]');
+        const name = namePart.replace('[Running]', '').trim();
+        const bundleId = parts[1] || '';
+        const path = parts[2] || '';
+        return { name, bundleId, path, isRunning, raw: item };
+      } else if (item.includes('(') && item.includes(')')) {
+        const m = item.match(/^(.*?)\s*\((.*?)\)$/);
+        if (m) {
+          return { name: m[2], bundleId: m[1], path: '', isRunning: true, raw: item };
+        }
+      }
+      return { name: item, bundleId: item, path: '', isRunning: false, raw: item };
+    });
+  } catch (e) {
+    console.warn("Failed to load packages", e);
+  }
+}
+
+function showAppDropdown() {
+  filterApps();
+  const dropdown = document.getElementById('appDropdown');
+  if (dropdown) dropdown.style.display = 'block';
+}
+
+function filterApps() {
+  const input = document.getElementById('appSearchInput');
+  const dropdown = document.getElementById('appDropdown');
+  const clearBtn = document.getElementById('clearAppBtn');
+  if (!dropdown) return;
+  const q = (input ? input.value : '').toLowerCase().trim();
+
+  if (clearBtn) {
+    clearBtn.style.display = q.length > 0 || selectedAppTarget ? 'block' : 'none';
+  }
+
+  const filtered = allApps.filter(app => {
+    return app.name.toLowerCase().includes(q) ||
+           app.bundleId.toLowerCase().includes(q) ||
+           app.path.toLowerCase().includes(q);
+  });
+
+  if (filtered.length === 0) {
+    dropdown.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:12px">No matching application found</div>';
+    dropdown.style.display = 'block';
+    return;
+  }
+
+  dropdown.innerHTML = filtered.slice(0, 50).map((app, idx) => `
+    <div class="app-dropdown-item" onclick="selectApp(${allApps.indexOf(app)})">
+      <div class="app-item-row">
+        <div class="app-icon-box">
+          ${app.path ? `<img class="app-icon-img" src="/api/app-icon?path=${encodeURIComponent(app.path)}" onerror="this.parentElement.innerHTML='💻'">` : '📱'}
+        </div>
+        <div class="app-item-info">
+          <div class="app-name">
+            <span>${escapeHtml(app.name)}</span>
+            ${app.isRunning ? '<span class="app-badge-running">Running</span>' : ''}
+          </div>
+          <div class="app-detail">${escapeHtml(app.path || app.bundleId)}</div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+  dropdown.style.display = 'block';
+}
+
+async function selectApp(idx) {
+  const input = document.getElementById('appSearchInput');
+  const dropdown = document.getElementById('appDropdown');
+  const clearBtn = document.getElementById('clearAppBtn');
+  const app = allApps[idx];
+  if (!app) return;
+
+  const target = app.path || app.bundleId || app.name;
+  selectedAppTarget = target;
+  if (input) input.value = app.name;
+  if (dropdown) dropdown.style.display = 'none';
+  if (clearBtn) clearBtn.style.display = 'block';
+
+  showToast(`Selected: ${app.name}`);
+  document.getElementById('status').textContent = `Target: ${app.name} (capturing...)`;
+
+  try {
+    await fetch('/api/target-app', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app_id: target })
+    });
+    // Immediately take screenshot of the selected app window
+    await capture();
+  } catch (e) {
+    console.error("Failed to set target app", e);
+  }
+}
+
+async function clearAppSelection() {
+  const input = document.getElementById('appSearchInput');
+  const dropdown = document.getElementById('appDropdown');
+  const clearBtn = document.getElementById('clearAppBtn');
+  selectedAppTarget = null;
+  if (input) input.value = '';
+  if (dropdown) dropdown.style.display = 'none';
+  if (clearBtn) clearBtn.style.display = 'none';
+
+  showToast('Full Screen Mode');
+  document.getElementById('status').textContent = 'Full Screen (capturing...)';
+
+  try {
+    await fetch('/api/target-app', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app_id: '' })
+    });
+    await capture();
+  } catch (e) {
+    console.error("Failed to clear target app", e);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const searchInput = document.getElementById('appSearchInput');
+  if (searchInput) {
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const q = searchInput.value.toLowerCase().trim();
+        if (!q) {
+          clearAppSelection();
+          return;
+        }
+        const match = allApps.find(a => 
+          a.name.toLowerCase().includes(q) ||
+          a.bundleId.toLowerCase().includes(q) ||
+          a.path.toLowerCase().includes(q)
+        );
+        if (match) {
+          selectApp(allApps.indexOf(match));
+        }
+      } else if (e.key === 'Escape') {
+        const dropdown = document.getElementById('appDropdown');
+        if (dropdown) dropdown.style.display = 'none';
+      }
+    });
+  }
+});
+
+document.addEventListener('click', (e) => {
+  const wrapper = document.querySelector('.app-search-wrapper');
+  if (wrapper && !wrapper.contains(e.target)) {
+    const dropdown = document.getElementById('appDropdown');
+    if (dropdown) dropdown.style.display = 'none';
+  }
+});
