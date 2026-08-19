@@ -316,7 +316,103 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Check for updates
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lumi-tester.checkForUpdates', async () => {
+      const editor = vscode.window.activeTextEditor;
+      const workspaceUri = editor?.document.uri || vscode.workspace.workspaceFolders?.[0]?.uri;
+      if (!workspaceUri) {
+        vscode.window.showErrorMessage('Open a workspace or YAML file first.');
+        return;
+      }
+      const runtime = resolveRuntimeOrShow(workspaceUri);
+      if (!runtime) return;
+
+      await checkLumiUpdates(workspaceUri, runtime, false);
+    })
+  );
+
+  // Update CLI & Extension
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lumi-tester.update', async () => {
+      const editor = vscode.window.activeTextEditor;
+      const workspaceUri = editor?.document.uri || vscode.workspace.workspaceFolders?.[0]?.uri;
+      if (!workspaceUri) {
+        vscode.window.showErrorMessage('Open a workspace or YAML file first.');
+        return;
+      }
+      const runtime = resolveRuntimeOrShow(workspaceUri);
+      if (!runtime) return;
+
+      await performLumiUpdate(workspaceUri, runtime);
+    })
+  );
+
   console.log('Lumi Tester extension activated successfully');
+}
+
+async function checkLumiUpdates(uri: vscode.Uri, runtime: LumiRuntime, silentIfUpToDate = false): Promise<void> {
+  await vscode.window.withProgress({
+    location: vscode.ProgressLocation.Notification,
+    title: 'Checking for Lumi Tester updates...',
+    cancellable: false
+  }, async () => {
+    try {
+      const raw = execFileSync(
+        runtime.executable,
+        [...runtime.argsPrefix, 'update', '--check', '--json'],
+        {
+          cwd: runtime.cwd,
+          encoding: 'utf8',
+          windowsHide: true,
+          timeout: 15000
+        }
+      );
+      const res = JSON.parse(raw);
+      if (res.cli_update_available || res.extension_update_available) {
+        const items = [];
+        if (res.cli_update_available) items.push(`CLI: ${res.cli_current} → ${res.cli_latest}`);
+        if (res.extension_update_available) items.push(`Extension: ${res.extension_current || 'current'} → ${res.extension_latest}`);
+
+        const action = await vscode.window.showInformationMessage(
+          `🚀 Lumi Tester Update Available! (${items.join(', ')})`,
+          'Update Now',
+          'Release Notes'
+        );
+        if (action === 'Update Now') {
+          await performLumiUpdate(uri, runtime);
+        } else if (action === 'Release Notes') {
+          vscode.env.openExternal(vscode.Uri.parse('https://github.com/Nghi-NV/nl-tester/releases'));
+        }
+      } else if (!silentIfUpToDate) {
+        vscode.window.showInformationMessage(`✅ Lumi Tester is up to date (${res.cli_current})!`);
+      }
+    } catch (e: any) {
+      if (!silentIfUpToDate) {
+        vscode.window.showErrorMessage(`Failed to check updates: ${e.message || e}`);
+      }
+    }
+  });
+}
+
+async function performLumiUpdate(uri: vscode.Uri, runtime: LumiRuntime): Promise<void> {
+  await vscode.window.withProgress({
+    location: vscode.ProgressLocation.Notification,
+    title: 'Updating Lumi Tester CLI & Extension...',
+    cancellable: false
+  }, async () => {
+    try {
+      const terminal = vscode.window.createTerminal({
+        name: 'Lumi Tester Update',
+        cwd: runtime.cwd
+      });
+      terminal.show();
+      const prefix = runtime.argsPrefix.length > 0 ? ` ${runtime.argsPrefix.join(' ')}` : '';
+      terminal.sendText(`${runtime.executable}${prefix} update --all`);
+    } catch (e: any) {
+      vscode.window.showErrorMessage(`Failed to run update: ${e.message || e}`);
+    }
+  });
 }
 
 async function pingJigPort(uri: vscode.Uri, runtime: LumiRuntime, port: string): Promise<void> {

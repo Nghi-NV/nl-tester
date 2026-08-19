@@ -18,7 +18,13 @@ All notable changes to this project will be documented in this file.
 
 #### 2. VS Code Extension `v0.1.25`
 - Added `nodeId` and `wireFormat` parameters to `hwConnect` autocomplete schema and snippet suggestions.
+- Added `Lumi: Check for Updates` and `Lumi: Update CLI & Extension` commands to Command Palette.
 - Integrated automated marketplace publishing pipeline via GitHub Actions using `secrets.VSCE_PAT`.
+
+#### 3. In-Place Self-Update & Version Checking CLI (`lumi-tester update` & `lumi-tester version`)
+- **Direct CLI Self-Update**: Added `lumi-tester update` (aliases: `self-update`, `upgrade`) to download and replace binary in-place from GitHub Releases across macOS, Linux, and Windows without manual downloads.
+- **Cross-Component Version Checker**: Added `lumi-tester version` and `lumi-tester update --check` with machine-readable `--json` to inspect installed vs latest GitHub releases for both CLI and VS Code Extension.
+- **Extension Update Support**: Added `lumi-tester update --extension` / `--all` to automatically fetch `.vsix` and install it via `code --install-extension`.
 
 ---
 

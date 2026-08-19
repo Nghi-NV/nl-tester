@@ -26,7 +26,9 @@ LUMI_COMMANDS = [
     "schema",
     "shell",
     "system",
+    "update",
     "validate",
+    "version",
 ]
 
 AGENT_COMMANDS = [

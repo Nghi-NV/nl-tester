@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod camera;
 pub mod commands;
 pub mod driver;
@@ -7,6 +8,7 @@ pub mod parser;
 pub mod recorder;
 pub mod report;
 pub mod runner;
+pub mod updater;
 pub mod utils;
 
 // Re-export common items

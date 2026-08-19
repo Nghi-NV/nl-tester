@@ -221,6 +221,49 @@ enum Commands {
         #[command(subcommand)]
         command: JigCommands,
     },
+
+    /// Update lumi-tester CLI and/or VS Code extension to the latest release
+    #[command(alias = "self-update", alias = "upgrade")]
+    Update {
+        /// GitHub repository hosting releases
+        #[arg(long, default_value = "Nghi-NV/nl-tester", env = "LUMI_TESTER_REPO")]
+        repo: String,
+
+        /// Target version tag (e.g. v0.1.17; default: latest release)
+        #[arg(short, long)]
+        version: Option<String>,
+
+        /// Force reinstall even if already on the latest version
+        #[arg(short, long, default_value = "false")]
+        force: bool,
+
+        /// Only check for updates without installing
+        #[arg(long, default_value = "false")]
+        check: bool,
+
+        /// Update the VS Code extension
+        #[arg(long, default_value = "false")]
+        extension: bool,
+
+        /// Update both CLI and VS Code extension
+        #[arg(long, default_value = "false")]
+        all: bool,
+
+        /// Print check status as machine-readable JSON
+        #[arg(long, default_value = "false")]
+        json: bool,
+    },
+
+    /// Check installed and latest version of Lumi Tester CLI and VS Code Extension
+    Version {
+        /// GitHub repository hosting releases
+        #[arg(long, default_value = "Nghi-NV/nl-tester", env = "LUMI_TESTER_REPO")]
+        repo: String,
+
+        /// Print check status as machine-readable JSON
+        #[arg(long, default_value = "false")]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -390,6 +433,38 @@ enum SystemCommands {
         /// Install all components
         #[arg(long)]
         all: bool,
+    },
+
+    /// Update lumi-tester CLI and/or VS Code extension to latest release
+    #[command(alias = "self-update", alias = "upgrade")]
+    Update {
+        /// GitHub repository hosting releases
+        #[arg(long, default_value = "Nghi-NV/nl-tester", env = "LUMI_TESTER_REPO")]
+        repo: String,
+
+        /// Target version tag (e.g. v0.1.17; default: latest release)
+        #[arg(short, long)]
+        version: Option<String>,
+
+        /// Force reinstall even if already on the latest version
+        #[arg(short, long, default_value = "false")]
+        force: bool,
+
+        /// Only check for updates without installing
+        #[arg(long, default_value = "false")]
+        check: bool,
+
+        /// Update the VS Code extension
+        #[arg(long, default_value = "false")]
+        extension: bool,
+
+        /// Update both CLI and VS Code extension
+        #[arg(long, default_value = "false")]
+        all: bool,
+
+        /// Print check status as machine-readable JSON
+        #[arg(long, default_value = "false")]
+        json: bool,
     },
 }
 
@@ -613,7 +688,61 @@ async fn async_main() -> anyhow::Result<()> {
                 utils::system::handle_system_command(utils::system::SystemCommand::Install { all })
                     .await?;
             }
+            SystemCommands::Update {
+                repo,
+                version,
+                force,
+                check,
+                extension,
+                all,
+                json,
+            } => {
+                lumi_tester::updater::run_update(lumi_tester::updater::UpdateOptions {
+                    repo,
+                    version,
+                    force,
+                    check_only: check,
+                    update_extension: extension,
+                    update_all: all,
+                    json,
+                })
+                .await?;
+            }
         },
+
+        Commands::Update {
+            repo,
+            version,
+            force,
+            check,
+            extension,
+            all,
+            json,
+        } => {
+            lumi_tester::updater::run_update(lumi_tester::updater::UpdateOptions {
+                repo,
+                version,
+                force,
+                check_only: check,
+                update_extension: extension,
+                update_all: all,
+                json,
+            })
+            .await?;
+        }
+
+        Commands::Version { repo, json } => {
+            lumi_tester::updater::run_update(lumi_tester::updater::UpdateOptions {
+                repo,
+                version: None,
+                force: false,
+                check_only: true,
+                update_extension: false,
+                update_all: false,
+                json,
+            })
+            .await?;
+        }
 
         Commands::Ai { command } => match command {
             AiCommands::Install {

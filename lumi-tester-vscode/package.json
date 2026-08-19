@@ -87,6 +87,16 @@
         "command": "lumi-tester.pingJig",
         "title": "Lumi: Ping Hardware Jig",
         "icon": "$(radio-tower)"
+      },
+      {
+        "command": "lumi-tester.checkForUpdates",
+        "title": "Lumi: Check for Updates",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "lumi-tester.update",
+        "title": "Lumi: Update CLI & Extension",
+        "icon": "$(sync)"
       }
     ],
     "configuration": {
