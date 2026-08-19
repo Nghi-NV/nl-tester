@@ -1535,6 +1535,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     params: [
       { name: 'port', type: 'string', description: 'Serial port name (e.g. COM5 or /dev/ttyUSB0)' },
       { name: 'nodeId', type: 'number', description: 'RS485 Node ID to address (default: 1)' },
+      { name: 'wireFormat', type: 'string', description: 'Wire framing template format (e.g. "@{node} {command}\\n")' },
       { name: 'baudrate', type: 'number', description: 'Serial baud rate (default: 115200)' },
       { name: 'autoPowerOff', type: 'boolean', description: 'Auto turn off power when test finishes' },
       { name: 'timeoutMs', type: 'number', description: 'Connection timeout in ms' },

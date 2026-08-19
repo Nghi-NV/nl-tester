@@ -10,6 +10,7 @@ pub struct SerialTransport {
     port: Option<Box<dyn serialport::SerialPort>>,
     port_name: Option<String>,
     pub node_id: Option<u8>,
+    pub wire_format: Option<String>,
     log_file: Option<File>,
     log_path: PathBuf,
 }
@@ -23,6 +24,7 @@ impl SerialTransport {
             port: None,
             port_name: None,
             node_id: Some(1),
+            wire_format: Some("@{node} {command}\n".to_string()),
             log_file: None,
             log_path,
         }
@@ -98,12 +100,23 @@ impl SerialTransport {
         F: Fn(&ResponseLine) -> bool,
     {
         let trimmed = cmd.trim();
-        let wire_cmd = if let Some(nid) = self.node_id {
-            if !trimmed.starts_with('@') && !trimmed.is_empty() {
-                format!("@{} {}\n", nid, trimmed)
+        let wire_cmd = if trimmed.starts_with('@') || (trimmed.starts_with('[') && !trimmed.contains("{command}")) {
+            format!("{}\n", trimmed)
+        } else if let Some(ref fmt) = self.wire_format {
+            let node_str = self.node_id.map(|n| n.to_string()).unwrap_or_else(|| "1".to_string());
+            let rendered = fmt
+                .replace("{node}", &node_str)
+                .replace("{node_id}", &node_str)
+                .replace("{nodeId}", &node_str)
+                .replace("{command}", trimmed)
+                .replace("{cmd}", trimmed);
+            if !rendered.ends_with('\n') {
+                format!("{}\n", rendered)
             } else {
-                format!("{}\n", trimmed)
+                rendered
             }
+        } else if let Some(nid) = self.node_id {
+            format!("@{} {}\n", nid, trimmed)
         } else {
             format!("{}\n", trimmed)
         };

@@ -103,6 +103,7 @@ impl JigConfig {
                         port: path_or_port.clone(),
                         baudrate: None,
                         node_id: None,
+                        wire_format: None,
                         auto_power_off: Some(true),
                         timeout_ms: None,
                         file: None,
@@ -130,6 +131,9 @@ impl JigConfig {
                     if p.node_id.is_some() {
                         loaded.node_id = p.node_id;
                     }
+                    if p.wire_format.is_some() {
+                        loaded.wire_format = p.wire_format.clone();
+                    }
                     if p.auto_power_off.is_some() {
                         loaded.auto_power_off = p.auto_power_off;
                     }
@@ -153,6 +157,7 @@ impl JigConfig {
                 port: port.clone(),
                 baudrate: None,
                 node_id: None,
+                wire_format: None,
                 auto_power_off: Some(true),
                 timeout_ms: None,
                 file: None,
@@ -849,6 +854,8 @@ pub struct HardwareConnectParams {
     pub baudrate: Option<u32>,
     #[serde(default, alias = "node_id", alias = "nodeId", alias = "node")]
     pub node_id: Option<u8>,
+    #[serde(default, alias = "wire_format", alias = "wireFormat", alias = "framing", alias = "format")]
+    pub wire_format: Option<String>,
     #[serde(default)]
     pub auto_power_off: Option<bool>,
     #[serde(default)]

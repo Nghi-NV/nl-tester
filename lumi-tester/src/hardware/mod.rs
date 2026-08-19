@@ -32,6 +32,9 @@ impl HardwareController {
         let cfg = config.unwrap_or_default();
         let mut tr = SerialTransport::new();
         tr.node_id = cfg.node_id.or(Some(1));
+        if cfg.wire_format.is_some() {
+            tr.wire_format = cfg.wire_format.clone();
+        }
         let transport = Arc::new(Mutex::new(tr));
 
         let servo = ServoService::new(Arc::clone(&transport));
@@ -53,6 +56,9 @@ impl HardwareController {
         let baud = baudrate.unwrap_or(self.config.baudrate);
         let mut transport = self.transport.lock().unwrap();
         transport.node_id = self.config.node_id.or(Some(1));
+        if self.config.wire_format.is_some() {
+            transport.wire_format = self.config.wire_format.clone();
+        }
         transport.connect(port, baud)
             .map_err(|e| anyhow::anyhow!("Failed to connect to hardware Jig on '{}' (baudrate: {}): {}", port, baud, e))?;
 
@@ -174,16 +180,20 @@ pub fn list_serial_ports() -> Vec<JigPortInfo> {
 }
 
 /// Thử kết nối nhanh và Ping thiết bị Jig phần cứng, trả về thông tin chi tiết
-pub fn ping_details(port: &str, baudrate: Option<u32>, node_id: Option<u8>) -> Result<JigPingResult> {
+pub fn ping_details(port: &str, baudrate: Option<u32>, node_id: Option<u8>, wire_format: Option<String>) -> Result<JigPingResult> {
     let baud = baudrate.unwrap_or(115200);
     let ping_node = node_id.or(Some(1));
     let start = std::time::Instant::now();
     let controller = HardwareController::new(Some(HardwareConfig {
         node_id: ping_node,
+        wire_format: wire_format.clone(),
         ..Default::default()
     }));
     let mut transport = controller.transport.lock().unwrap();
     transport.node_id = ping_node;
+    if wire_format.is_some() {
+        transport.wire_format = wire_format;
+    }
     transport.connect(port, baud)?;
     let resp = transport.request(
         "ping\n",

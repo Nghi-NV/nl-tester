@@ -30,6 +30,7 @@ impl Default for ServoChannelConfig {
 pub struct HardwareConfig {
     pub baudrate: u32,
     pub node_id: Option<u8>,
+    pub wire_format: Option<String>,
     pub command_timeout_s: f64,
     pub sensor_timeout_s: f64,
     pub handshake_timeout_s: f64,
@@ -43,6 +44,7 @@ impl Default for HardwareConfig {
         Self {
             baudrate: 115200,
             node_id: Some(1),
+            wire_format: Some("@{node} {command}\n".to_string()),
             command_timeout_s: 2.0,
             sensor_timeout_s: 5.0,
             handshake_timeout_s: 2.0,

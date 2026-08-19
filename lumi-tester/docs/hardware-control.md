@@ -54,6 +54,7 @@ jig:
 # profiles/jig_switch_sample.yaml
 port: "${JIG_PORT:-COM5}"
 nodeId: 1                      # Địa chỉ Node RS485 (Mặc định: 1)
+wireFormat: "@{node} {command}\n" # Mẫu định dạng khung truyền (tùy biến linh hoạt nếu MCU đổi định dạng)
 baudrate: 115200
 autoPowerOff: true
 timeoutMs: 4000

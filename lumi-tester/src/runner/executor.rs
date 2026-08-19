@@ -286,6 +286,9 @@ impl TestExecutor {
             if let Some(nid) = params.node_id {
                 hw_config.node_id = Some(nid);
             }
+            if params.wire_format.is_some() {
+                hw_config.wire_format = params.wire_format.clone();
+            }
             let controller = crate::hardware::HardwareController::new(Some(hw_config));
             if let Err(e) = controller.connect(&port, params.baudrate) {
                 let err_msg = format!("Hardware Jig connection failed on '{}': {}", port, e);
@@ -3061,6 +3064,9 @@ impl TestExecutor {
                 let mut hw_config = crate::hardware::HardwareConfig::default();
                 if let Some(nid) = resolved_params.node_id {
                     hw_config.node_id = Some(nid);
+                }
+                if resolved_params.wire_format.is_some() {
+                    hw_config.wire_format = resolved_params.wire_format.clone();
                 }
                 let controller = crate::hardware::HardwareController::new(Some(hw_config));
                 controller.connect(&port, resolved_params.baudrate)?;

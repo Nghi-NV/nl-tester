@@ -952,24 +952,24 @@ async fn async_main() -> anyhow::Result<()> {
                 }
             }
             JigCommands::Ping { port, node, baudrate, json } => {
-                let (target_port, target_node) = if let Some(p) = port {
+                let (target_port, target_node, target_format) = if let Some(p) = port {
                     if p.ends_with(".yaml") || p.ends_with(".yml") || p.ends_with(".json") || std::path::Path::new(&p).exists() {
                         if let Ok(content) = std::fs::read_to_string(&p) {
                             if let Ok(params) = serde_yaml::from_str::<lumi_tester::parser::types::HardwareConnectParams>(&content) {
-                                (resolve_env_string(&params.port), node.or(params.node_id))
+                                (resolve_env_string(&params.port), node.or(params.node_id), params.wire_format)
                             } else {
-                                (resolve_env_string(&p), node)
+                                (resolve_env_string(&p), node, None)
                             }
                         } else {
-                            (resolve_env_string(&p), node)
+                            (resolve_env_string(&p), node, None)
                         }
                     } else {
-                        (resolve_env_string(&p), node)
+                        (resolve_env_string(&p), node, None)
                     }
                 } else {
                     let ports = lumi_tester::hardware::list_serial_ports();
                     if let Some(first) = ports.first() {
-                        (first.port_name.clone(), node)
+                        (first.port_name.clone(), node, None)
                     } else {
                         anyhow::bail!("No serial ports found. Connect a Jig or specify a port manually.");
                     }
@@ -980,7 +980,7 @@ async fn async_main() -> anyhow::Result<()> {
                     println!("\n{} Testing connection to Jig on {}{} ({} baud)...", "🔌".cyan(), target_port, node_info, baudrate);
                 }
 
-                match lumi_tester::hardware::ping_details(&target_port, Some(baudrate), target_node) {
+                match lumi_tester::hardware::ping_details(&target_port, Some(baudrate), target_node, target_format) {
                     Ok(res) => {
                         if json {
                             println!("{}", serde_json::to_string_pretty(&res)?);

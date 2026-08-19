@@ -1181,6 +1181,7 @@ fn parse_command_with_params(
                     port: params.as_str().unwrap().to_string(),
                     baudrate: None,
                     node_id: None,
+                    wire_format: None,
                     auto_power_off: Some(true),
                     timeout_ms: None,
                     file: None,
@@ -1953,5 +1954,25 @@ platform: android
             }
             _ => panic!("Expected RunPython for command 2"),
         }
+    }
+
+    #[test]
+    fn test_jig_wire_format_parsing() {
+        let yaml = r#"
+platform: android
+appId: com.example.app
+jig:
+  port: "COM7"
+  nodeId: 2
+  wireFormat: "[NODE:{node}] {command}\r\n"
+---
+- hwClick: 1
+"#;
+        let flow = parse_yaml_content(yaml, Path::new("test.yaml")).unwrap();
+        assert!(flow.jig.is_some());
+        let params = flow.jig.unwrap().resolve(None).unwrap();
+        assert_eq!(params.port, "COM7");
+        assert_eq!(params.node_id, Some(2));
+        assert_eq!(params.wire_format, Some("[NODE:{node}] {command}\r\n".to_string()));
     }
 }

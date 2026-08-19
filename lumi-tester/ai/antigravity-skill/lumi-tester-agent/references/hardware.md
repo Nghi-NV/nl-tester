@@ -23,6 +23,7 @@ jig: "profiles/jig_switch_sample.yaml"
 ```text
 port: "${JIG_PORT:-COM5}"
 nodeId: 1
+wireFormat: "@{node} {command}\n"
 baudrate: 115200
 autoPowerOff: true
 timeoutMs: 4000

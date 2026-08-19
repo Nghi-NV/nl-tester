@@ -15,4 +15,4 @@ desktopState.clear.mode,,enum,macos|windows,no,"mode: autoSafe","autoSafe adds a
 desktopState.clear.paths,,string array,macos|windows,no,"paths: [\"~/Library/Application Support/MyApp\"]","macOS paths must stay under HOME; Windows paths must stay under APPDATA or LOCALAPPDATA"
 desktopState.clear.keychainServices,keychainServices,string array,macos,no,"keychainServices: [\"com.example.MyApp\"]","macOS-only app-scoped Keychain service names to delete during clearState"
 desktopState.clear.registryKeys,registryKeys,string array,windows,no,"registryKeys: [\"HKCU:\\\\Software\\\\Example\"]","Windows-only current-user software registry keys; HKLM and broad keys are rejected"
-jig,jig_config,string|map,all,no,"jig: \"profiles/jig_switch_sample.yaml\"","Hardware Jig serial connection (e.g. COM5, { port: COM5, nodeId: 1, baudrate: 115200, servos: [...] }, or profile YAML path)"
+jig,jig_config,string|map,all,no,"jig: \"profiles/jig_switch_sample.yaml\"","Hardware Jig serial connection (e.g. COM5, { port: COM5, nodeId: 1, wireFormat: \"@{node} {command}\\n\", baudrate: 115200, servos: [...] }, or profile YAML path)"
