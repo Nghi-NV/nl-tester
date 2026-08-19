@@ -14,10 +14,10 @@ jig:
 
 ---
 # 1. Bật nguồn thiết bị
-- turnOn: 1
+- hwPowerOn: 1
 
 # 2. Bấm nút đơn
-- clickButton: 1
+- hwClick: 1
 
 # 3. Kiểm tra trạng thái LED phản hồi
-- seeLedColor: "GREEN"
+- hwSeeLed: "GREEN"

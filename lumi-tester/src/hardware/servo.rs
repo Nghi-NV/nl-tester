@@ -26,16 +26,16 @@ impl ServoControl for ServoService {
         let mut transport = self.transport.lock().unwrap();
         let resp = transport.request(
             &cmd_servo_press(channel),
-            |line| line.kind == "servo" && line.get_str("action") == Some("press"),
+            |line| line.kind == "servo" || line.kind == "ok",
             3.0,
         )?;
 
         Ok(ActionResult {
             action: "servo.press".to_string(),
             channel: Some(channel),
-            completed: resp.get_str("status") == Some("completed") || resp.kind == "servo",
+            completed: resp.get_str("status") != Some("error"),
             duration_ms: start.elapsed().as_millis() as u64,
-            message: None,
+            message: resp.get_str("message").map(|s| s.to_string()),
         })
     }
 
@@ -44,16 +44,16 @@ impl ServoControl for ServoService {
         let mut transport = self.transport.lock().unwrap();
         let resp = transport.request(
             &cmd_servo_release(channel),
-            |line| line.kind == "servo" && line.get_str("action") == Some("release"),
+            |line| line.kind == "servo" || line.kind == "ok",
             3.0,
         )?;
 
         Ok(ActionResult {
             action: "servo.release".to_string(),
             channel: Some(channel),
-            completed: resp.get_str("status") == Some("completed") || resp.kind == "servo",
+            completed: resp.get_str("status") != Some("error"),
             duration_ms: start.elapsed().as_millis() as u64,
-            message: None,
+            message: resp.get_str("message").map(|s| s.to_string()),
         })
     }
 
@@ -62,16 +62,16 @@ impl ServoControl for ServoService {
         let mut transport = self.transport.lock().unwrap();
         let resp = transport.request(
             &crate::hardware::protocol::cmd_servo_rotate(channel, angle, speed),
-            |line| line.kind == "servo" && line.get_str("action") == Some("rotate"),
+            |line| line.kind == "servo" || line.kind == "ok",
             3.0,
         )?;
 
         Ok(ActionResult {
             action: "servo.rotate".to_string(),
             channel: Some(channel),
-            completed: resp.get_str("status") == Some("completed") || resp.kind == "servo",
+            completed: resp.get_str("status") != Some("error"),
             duration_ms: start.elapsed().as_millis() as u64,
-            message: None,
+            message: resp.get_str("message").map(|s| s.to_string()),
         })
     }
 
@@ -82,16 +82,16 @@ impl ServoControl for ServoService {
 
         let resp = transport.request(
             &cmd_servo_click(channel, hold_duration_ms),
-            |line| line.kind == "servo" && line.get_str("action") == Some("click"),
+            |line| line.kind == "servo" || line.kind == "ok",
             timeout_s,
         )?;
 
         Ok(ActionResult {
             action: "servo.click".to_string(),
             channel: Some(channel),
-            completed: resp.get_str("status") == Some("completed") || resp.kind == "servo",
+            completed: resp.get_str("status") != Some("error"),
             duration_ms: start.elapsed().as_millis() as u64,
-            message: None,
+            message: resp.get_str("message").map(|s| s.to_string()),
         })
     }
 
@@ -123,16 +123,16 @@ impl ServoControl for ServoService {
         let mut transport = self.transport.lock().unwrap();
         let resp = transport.request(
             &cmd_servo_repeat_start(channel, period_ms),
-            |line| line.kind == "servo" && line.get_str("action") == Some("repeat_start"),
+            |line| line.kind == "servo" || line.kind == "ok",
             3.0,
         )?;
 
         Ok(ActionResult {
             action: "servo.repeat_start".to_string(),
             channel: Some(channel),
-            completed: resp.get_str("status") == Some("completed") || resp.kind == "servo",
+            completed: resp.get_str("status") != Some("error"),
             duration_ms: start.elapsed().as_millis() as u64,
-            message: None,
+            message: resp.get_str("message").map(|s| s.to_string()),
         })
     }
 
@@ -141,16 +141,16 @@ impl ServoControl for ServoService {
         let mut transport = self.transport.lock().unwrap();
         let resp = transport.request(
             &cmd_servo_repeat_stop(channel),
-            |line| line.kind == "servo" && line.get_str("action") == Some("repeat_stop"),
+            |line| line.kind == "servo" || line.kind == "ok",
             3.0,
         )?;
 
         Ok(ActionResult {
             action: "servo.repeat_stop".to_string(),
             channel: Some(channel),
-            completed: resp.get_str("status") == Some("completed") || resp.kind == "servo",
+            completed: resp.get_str("status") != Some("error"),
             duration_ms: start.elapsed().as_millis() as u64,
-            message: None,
+            message: resp.get_str("message").map(|s| s.to_string()),
         })
     }
 

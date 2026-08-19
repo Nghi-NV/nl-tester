@@ -60,3 +60,6 @@ my_testing/*
 WebDriverAgent/
 nl-android/
 nl-mock-hook/
+
+app_desktop/
+app_desktop/**

@@ -13,17 +13,17 @@ jig:
 
 ---
 # 1. Nhấn giữ nút Servo channel 1 (Press and Hold)
-- pressButton: 1
+- hwPress: 1
 - wait: 2000
 
 # 2. Nhả nút Servo channel 1 (Release specific button)
-- releaseButton: 1
+- hwRelease: 1
 - wait: 1000
 
 # 3. Nhấn giữ đồng thời nút channel 1 và channel 2
-- pressButton: 1
-- pressButton: 2
+- hwPress: 1
+- hwPress: 2
 - wait: 1500
 
 # 4. Nhả tất cả các nút cùng lúc (Release All)
-- releaseAllButtons
+- hwReleaseAll

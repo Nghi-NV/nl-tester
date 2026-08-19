@@ -40,7 +40,7 @@ pub trait RelayControl: Send + Sync {
 /// Interface cho cảm biến màu sắc & phát hiện chớp tắt LED
 pub trait ColorSensorControl: Send + Sync {
     fn read_color(&self, channel: u8) -> Result<ColorReading>;
-    fn get_light_state(&self) -> Result<bool>;
+    fn get_light_state(&self, channel: Option<u8>) -> Result<bool>;
     fn wait_for_color(
         &self,
         channel: u8,
@@ -50,7 +50,11 @@ pub trait ColorSensorControl: Send + Sync {
     fn wait_for_blinks(
         &self,
         channel: u8,
+        expected_color: Option<&str>,
+        expected_count: Option<usize>,
         after_event_id: Option<u32>,
+        min_pulse_ms: Option<u64>,
+        max_pulse_ms: Option<u64>,
         timeout_s: f64,
     ) -> Result<BlinkResult>;
 }

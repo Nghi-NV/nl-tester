@@ -1,0 +1,20 @@
+# 🔌 Jig Hardware Profile (Cấu hình dùng chung cho thiết bị công tắc)
+port: "${JIG_PORT:-COM5}"
+baudrate: 115200
+autoPowerOff: true
+timeoutMs: 4000
+
+# ⚙️ Cấu hình góc gạt & thời gian cho các Servo kênh 1..4
+servos:
+  - channel: 1
+    pressAngle: 75
+    releaseAngle: 15
+    pressDurationMs: 400
+    releaseDurationMs: 150
+    holdDurationMs: 300
+  - channel: 2
+    pressAngle: 72
+    releaseAngle: 15
+    pressDurationMs: 400
+    releaseDurationMs: 150
+    holdDurationMs: 300

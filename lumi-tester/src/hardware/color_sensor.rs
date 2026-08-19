@@ -45,15 +45,25 @@ impl ColorSensorService {
         Ok(())
     }
 
-    pub fn light_on(&self) -> Result<()> {
+    pub fn light_on(&self, channel: Option<u8>) -> Result<()> {
+        let ch = channel.unwrap_or(1);
         let mut transport = self.transport.lock().unwrap();
-        transport.request(&crate::hardware::protocol::cmd_color_light(true), |line| line.kind == "color_light" || line.kind == "ok", 3.0)?;
+        transport.request(
+            &crate::hardware::protocol::cmd_color_light(ch, true),
+            |line| line.kind == "color_light" || line.kind == "ok",
+            3.0,
+        )?;
         Ok(())
     }
 
-    pub fn light_off(&self) -> Result<()> {
+    pub fn light_off(&self, channel: Option<u8>) -> Result<()> {
+        let ch = channel.unwrap_or(1);
         let mut transport = self.transport.lock().unwrap();
-        transport.request(&crate::hardware::protocol::cmd_color_light(false), |line| line.kind == "color_light" || line.kind == "ok", 3.0)?;
+        transport.request(
+            &crate::hardware::protocol::cmd_color_light(ch, false),
+            |line| line.kind == "color_light" || line.kind == "ok",
+            3.0,
+        )?;
         Ok(())
     }
 
@@ -77,10 +87,11 @@ impl ColorSensorService {
 }
 
 impl ColorSensorControl for ColorSensorService {
-    fn get_light_state(&self) -> Result<bool> {
+    fn get_light_state(&self, channel: Option<u8>) -> Result<bool> {
+        let ch = channel.unwrap_or(1);
         let mut transport = self.transport.lock().unwrap();
         let resp = transport.request(
-            "color light?\n",
+            &crate::hardware::protocol::cmd_color_light_state(ch),
             |line| line.kind == "color_light" || line.kind == "ok",
             3.0,
         )?;
@@ -179,9 +190,14 @@ impl ColorSensorControl for ColorSensorService {
     fn wait_for_blinks(
         &self,
         channel: u8,
+        expected_color: Option<&str>,
+        expected_count: Option<usize>,
         after_event_id: Option<u32>,
+        min_pulse_ms: Option<u64>,
+        max_pulse_ms: Option<u64>,
         timeout_s: f64,
     ) -> Result<BlinkResult> {
+        let _ = self.select_channel(channel);
         let start = Instant::now();
         let timeout = Duration::from_secs_f64(timeout_s);
 
@@ -198,7 +214,7 @@ impl ColorSensorControl for ColorSensorService {
                 let mut transport = self.transport.lock().unwrap();
                 if let Ok(resp) = transport.request(
                     &cmd_color_blink_query(channel, after_event_id),
-                    |line| line.kind == "blink" || line.kind == "color",
+                    |line| line.kind == "blink" || line.kind == "blink_event" || line.kind == "color",
                     2.0,
                 ) {
                     let blink_count = resp.get_u32("count").unwrap_or(0) as usize;
@@ -207,12 +223,43 @@ impl ColorSensorControl for ColorSensorService {
                         let color_str = resp.get_str("color");
                         let color = color_str.map(Color::from_str);
 
-                        return Ok(BlinkResult {
-                            event_id,
-                            blink_count,
-                            color,
-                            durations_ms: vec![],
-                        });
+                        // Parse durations if present
+                        let durations_ms: Vec<u64> = resp.get_str("durations_ms")
+                            .unwrap_or("")
+                            .split(',')
+                            .filter_map(|s| s.trim().parse::<u64>().ok())
+                            .collect();
+
+                        // Check filters if specified
+                        let color_matched = match (expected_color, color) {
+                            (Some(exp), Some(c)) => c.as_str().eq_ignore_ascii_case(exp) || Color::from_str(exp) == c,
+                            (Some(_), None) => false,
+                            (None, _) => true,
+                        };
+
+                        let count_matched = match expected_count {
+                            Some(exp_c) => exp_c == blink_count,
+                            None => true,
+                        };
+
+                        let pulse_matched = if durations_ms.is_empty() {
+                            true
+                        } else {
+                            durations_ms.iter().all(|&d| {
+                                let min_ok = min_pulse_ms.map_or(true, |min_v| d >= min_v);
+                                let max_ok = max_pulse_ms.map_or(true, |max_v| d <= max_v);
+                                min_ok && max_ok
+                            })
+                        };
+
+                        if color_matched && count_matched && pulse_matched {
+                            return Ok(BlinkResult {
+                                event_id,
+                                blink_count,
+                                color,
+                                durations_ms,
+                            });
+                        }
                     }
                 }
             }

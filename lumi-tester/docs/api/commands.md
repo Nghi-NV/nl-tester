@@ -25,8 +25,8 @@ Mỗi lệnh đều có ví dụ minh họa đầy đủ **tất cả các biế
 | 📸 **Artifacts & Reports** | [`screenshot`](#screenshot--takescreenshot--snapshot), [`startRecording` / `stopRecording`](#startrecording--stoprecording), [`exportReport`](#exportreport), [`sendLarkMessage` / `lark`](#sendlarkmessage--lark) |
 | 📍 **GPS Simulation** | [`mockLocation` / `gps`](#mocklocation--gps), [`mockLocationControl`](#stopmocklocation--mocklocationcontrol), [`waitForLocation`](#waitforlocation--waitformockcompletion) |
 | 🎬 **GIF Recording** | [`captureGifFrame`](#-gif-recording-tạo-gif-minh-họa), [`buildGif`](#-gif-recording-tạo-gif-minh-họa) |
-| ⚙️ **Hardware Relay/Servo** | [`connectJig`](#connectjig--disconnectjig), [`turnOn` / `turnOff` / `powerCycle`](#turnon--turnoff--turnoffall--powercycle), [`clickButton` / `holdButton` / `releaseButton`](#clickbutton--pressbutton--holdbutton--releasebutton--releaseallbuttons--repeatclick), [`rotateServo` / `startRepeatClick`](#rotateservo--configureservo--startrepeatclick--stoprepeatclick), [`readServo` / `readRelay`](#readservo--readrelay) |
-| 🎨 **Hardware LED & Sensor** | [`seeLedColor` / `seeLedBlink`](#seeledcolor--seeledblink--seeledoff), [`setSensorLight`](#setsensorlight--setbrightnessthresholds--waitforbrightness--waitforcct), [`waitForBrightness` / `waitForCct`](#setsensorlight--setbrightnessthresholds--waitforbrightness--waitforcct), [`calibrateColor` / `saveCalibration`](#calibratecolor--calibratebrightness--addcctpoint--savecalibration--loadcalibration--resetcalibration--erasecalibration) |
+| ⚙️ **Hardware Relay/Servo** | [`hwConnect` / `hwDisconnect`](#hwconnect--hwdisconnect), [`hwPowerOn` / `hwPowerOff` / `hwPowerCycle`](#hwpoweron--hwpoweroff--hwpoweroffall--hwpowercycle), [`hwClick` / `hwPress` / `hwRelease`](#hwclick--hwpress--hwrelease--hwreleaseall--hwrepeatclick), [`hwRotate` / `hwStartRepeatClick`](#hwrotate--hwconfigureservo--hwstartrepeatclick--hwstoprepeatclick), [`hwReadServo` / `hwReadRelay`](#hwreadservo--hwreadrelay) |
+| 🎨 **Hardware LED & Sensor** | [`hwSeeLed` / `hwSeeLedBlink`](#hwseeled--hwseeledblink--hwseeledoff), [`hwSensorLight`](#hwsensorlight--hwsetbrightnessthresholds--hwwaitforbrightness--hwwaitforcct), [`hwWaitForBrightness` / `hwWaitForCct`](#hwsensorlight--hwsetbrightnessthresholds--hwwaitforbrightness--hwwaitforcct), [`hwCalibrateColor` / `hwSaveCalibration`](#hwcalibratecolor--hwcalibratebrightness--hwaddcctpoint--hwsavecalibration--hwloadcalibration--hwresetcalibration--hwerasecalibration) |
 | 📷 **Camera Profile** | [`assertDeviceState`](#-camera-profile-assertions-kiểm-tra-trạng-thái-qua-camera), [`waitDeviceState`](#-camera-profile-assertions-kiểm-tra-trạng-thái-qua-camera), [`assertDeviceTransition`](#-camera-profile-assertions-kiểm-tra-trạng-thái-qua-camera), [`waitLedPattern`](#-camera-profile-assertions-kiểm-tra-trạng-thái-qua-camera) |
 | 🔊 **Audio & Media** | [`playMedia` / `stopMedia`](#-audio--media-playback-âm-thanh--truyền-thông), [`startAudioCapture` / `verifyAudioDucking`](#startaudiocapture--stopaudiocapture--verifyaudioducking) |
 | 🛠️ **System Settings** | [`rotate`](#rotate--setorientation), [`press`](#press--presskey), [`inputRandomEmail` / `inputRandomNumber`](#random-inputs-inputrandomemail--inputrandomnumber--inputrandompersonname--inputrandomtext), [`setVolume` / `lockDevice`](#system-controls-opennotifications--openquicksettings--setvolume--lockdevice--unlockdevice--selectdisplay--setlocale), [`assertPerformance` / `setCpuThrottling`](#performance-profiling-startprofiling--stopprofiling--assertperformance--setcputhrottling--setnetworkconditions) |
@@ -868,152 +868,195 @@ Ví dụ đầy đủ các tham số:
 
 ## ⚙️ Hardware Jig Controller (Điều khiển Phần cứng Jig STM32/Relay/Servo)
 
-Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch nạp và bộ Jig điều khiển phần cứng tự động hóa cho thiết bị IoT / Smart Home.
+Lumi Tester hỗ trợ giao tiếp trực tiếp qua Cổng COM/TTY tới mạch nạp và bộ Jig điều khiển phần cứng tự động hóa cho thiết bị IoT / Smart Home. Tất cả các lệnh phần cứng đều sử dụng tiền tố **`hw*`** để phân biệt rõ ràng với các lệnh UI.
 
-### `connectJig` / `disconnectJig`
+### `hwConnect` / `hwDisconnect`
 **Mô tả**: Kết nối tới mạch phần cứng Jig Controller qua cổng RS232/USB Serial.
 
 Ví dụ đầy đủ các tham số:
 ```yaml
 # 1. Viết tắt cổng COM
-- connectJig: "COM5"
+- hwConnect: "COM5"
 
-# 2. Đầy đủ các tham số đối tượng
-- connectJig:
+# 2. Đầy đủ các tham số đối tượng (hỗ trợ nạp file Profile chung hoặc cấu hình servos)
+- hwConnect:
     port: "COM5"
     baudrate: 115200
     timeoutMs: 3000
+    file: "profiles/jig_switch_sample.yaml"
+    servos:
+      - channel: 1
+        pressAngle: 75
+        releaseAngle: 15
 ```
 
-### `turnOn` / `turnOff` / `turnOffAll` / `powerCycle`
+### `hwPowerOn` / `hwPowerOff` / `hwPowerOffAll` / `hwPowerCycle`
 **Mô tả**: Điều khiển đóng/ngắt các kênh Rơ-le (Relay) cấp nguồn phần cứng.
 
 Ví dụ đầy đủ các tham số:
 ```yaml
-- turnOn: 1       # Bật nguồn kênh 1
-- turnOff: 1      # Tắt nguồn kênh 1
-- turnOffAll      # Tắt toàn bộ rơ-le
-- powerCycle:     # Khởi động lại nguồn (Tắt 2s rồi bật lại)
+- hwPowerOn: 1       # Bật nguồn kênh 1
+- hwPowerOff: 1      # Tắt nguồn kênh 1
+- hwPowerOffAll      # Tắt toàn bộ rơ-le
+- hwPowerCycle:      # Khởi động lại nguồn (Tắt 2s rồi bật lại)
     channel: 1
     offMs: 2000
 ```
 
-### `clickButton` / `pressButton` / `holdButton` / `releaseButton` / `releaseAllButtons` / `repeatClick`
+### `hwClick` / `hwPress` / `hwRelease` / `hwReleaseAll` / `hwRepeatClick`
 **Mô tả**: Điều khiển động cơ Servo nhấn nút vật lý trên thiết bị.
 
 Ví dụ đầy đủ các tham số:
 ```yaml
-- clickButton: 1         # Click nút vật lý kênh 1
-- pressButton: 1         # Nhấn đè nút kênh 1
-- holdButton: 1          # Nhấn giữ nút (cho chế độ Pairing / Reset)
-- releaseButton: 1       # Nhả nút kênh 1
-- releaseAllButtons      # Nhả tất cả các nút về vị trí nghỉ
-- repeatClick:           # Nhấn nhấp nhả 3 lần liên tiếp
+- hwClick: 1          # Click nút vật lý kênh 1
+- hwPress: 1          # Nhấn đè nút kênh 1 (Pairing/Reset)
+- hwRelease: 1        # Nhả nút kênh 1
+- hwReleaseAll        # Nhả tất cả các nút về vị trí nghỉ
+- hwRepeatClick:      # Nhấn nhấp nhả 3 lần liên tiếp
     channel: 1
     count: 3
-    intervalMs: 300
+    pressMs: 150
+    releaseMs: 150
 ```
 
-### `rotateServo` / `configureServo` / `startRepeatClick` / `stopRepeatClick`
+### `hwRotate` / `hwConfigureServo` / `hwStartRepeatClick` / `hwStopRepeatClick`
 **Mô tả**: Cấu hình góc xoay Servo chi tiết và điều khiển vòng lặp nhấn nhả tự động phần cứng trên STM32.
 
 Ví dụ đầy đủ các tham số:
 ```yaml
-- rotateServo:
+- hwRotate:
     channel: 1
     angle: 90
     speed: 50
 
-- configureServo:
+- hwConfigureServo:
     channel: 1
     pressAngle: 75
     releaseAngle: 0
     pressDurationMs: 200
 
-- startRepeatClick:
+- hwStartRepeatClick:
     channel: 1
     periodMs: 1500
 
-- stopRepeatClick: 1
+- hwStopRepeatClick: 1
 ```
 
-### `readServo` / `readRelay`
+### `hwReadServo` / `hwReadRelay`
 **Mô tả**: Đọc trạng thái phản hồi từ Servo và Relay.
 
 ```yaml
-- readServo: 1
-- readRelay: 1
+- hwReadServo: 1
+- hwReadRelay: 1
 ```
 
 ---
 
 ## 🎨 Hardware LED & Color Sensor (Cảm biến màu & LED Phần cứng)
 
-### `seeLedColor` / `seeLedBlink` / `seeLedOff`
-**Mô tả**: Kiểm tra và đợi trạng thái đèn LED phần cứng (RED, GREEN, BLUE, YELLOW, CYAN, MAGENTA, PINK, WHITE, OFF).
+### `hwSeeLed` / `hwSeeLedBlink` / `hwSeeLedOff`
+**Mô tả**: Kiểm tra và đợi trạng thái đèn LED phần cứng (RED, GREEN, BLUE, YELLOW, CYAN, MAGENTA, PINK, WHITE, OFF) hoặc kiểm tra sự kiện nháy LED (Blink) kèm lọc màu sắc, số lần nháy (count), thời gian chờ (timeout) và khoảng cách giữa các xung (pulse).
 
-Ví dụ đầy đủ các tham số:
+Ví dụ chi tiết theo các nghiệp vụ thực tế (`hardware_control_services` & `hardware_web`):
+
 ```yaml
-# 1. Viết tắt màu
-- seeLedColor: "GREEN"
-
-# 2. Đầy đủ các trường đối tượng
-- seeLedColor:
-    channel: 1
-    expected: "BLUE"
+# 1. Kiểm tra màu LED ổn định (Static Color)
+- hwSeeLed: "GREEN"                     # Rút gọn (kênh 1 mặc định)
+- hwSeeLed:
+    channel: 2                         # Đo trên cảm biến kênh 2 (Switch 1.2)
+    expected: "BLUE"                   # Chờ màu BLUE
     timeoutMs: 5000
 
-- seeLedBlink:
+# 2. Nghiệp vụ: Xác nhận Lưu Cấu Hình Nâng Cao Thành Công (Luto Advanced Config SUCCESS)
+# Quy ước: LED nháy 2 lần màu XANH DƯƠNG (BLUE x 2)
+- hwSeeLedBlink:
     channel: 1
-    periodMs: 500
+    color: "BLUE"
+    count: 2
+    timeoutMs: 8000
 
-- seeLedOff: 1   # Đợi LED tắt
+# 3. Nghiệp vụ: Xác nhận Lưu Cấu Hình Thất Bại (Luto Advanced Config FAILURE)
+# Quy ước: LED nháy 2 lần màu ĐỎ (RED x 2)
+- hwSeeLedBlink:
+    channel: 1
+    color: "RED"
+    count: 2
+    timeoutMs: 8000
+
+# 4. Nghiệp vụ: Chế độ Pairing / Factory Reset (Nháy liên tục màu PINK / HỒNG)
+- hwSeeLedBlink:
+    channel: 1
+    color: "PINK"
+    timeoutMs: 10000
+
+# 5. Kiểm tra nháy bất kỳ màu nào (không bắt buộc màu cụ thể)
+- hwSeeLedBlink:
+    channel: 1
+    count: 3
+    timeoutMs: 5000
+
+# 6. Kiểm tra nháy kèm điều kiện độ rộng xung nháy (Pulse width filtering)
+- hwSeeLedBlink:
+    channel: 1
+    color: "BLUE"
+    count: 2
+    minPulseMs: 50                     # Độ dài xung sáng tối thiểu 50ms
+    maxPulseMs: 800                    # Độ dài xung sáng tối đa 800ms
+    maxGapMs: 300                      # Khoảng nghỉ giữa 2 lần nháy tối đa 300ms
+    timeoutMs: 6000
+
+# 7. Chờ đèn LED tắt hẳn
+- hwSeeLedOff: 1                       # Chờ LED kênh 1 tắt (dưới ngưỡng offBelowPercent)
 ```
 
-### `setSensorLight` / `setBrightnessThresholds` / `waitForBrightness` / `waitForCct`
+### `hwSensorLight` / `hwSetBrightnessThresholds` / `hwWaitForBrightness` / `hwWaitForCct`
 **Mô tả**: Điều khiển đèn chiếu cảm biến màu và cài đặt ngưỡng độ sáng / nhiệt độ màu (CCT Kelvin).
 
 Ví dụ đầy đủ các tham số:
 ```yaml
-- setSensorLight: "on"
+- hwSensorLight: "on"
 
-- setBrightnessThresholds:
+- hwSetBrightnessThresholds:
     channel: 1
     offBelowPercent: 30
     onAbovePercent: 70
 
-- waitForBrightness:
+- hwWaitForBrightness:
     channel: 1
     minPercent: 70
 
-- waitForCct:
+- hwWaitForCct:
     channel: 1
     minKelvin: 2700
     maxKelvin: 6500
 ```
 
-### `calibrateColor` / `calibrateBrightness` / `addCctPoint` / `saveCalibration` / `loadCalibration` / `resetCalibration` / `eraseCalibration`
-**Mô tả**: Hiệu chỉnh và lưu trữ dữ liệu cân bằng trắng / màu sắc cảm biến vào bộ nhớ Flash.
+### `hwCalibrateColor` / `hwCalibrateBrightness` / `hwAddCctPoint` / `hwSaveCalibration` / `hwLoadCalibration` / `hwResetCalibration` / `hwEraseCalibration`
+**Mô tả**: Hiệu chỉnh và lưu trữ dữ liệu cân bằng trắng / màu sắc cảm biến vào bộ nhớ Flash MCU.
 
 Ví dụ đầy đủ các tham số:
 ```yaml
-- calibrateColor:
+- hwCalibrateColor:
     channel: 1
     color: "RED"
 
-- saveCalibration
-- loadCalibration
+- hwCalibrateBrightness:
+    channel: 1
+    mode: "dark"
+
+- hwSaveCalibration
+- hwLoadCalibration
 ```
 
-### `enterSafeState` / `systemDiagnostics` / `readColor` / `readSensorLight`
+### `hwSafeState` / `hwDiagnostics` / `hwReadColor` / `hwReadSensorLight`
 **Mô tả**: Ngắt an toàn khẩn cấp, chẩn đoán hệ thống MCU và đọc giá trị màu RGBC thực tế.
 
 Ví dụ đầy đủ các tham số:
 ```yaml
-- enterSafeState
-- systemDiagnostics
-- readColor: 1
-- readSensorLight
+- hwSafeState
+- hwDiagnostics
+- hwReadColor: 1
+- hwReadSensorLight: 1
 ```
 
 ---

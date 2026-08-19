@@ -82,22 +82,22 @@ impl From<&TestResults> for StandardSessionReport {
 
                 // Dynamically populate sensors_snapshot based on hardware commands executed in the flow
                 match cmd.command_name.as_str() {
-                    "readColor" | "seeLedColor" | "calibrateColor" => {
+                    "hwReadColor" | "hwSeeLed" | "hwCalibrateColor" | "readColor" | "seeLedColor" | "calibrateColor" => {
                         if sensors_snapshot.color_sensor_rgb.is_none() {
                             sensors_snapshot.color_sensor_rgb = Some("#FF5733".to_string());
                         }
                     }
-                    "readSensorLight" | "setSensorLight" | "setBrightnessThresholds" | "waitForBrightness" => {
+                    "hwReadSensorLight" | "hwSensorLight" | "hwSetBrightnessThresholds" | "hwWaitForBrightness" | "readSensorLight" | "setSensorLight" | "setBrightnessThresholds" | "waitForBrightness" => {
                         if sensors_snapshot.ambient_light_lux.is_none() {
                             sensors_snapshot.ambient_light_lux = Some(150.5);
                         }
                     }
-                    "readServo" | "configureServo" | "rotateServo" => {
+                    "hwReadServo" | "hwConfigureServo" | "hwRotate" | "readServo" | "configureServo" | "rotateServo" => {
                         if sensors_snapshot.door_contact_status.is_none() {
                             sensors_snapshot.door_contact_status = Some("closed".to_string());
                         }
                     }
-                    "systemDiagnostics" => {
+                    "hwDiagnostics" | "systemDiagnostics" => {
                         if sensors_snapshot.temperature_c.is_none() {
                             sensors_snapshot.temperature_c = Some(24.5);
                         }

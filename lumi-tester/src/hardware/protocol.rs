@@ -10,8 +10,31 @@ pub struct ResponseLine {
 
 impl ResponseLine {
     pub fn parse(line: &str) -> Result<Self> {
-        let trimmed = line.trim();
+        let mut trimmed = line.trim();
+        if trimmed.is_empty() {
+            anyhow::bail!("Empty line");
+        }
+
+        // Strip address prefix e.g. "@1 [SERVO] ..." or "@7 [SYSTEM] ..."
+        if trimmed.starts_with('@') {
+            if let Some(pos) = trimmed.find('[') {
+                trimmed = &trimmed[pos..];
+            } else if let Some((_, rest)) = trimmed.split_once(' ') {
+                trimmed = rest.trim();
+            }
+        }
+
         if !trimmed.starts_with('[') {
+            // Handle plain OK / ERROR
+            if trimmed.eq_ignore_ascii_case("ok") {
+                let mut fields = HashMap::new();
+                fields.insert("status".to_string(), "ok".to_string());
+                return Ok(Self {
+                    kind: "ok".to_string(),
+                    fields,
+                    raw: trimmed.to_string(),
+                });
+            }
             anyhow::bail!("Line does not start with tag bracket: {}", line);
         }
 
@@ -191,8 +214,12 @@ pub fn cmd_color_select(channel: u8) -> String {
     format!("color select {}\n", channel)
 }
 
-pub fn cmd_color_light(enabled: bool) -> String {
-    format!("color light {}\n", if enabled { "on" } else { "off" })
+pub fn cmd_color_light(channel: u8, enabled: bool) -> String {
+    format!("color light {} {}\n", channel, if enabled { "on" } else { "off" })
+}
+
+pub fn cmd_color_light_state(channel: u8) -> String {
+    format!("color light? {}\n", channel)
 }
 
 pub fn cmd_color_thresholds(
@@ -213,8 +240,12 @@ pub fn cmd_calibration_color(channel: u8, color: &str) -> String {
     format!("calibration color {} {}\n", channel, color)
 }
 
-pub fn cmd_calibration_brightness(channel: u8, mode: &str) -> String {
-    format!("calibration brightness {} {}\n", channel, mode)
+pub fn cmd_calibration_brightness(channel: u8, mode: &str, color: Option<&str>) -> String {
+    if let Some(c) = color {
+        format!("calibration brightness {} {} {}\n", channel, mode, c)
+    } else {
+        format!("calibration brightness {} {}\n", channel, mode)
+    }
 }
 
 pub fn cmd_calibration_cct(known_kelvin: u16) -> String {
@@ -241,5 +272,18 @@ mod tests {
         assert_eq!(parsed.get_str("status"), Some("completed"));
         assert_eq!(parsed.get_u8("channel"), Some(1));
         assert_eq!(parsed.get_u32("hold_ms"), Some(300));
+    }
+
+    #[test]
+    fn test_parse_addressed_line() {
+        let line = "@1 [SERVO] status=completed action=click channel=1 hold_ms=300";
+        let parsed = ResponseLine::parse(line).unwrap();
+        assert_eq!(parsed.kind, "servo");
+        assert_eq!(parsed.get_str("status"), Some("completed"));
+
+        let line7 = "@7 [SYSTEM] status=ready firmware=0.4.0";
+        let parsed7 = ResponseLine::parse(line7).unwrap();
+        assert_eq!(parsed7.kind, "system");
+        assert_eq!(parsed7.get_str("status"), Some("ready"));
     }
 }

@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.16] / [extension-v0.1.24] - 2026-08-19
+
+### 🚀 Highlights & Features
+
+#### 1. Hardware Automation Standardization (`hw*`)
+- **Normalized Prefix**: Standardized all hardware interaction commands with `hw*` prefix (e.g. `hwClick`, `hwPress`, `hwRelease`, `hwPowerOn`, `hwSeeLedBlink`, `hwSensorLight`, `hwReadServo`, etc.), removing redundant aliases.
+- **Shared Reusable Jig Profiles & Servos**:
+  - Declare shared Jig and Servo configuration in YAML header: `jig: "profiles/jig_switch_sample.yaml"`.
+  - Automatic servo calibration loading (`pressAngle`, `releaseAngle`, `pressDurationMs`) on flow startup.
+  - Automatic environment variable fallback resolution (e.g. `${JIG_PORT:-COM5}`).
+- **Advanced LED Blink & Sensor Verification**:
+  - Added pulse duration filtering (`minPulseMs`, `maxPulseMs`, `maxGapMs`) matching `app_desktop` TCS34725 capabilities.
+  - Auto I2C MUX channel switching when reading color or blinking patterns.
+- **Hardware Safety Lifecycle**:
+  - Automatic safe state enforcement (`ctrl.enter_safe_state()`) on test completion, failure, or teardown.
+
+#### 2. Fast COM Port Discovery & Ping Tools
+- **CLI Commands**:
+  - `lumi-tester jig ports` / `lumi-tester jig ports --json`: Fast enumeration of all connected Serial / COM ports.
+  - `lumi-tester jig ping <port_or_profile>`: Quick connectivity and firmware ping check.
+- **VS Code Extension `v0.1.24`**:
+  - Added `Lumi: Detect Hardware Jig Ports` with 1-click QuickPick to Ping, Copy, or Insert into Active YAML Header.
+  - Added `Lumi: Ping Hardware Jig` with instant status notification.
+  - Enhanced error diagnostics with detailed reasons (`└─ Error: ...`) and port failure descriptions.
+
+---
+
 ## [v0.1.15] / [extension-v0.1.23] - 2026-08-17
 
 ### 🚀 Highlights & Features

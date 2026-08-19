@@ -219,7 +219,139 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Hardware Jig Detect & Ping commands
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lumi-tester.detectJigPorts', async () => {
+      const editor = vscode.window.activeTextEditor;
+      const workspaceUri = editor?.document.uri || vscode.workspace.workspaceFolders?.[0]?.uri;
+      if (!workspaceUri) {
+        vscode.window.showErrorMessage('Open a workspace or YAML file first.');
+        return;
+      }
+      const runtime = resolveRuntimeOrShow(workspaceUri);
+      if (!runtime) return;
+
+      try {
+        const raw = execFileSync(
+          runtime.executable,
+          [...runtime.argsPrefix, 'jig', 'ports', '--json'],
+          {
+            cwd: runtime.cwd,
+            encoding: 'utf8',
+            windowsHide: true,
+            timeout: 10000
+          }
+        );
+        const ports = JSON.parse(raw) as Array<{
+          portName: string;
+          portType: string;
+          manufacturer?: string | null;
+          product?: string | null;
+          vid?: number | null;
+          pid?: number | null;
+        }>;
+
+        if (!ports || ports.length === 0) {
+          vscode.window.showWarningMessage('No Serial / COM ports detected. Check your USB Jig connection.');
+          return;
+        }
+
+        const items = ports.map(p => {
+          const details = [p.product, p.manufacturer].filter(Boolean).join(' - ');
+          return {
+            label: `$(plug) ${p.portName}`,
+            description: `[${p.portType}] ${details}`,
+            port: p.portName
+          };
+        });
+
+        const selected = await vscode.window.showQuickPick(items, {
+          placeHolder: 'Select a COM Port to Ping or use in test header',
+          title: `Detected ${ports.length} Serial / COM Ports`
+        });
+
+        if (selected) {
+          const action = await vscode.window.showQuickPick([
+            { label: `$(radio-tower) Ping ${selected.port}`, action: 'ping' },
+            { label: `$(copy) Copy "${selected.port}" to Clipboard`, action: 'copy' },
+            { label: `$(edit) Insert 'jig: "${selected.port}"' into Active File Header`, action: 'insert' }
+          ], { placeHolder: `Action for ${selected.port}` });
+
+          if (action?.action === 'ping') {
+            await pingJigPort(workspaceUri, runtime, selected.port);
+          } else if (action?.action === 'copy') {
+            await vscode.env.clipboard.writeText(selected.port);
+            vscode.window.showInformationMessage(`Copied ${selected.port} to clipboard.`);
+          } else if (action?.action === 'insert' && editor) {
+            editor.edit(editBuilder => {
+              editBuilder.insert(new vscode.Position(0, 0), `jig: "${selected.port}"\n`);
+            });
+            vscode.window.showInformationMessage(`Inserted 'jig: "${selected.port}"' into header.`);
+          }
+        }
+      } catch (e: any) {
+        vscode.window.showErrorMessage(`Failed to detect COM ports: ${e.message || e}`);
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lumi-tester.pingJig', async () => {
+      const editor = vscode.window.activeTextEditor;
+      const workspaceUri = editor?.document.uri || vscode.workspace.workspaceFolders?.[0]?.uri;
+      if (!workspaceUri) {
+        vscode.window.showErrorMessage('Open a workspace or YAML file first.');
+        return;
+      }
+      const runtime = resolveRuntimeOrShow(workspaceUri);
+      if (!runtime) return;
+
+      const portInput = await vscode.window.showInputBox({
+        prompt: 'Enter Serial Port name (e.g. COM5, /dev/ttyUSB0) or Jig Profile path',
+        placeHolder: 'COM5'
+      });
+      if (portInput) {
+        await pingJigPort(workspaceUri, runtime, portInput.trim());
+      }
+    })
+  );
+
   console.log('Lumi Tester extension activated successfully');
+}
+
+async function pingJigPort(uri: vscode.Uri, runtime: LumiRuntime, port: string): Promise<void> {
+  await vscode.window.withProgress({
+    location: vscode.ProgressLocation.Notification,
+    title: `Pinging Hardware Jig on ${port}...`,
+    cancellable: false
+  }, async () => {
+    try {
+      const raw = execFileSync(
+        runtime.executable,
+        [...runtime.argsPrefix, 'jig', 'ping', port, '--json'],
+        {
+          cwd: runtime.cwd,
+          encoding: 'utf8',
+          windowsHide: true,
+          timeout: 10000
+        }
+      );
+      const res = JSON.parse(raw);
+      if (res.connected) {
+        const details = [
+          `Latency: ${res.latencyMs}ms`,
+          res.nodeId !== undefined && res.nodeId !== null ? `Node ID: ${res.nodeId}` : null,
+          res.firmwareVersion ? `FW: ${res.firmwareVersion}` : null,
+          res.systemStatus ? `Status: ${res.systemStatus}` : null
+        ].filter(Boolean).join(', ');
+        vscode.window.showInformationMessage(`🔌 Connected to Jig on ${port}! (${details})`);
+      } else {
+        vscode.window.showErrorMessage(`❌ Failed to connect to Jig on ${port}: ${res.error || 'Unknown error'}`);
+      }
+    } catch (e: any) {
+      vscode.window.showErrorMessage(`❌ Failed to ping Jig on ${port}: ${e.message || e}`);
+    }
+  });
 }
 
 function lookupCommand(name: string): string | undefined {

@@ -65,21 +65,96 @@ pub struct TestFlow {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum JigConfig {
-    Port(String),
+    PortOrProfile(String),
     Struct(HardwareConnectParams),
 }
 
 impl JigConfig {
-    pub fn to_params(&self) -> HardwareConnectParams {
+    pub fn resolve(&self, base_dir: Option<&std::path::Path>) -> Result<HardwareConnectParams, String> {
         match self {
-            JigConfig::Port(port) => HardwareConnectParams {
+            JigConfig::PortOrProfile(path_or_port) => {
+                let is_file_ext = path_or_port.ends_with(".yaml")
+                    || path_or_port.ends_with(".yml")
+                    || path_or_port.ends_with(".json");
+
+                let candidate_path = if let Some(base) = base_dir {
+                    base.join(path_or_port)
+                } else {
+                    std::path::PathBuf::from(path_or_port)
+                };
+
+                if is_file_ext || candidate_path.exists() {
+                    let content = std::fs::read_to_string(&candidate_path)
+                        .map_err(|e| format!("Failed to read jig profile file '{}': {}", candidate_path.display(), e))?;
+                    let mut params: HardwareConnectParams = serde_yaml::from_str(&content)
+                        .map_err(|e| format!("Failed to parse jig profile file '{}': {}", candidate_path.display(), e))?;
+                    if let Some(ref nested_file) = params.file {
+                        let profile_dir = candidate_path.parent().unwrap_or(std::path::Path::new("."));
+                        let nested_path = profile_dir.join(nested_file);
+                        let nested_content = std::fs::read_to_string(&nested_path)
+                            .map_err(|e| format!("Failed to read nested jig file '{}': {}", nested_path.display(), e))?;
+                        let nested_params: HardwareConnectParams = serde_yaml::from_str(&nested_content)
+                            .map_err(|e| format!("Failed to parse nested jig file '{}': {}", nested_path.display(), e))?;
+                        params = nested_params;
+                    }
+                    Ok(params)
+                } else {
+                    Ok(HardwareConnectParams {
+                        port: path_or_port.clone(),
+                        baudrate: None,
+                        auto_power_off: Some(true),
+                        timeout_ms: None,
+                        file: None,
+                        servos: None,
+                    })
+                }
+            }
+            JigConfig::Struct(p) => {
+                if let Some(ref file_path) = p.file {
+                    let candidate_path = if let Some(base) = base_dir {
+                        base.join(file_path)
+                    } else {
+                        std::path::PathBuf::from(file_path)
+                    };
+                    let content = std::fs::read_to_string(&candidate_path)
+                        .map_err(|e| format!("Failed to read jig file '{}': {}", candidate_path.display(), e))?;
+                    let mut loaded: HardwareConnectParams = serde_yaml::from_str(&content)
+                        .map_err(|e| format!("Failed to parse jig file '{}': {}", candidate_path.display(), e))?;
+                    if !p.port.is_empty() {
+                        loaded.port = p.port.clone();
+                    }
+                    if p.baudrate.is_some() {
+                        loaded.baudrate = p.baudrate;
+                    }
+                    if p.auto_power_off.is_some() {
+                        loaded.auto_power_off = p.auto_power_off;
+                    }
+                    if p.timeout_ms.is_some() {
+                        loaded.timeout_ms = p.timeout_ms;
+                    }
+                    if p.servos.is_some() {
+                        loaded.servos = p.servos.clone();
+                    }
+                    Ok(loaded)
+                } else {
+                    Ok(p.clone())
+                }
+            }
+        }
+    }
+
+    pub fn to_params(&self) -> HardwareConnectParams {
+        self.resolve(None).unwrap_or_else(|_| match self {
+            JigConfig::PortOrProfile(port) => HardwareConnectParams {
                 port: port.clone(),
                 baudrate: None,
                 auto_power_off: Some(true),
                 timeout_ms: None,
+                file: None,
+                servos: None,
             },
             JigConfig::Struct(p) => p.clone(),
-        }
+        })
     }
 }
 
@@ -715,44 +790,43 @@ pub enum TestCommand {
     #[serde(alias = "verifyAudioDucking")]
     VerifyAudioDucking(VerifyAudioDuckingParams),
 
-    // Hardware Automation Commands (Jig / Hardware Controller)
-    ConnectJig(HardwareConnectParams),
-    DisconnectJig,
-    ClickButton(ServoClickParams),
-    RepeatClick(ServoRepeatParams),
-    PressButton(ServoActionParams),
-    HoldButton(ServoActionParams),
-    ReleaseButton(ServoActionParams),
-    RotateServo(ServoRotateParams),
-    ReadServo(ServoActionParams),
-    ReadRelay(ServoActionParams),
-    ReadColor(ServoActionParams),
-    ReadSensorLight,
-    TurnOn(RelaySetParams),
-    TurnOff(RelaySetParams),
-    TurnOffAll,
-    PowerCycle(PowerCycleParams),
-    SeeLedColor(SeeColorParams),
-    SeeLedBlink(SeeBlinkParams),
-    SeeLedOff(SeeBlinkParams),
+    // Hardware Automation Commands (Standardized hw* Commands)
+    HwConnect(HardwareConnectParams),
+    HwDisconnect,
+    HwClick(ServoClickParams),
+    HwRepeatClick(ServoRepeatParams),
+    HwPress(ServoActionParams),
+    HwRelease(ServoActionParams),
+    HwRotate(ServoRotateParams),
+    HwReadServo(ServoActionParams),
+    HwReadRelay(ServoActionParams),
+    HwReadColor(ServoActionParams),
+    HwReadSensorLight(Option<ServoActionParams>),
+    HwPowerOn(RelaySetParams),
+    HwPowerOff(RelaySetParams),
+    HwPowerOffAll,
+    HwPowerCycle(PowerCycleParams),
+    HwSeeLed(SeeColorParams),
+    HwSeeLedBlink(SeeBlinkParams),
+    HwSeeLedOff(SeeBlinkParams),
 
-    ConfigureServo(ServoConfigParams),
-    ReleaseAllButtons,
-    StartRepeatClick(ServoStartRepeatParams),
-    StopRepeatClick(ServoActionParams),
-    SetSensorLight(SensorLightParams),
-    SetBrightnessThresholds(BrightnessThresholdsParams),
-    WaitForBrightness(WaitForBrightnessParams),
-    WaitForCct(WaitForCctParams),
-    CalibrateColor(CalibrateColorParams),
-    CalibrateBrightness(CalibrateBrightnessParams),
-    AddCctPoint(AddCctPointParams),
-    SaveCalibration,
-    LoadCalibration,
-    ResetCalibration,
-    EraseCalibration,
-    EnterSafeState,
-    SystemDiagnostics,
+    HwConfigureServo(ServoConfigParams),
+    HwReleaseAll,
+    HwStartRepeatClick(ServoStartRepeatParams),
+    HwStopRepeatClick(ServoActionParams),
+    HwSensorLight(SensorLightParams),
+    HwSetBrightnessThresholds(BrightnessThresholdsParams),
+    HwWaitForBrightness(WaitForBrightnessParams),
+    HwWaitForCct(WaitForCctParams),
+    HwCalibrateColor(CalibrateColorParams),
+    HwCalibrateBrightness(CalibrateBrightnessParams),
+    HwAddCctPoint(AddCctPointParams),
+    HwSaveCalibration,
+    HwLoadCalibration,
+    HwResetCalibration,
+    HwEraseCalibration,
+    HwSafeState,
+    HwDiagnostics,
 
     RunPython(RunPythonParams),
 }
@@ -764,6 +838,7 @@ fn default_channel_one() -> u8 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HardwareConnectParams {
+    #[serde(default)]
     pub port: String,
     #[serde(default)]
     pub baudrate: Option<u32>,
@@ -771,6 +846,10 @@ pub struct HardwareConnectParams {
     pub auto_power_off: Option<bool>,
     #[serde(default)]
     pub timeout_ms: Option<u64>,
+    #[serde(default)]
+    pub file: Option<String>,
+    #[serde(default)]
+    pub servos: Option<Vec<ServoConfigParams>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -824,7 +903,17 @@ pub struct SeeBlinkParams {
     #[serde(default = "default_channel_one")]
     pub channel: u8,
     #[serde(default)]
+    pub color: Option<String>,
+    #[serde(default)]
+    pub count: Option<usize>,
+    #[serde(default)]
     pub timeout_ms: Option<u64>,
+    #[serde(default)]
+    pub min_pulse_ms: Option<u64>,
+    #[serde(default)]
+    pub max_pulse_ms: Option<u64>,
+    #[serde(default)]
+    pub max_gap_ms: Option<u64>,
 }
 
 fn default_repeat_count() -> u32 {
@@ -882,6 +971,8 @@ pub struct ServoStartRepeatParams {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SensorLightParams {
+    #[serde(default = "default_channel_one")]
+    pub channel: u8,
     #[serde(default)]
     pub state: Option<String>,
     #[serde(default)]
@@ -941,6 +1032,8 @@ pub struct CalibrateBrightnessParams {
     #[serde(default = "default_channel_one")]
     pub channel: u8,
     pub mode: String,
+    #[serde(default)]
+    pub color: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2385,43 +2478,42 @@ impl TestCommand {
                 format!("getDeviceState(saveAs: \"{}\")", p.save_as)
             }
 
-            TestCommand::ConnectJig(p) => format!("connectJig(port: \"{}\")", p.port),
-            TestCommand::DisconnectJig => "disconnectJig".to_string(),
-            TestCommand::ClickButton(p) => format!("clickButton(channel: {})", p.channel),
-            TestCommand::RepeatClick(p) => format!("repeatClick(channel: {}, count: {})", p.channel, p.count),
-            TestCommand::PressButton(p) => format!("pressButton(channel: {})", p.channel),
-            TestCommand::HoldButton(p) => format!("holdButton(channel: {})", p.channel),
-            TestCommand::ReleaseButton(p) => format!("releaseButton(channel: {})", p.channel),
-            TestCommand::RotateServo(p) => format!("rotateServo(channel: {}, angle: {})", p.channel, p.angle),
-            TestCommand::ReadServo(p) => format!("readServo(channel: {})", p.channel),
-            TestCommand::ReadRelay(p) => format!("readRelay(channel: {})", p.channel),
-            TestCommand::ReadColor(p) => format!("readColor(channel: {})", p.channel),
-            TestCommand::ReadSensorLight => "readSensorLight".to_string(),
-            TestCommand::TurnOn(p) => format!("turnOn(channel: {})", p.channel),
-            TestCommand::TurnOff(p) => format!("turnOff(channel: {})", p.channel),
-            TestCommand::TurnOffAll => "turnOffAll".to_string(),
-            TestCommand::PowerCycle(p) => format!("powerCycle(channel: {})", p.channel),
-            TestCommand::SeeLedColor(p) => format!("seeLedColor(channel: {})", p.channel),
-            TestCommand::SeeLedBlink(p) => format!("seeLedBlink(channel: {})", p.channel),
-            TestCommand::SeeLedOff(p) => format!("seeLedOff(channel: {})", p.channel),
+            TestCommand::HwConnect(p) => format!("hwConnect(port: \"{}\")", p.port),
+            TestCommand::HwDisconnect => "hwDisconnect".to_string(),
+            TestCommand::HwClick(p) => format!("hwClick(channel: {})", p.channel),
+            TestCommand::HwRepeatClick(p) => format!("hwRepeatClick(channel: {}, count: {})", p.channel, p.count),
+            TestCommand::HwPress(p) => format!("hwPress(channel: {})", p.channel),
+            TestCommand::HwRelease(p) => format!("hwRelease(channel: {})", p.channel),
+            TestCommand::HwRotate(p) => format!("hwRotate(channel: {}, angle: {})", p.channel, p.angle),
+            TestCommand::HwReadServo(p) => format!("hwReadServo(channel: {})", p.channel),
+            TestCommand::HwReadRelay(p) => format!("hwReadRelay(channel: {})", p.channel),
+            TestCommand::HwReadColor(p) => format!("hwReadColor(channel: {})", p.channel),
+            TestCommand::HwReadSensorLight(p) => format!("hwReadSensorLight(channel: {})", p.as_ref().map(|x| x.channel).unwrap_or(1)),
+            TestCommand::HwPowerOn(p) => format!("hwPowerOn(channel: {})", p.channel),
+            TestCommand::HwPowerOff(p) => format!("hwPowerOff(channel: {})", p.channel),
+            TestCommand::HwPowerOffAll => "hwPowerOffAll".to_string(),
+            TestCommand::HwPowerCycle(p) => format!("hwPowerCycle(channel: {})", p.channel),
+            TestCommand::HwSeeLed(p) => format!("hwSeeLed(channel: {})", p.channel),
+            TestCommand::HwSeeLedBlink(p) => format!("hwSeeLedBlink(channel: {})", p.channel),
+            TestCommand::HwSeeLedOff(p) => format!("hwSeeLedOff(channel: {})", p.channel),
 
-            TestCommand::ConfigureServo(p) => format!("configureServo(channel: {})", p.channel),
-            TestCommand::ReleaseAllButtons => "releaseAllButtons".to_string(),
-            TestCommand::StartRepeatClick(p) => format!("startRepeatClick(channel: {})", p.channel),
-            TestCommand::StopRepeatClick(p) => format!("stopRepeatClick(channel: {})", p.channel),
-            TestCommand::SetSensorLight(_) => "setSensorLight".to_string(),
-            TestCommand::SetBrightnessThresholds(p) => format!("setBrightnessThresholds(channel: {})", p.channel),
-            TestCommand::WaitForBrightness(p) => format!("waitForBrightness(channel: {})", p.channel),
-            TestCommand::WaitForCct(p) => format!("waitForCct(channel: {})", p.channel),
-            TestCommand::CalibrateColor(p) => format!("calibrateColor(channel: {}, color: \"{}\")", p.channel, p.color),
-            TestCommand::CalibrateBrightness(p) => format!("calibrateBrightness(channel: {}, mode: \"{}\")", p.channel, p.mode),
-            TestCommand::AddCctPoint(p) => format!("addCctPoint(channel: {}, knownKelvin: {})", p.channel, p.known_kelvin),
-            TestCommand::SaveCalibration => "saveCalibration".to_string(),
-            TestCommand::LoadCalibration => "loadCalibration".to_string(),
-            TestCommand::ResetCalibration => "resetCalibration".to_string(),
-            TestCommand::EraseCalibration => "eraseCalibration".to_string(),
-            TestCommand::EnterSafeState => "enterSafeState".to_string(),
-            TestCommand::SystemDiagnostics => "systemDiagnostics".to_string(),
+            TestCommand::HwConfigureServo(p) => format!("hwConfigureServo(channel: {})", p.channel),
+            TestCommand::HwReleaseAll => "hwReleaseAll".to_string(),
+            TestCommand::HwStartRepeatClick(p) => format!("hwStartRepeatClick(channel: {})", p.channel),
+            TestCommand::HwStopRepeatClick(p) => format!("hwStopRepeatClick(channel: {})", p.channel),
+            TestCommand::HwSensorLight(p) => format!("hwSensorLight(channel: {})", p.channel),
+            TestCommand::HwSetBrightnessThresholds(p) => format!("hwSetBrightnessThresholds(channel: {})", p.channel),
+            TestCommand::HwWaitForBrightness(p) => format!("hwWaitForBrightness(channel: {})", p.channel),
+            TestCommand::HwWaitForCct(p) => format!("hwWaitForCct(channel: {})", p.channel),
+            TestCommand::HwCalibrateColor(p) => format!("hwCalibrateColor(channel: {}, color: \"{}\")", p.channel, p.color),
+            TestCommand::HwCalibrateBrightness(p) => format!("hwCalibrateBrightness(channel: {}, mode: \"{}\")", p.channel, p.mode),
+            TestCommand::HwAddCctPoint(p) => format!("hwAddCctPoint(channel: {}, knownKelvin: {})", p.channel, p.known_kelvin),
+            TestCommand::HwSaveCalibration => "hwSaveCalibration".to_string(),
+            TestCommand::HwLoadCalibration => "hwLoadCalibration".to_string(),
+            TestCommand::HwResetCalibration => "hwResetCalibration".to_string(),
+            TestCommand::HwEraseCalibration => "hwEraseCalibration".to_string(),
+            TestCommand::HwSafeState => "hwSafeState".to_string(),
+            TestCommand::HwDiagnostics => "hwDiagnostics".to_string(),
             TestCommand::RunPython(_) => "runPython".to_string(),
         }
     }

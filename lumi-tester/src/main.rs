@@ -215,6 +215,37 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+
+    /// Hardware Jig automation tools (list serial ports, ping/test Jig connection)
+    Jig {
+        #[command(subcommand)]
+        command: JigCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum JigCommands {
+    /// List all available Serial / COM ports with hardware details
+    #[command(alias = "list")]
+    Ports {
+        /// Print machine-readable JSON
+        #[arg(long, default_value = "false")]
+        json: bool,
+    },
+
+    /// Ping and test connection to a hardware Jig controller (port, profile, or auto-detect)
+    Ping {
+        /// Serial port name (e.g. COM5, /dev/ttyUSB0) or Jig profile file path (e.g. profiles/jig_switch_sample.yaml)
+        port: Option<String>,
+
+        /// Baudrate (default: 115200)
+        #[arg(short, long, default_value = "115200")]
+        baudrate: u32,
+
+        /// Print machine-readable JSON
+        #[arg(long, default_value = "false")]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -882,6 +913,104 @@ async fn async_main() -> anyhow::Result<()> {
             let server = InspectorServer::new(config);
             server.start().await?;
         }
+
+        Commands::Jig { command } => match command {
+            JigCommands::Ports { json } => {
+                let ports = lumi_tester::hardware::list_serial_ports();
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&ports)?);
+                } else {
+                    println!("\n{} Available Serial / COM Ports ({} found):", "🔌".green(), ports.len());
+                    if ports.is_empty() {
+                        println!("  {} No serial ports detected. Check USB connection.", "⚠️".yellow());
+                    } else {
+                        for p in &ports {
+                            let mut desc = Vec::new();
+                            if let Some(ref prod) = p.product {
+                                desc.push(prod.as_str());
+                            }
+                            if let Some(ref mfg) = p.manufacturer {
+                                desc.push(mfg.as_str());
+                            }
+                            let vid_pid = match (p.vid, p.pid) {
+                                (Some(v), Some(d)) => format!(" (VID:{:04X} PID:{:04X})", v, d),
+                                _ => String::new(),
+                            };
+                            let desc_str = if desc.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" - {}", desc.join(" / "))
+                            };
+                            println!("  • {:<12} [{}] {}{}", p.port_name.cyan().bold(), p.port_type, desc_str, vid_pid.dimmed());
+                        }
+                    }
+                    println!();
+                }
+            }
+            JigCommands::Ping { port, baudrate, json } => {
+                let target_port = if let Some(p) = port {
+                    if p.ends_with(".yaml") || p.ends_with(".yml") || p.ends_with(".json") || std::path::Path::new(&p).exists() {
+                        if let Ok(content) = std::fs::read_to_string(&p) {
+                            if let Ok(params) = serde_yaml::from_str::<lumi_tester::parser::types::HardwareConnectParams>(&content) {
+                                resolve_env_string(&params.port)
+                            } else {
+                                resolve_env_string(&p)
+                            }
+                        } else {
+                            resolve_env_string(&p)
+                        }
+                    } else {
+                        resolve_env_string(&p)
+                    }
+                } else {
+                    let ports = lumi_tester::hardware::list_serial_ports();
+                    if let Some(first) = ports.first() {
+                        first.port_name.clone()
+                    } else {
+                        anyhow::bail!("No serial ports found. Connect a Jig or specify a port manually.");
+                    }
+                };
+
+                if !json {
+                    println!("\n{} Testing connection to Jig on {} ({} baud)...", "🔌".cyan(), target_port, baudrate);
+                }
+
+                match lumi_tester::hardware::ping_details(&target_port, Some(baudrate)) {
+                    Ok(res) => {
+                        if json {
+                            println!("{}", serde_json::to_string_pretty(&res)?);
+                        } else {
+                            println!("  {} Connected successfully! (Latency: {}ms)", "✅".green(), res.latency_ms);
+                            if let Some(nid) = res.node_id {
+                                println!("  {} Node ID: {}", "📍".cyan(), nid);
+                            }
+                            if let Some(ref fw) = res.firmware_version {
+                                println!("  {} Firmware: {}", "🏷️".cyan(), fw);
+                            }
+                            if let Some(ref st) = res.system_status {
+                                println!("  {} Status: {}", "⚙️".cyan(), st);
+                            }
+                            println!("  {} Response: {}", "💬".dimmed(), res.raw_response.trim());
+                            println!();
+                        }
+                    }
+                    Err(e) => {
+                        if json {
+                            let err_obj = serde_json::json!({
+                                "port": target_port,
+                                "connected": false,
+                                "error": e.to_string(),
+                            });
+                            println!("{}", serde_json::to_string_pretty(&err_obj)?);
+                        } else {
+                            println!("  {} Failed to connect to Jig on {}: {}", "❌".red(), target_port, e);
+                            println!();
+                        }
+                        std::process::exit(1);
+                    }
+                }
+            }
+        },
     }
 
     Ok(())
@@ -893,6 +1022,20 @@ fn normalize_platform(platform: &str) -> String {
         .trim_matches('"')
         .trim_matches('\'')
         .to_ascii_lowercase()
+}
+
+fn resolve_env_string(val: &str) -> String {
+    let trimmed = val.trim();
+    if trimmed.starts_with("${") && trimmed.ends_with('}') {
+        let inner = &trimmed[2..trimmed.len() - 1];
+        if let Some((var_name, default_val)) = inner.split_once(":-") {
+            std::env::var(var_name).unwrap_or_else(|_| default_val.to_string())
+        } else {
+            std::env::var(inner).unwrap_or_else(|_| trimmed.to_string())
+        }
+    } else {
+        trimmed.to_string()
+    }
 }
 
 fn detect_platform(path: &std::path::Path) -> anyhow::Result<Option<String>> {

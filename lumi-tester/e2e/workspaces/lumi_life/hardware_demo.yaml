@@ -11,29 +11,29 @@ jig: "COM5"
 
 ---
 # 1. Bật nguồn Rơ-le cấp nguồn cho thiết bị
-- turnOn: 1
+- hwPowerOn: 1
 
 # 2. Kiểm tra trạng thái LED ban đầu (chờ màu Xanh lá hoặc Xanh dương)
-- seeLedColor: "GREEN"
+- hwSeeLed: "GREEN"
 
 # 3. Bấm nút vật lý đơn hoặc bấm nhấp liên tục N lần (ví dụ: bấm 3 lần liên tiếp để vào Mode)
-- clickButton: 1
-- repeatClick:
+- hwClick: 1
+- hwRepeatClick:
     channel: 1
     count: 3
     pressMs: 200
     releaseMs: 200
 
-# 4. Nhấn giữ nút vật lý (Hold button để Pair/Reset) & kiểm tra LED chớp tắt
-- holdButton: 1
-- seeLedBlink: 1
-- releaseButton: 1
+# 4. Nhấn giữ nút vật lý (Press button để Pair/Reset) & kiểm tra LED chớp tắt
+- hwPress: 1
+- hwSeeLedBlink: 1
+- hwRelease: 1
 
 # 5. Khởi động lại phần cứng (Hard Power Reboot: Ngắt điện -> chờ 1 giây -> bật lại)
-- powerCycle: 1
+- hwPowerCycle: 1
 
 # 6. Kiểm tra sau khi khởi động xong đèn LED tắt hẳn
-- seeLedOff: 1
+- hwSeeLedOff: 1
 
 # 7. Tắt toàn bộ nguồn phần cứng an toàn
-- turnOffAll
+- hwPowerOffAll

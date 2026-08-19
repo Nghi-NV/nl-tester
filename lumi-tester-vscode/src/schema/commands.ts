@@ -1525,84 +1525,82 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     platforms: ['android']
   },
 
-  // Hardware Automation (Native RS485/Serial)
+  // Hardware Automation (Native RS485/Serial - Standardized hw* Commands)
   {
-    name: 'connectJig',
+    name: 'hwConnect',
     category: 'Hardware Automation',
     description: 'Connect to hardware Jig controller via serial port',
     hasParams: true,
-    snippet: 'connectJig: "${1:COM5}"',
+    snippet: 'hwConnect: "${1:COM5}"',
     params: [
       { name: 'port', type: 'string', description: 'Serial port name (e.g. COM5 or /dev/ttyUSB0)' },
       { name: 'baudrate', type: 'number', description: 'Serial baud rate (default: 115200)' },
       { name: 'autoPowerOff', type: 'boolean', description: 'Auto turn off power when test finishes' },
-      { name: 'timeoutMs', type: 'number', description: 'Connection timeout in ms' }
+      { name: 'timeoutMs', type: 'number', description: 'Connection timeout in ms' },
+      { name: 'file', type: 'string', description: 'Path to shared Jig profile file (e.g. profiles/jig_switch_sample.yaml)' },
+      { name: 'servos', type: 'object', description: 'List of servo channel configurations to initialize on connect' }
     ]
   },
   {
-    name: 'disconnectJig',
+    name: 'hwDisconnect',
     category: 'Hardware Automation',
     description: 'Disconnect hardware Jig controller',
     hasParams: false
   },
   {
-    name: 'turnOn',
-    aliases: ['relayOn'],
+    name: 'hwPowerOn',
     category: 'Hardware Automation',
     description: 'Turn ON relay power channel',
     hasParams: true,
-    snippet: 'turnOn: ${1:1}',
+    snippet: 'hwPowerOn: ${1:1}',
     params: [
       { name: 'channel', type: 'number', description: 'Relay channel number (1..4)' }
     ]
   },
   {
-    name: 'turnOff',
-    aliases: ['relayOff'],
+    name: 'hwPowerOff',
     category: 'Hardware Automation',
     description: 'Turn OFF relay power channel',
     hasParams: true,
-    snippet: 'turnOff: ${1:1}',
+    snippet: 'hwPowerOff: ${1:1}',
     params: [
       { name: 'channel', type: 'number', description: 'Relay channel number (1..4)' }
     ]
   },
   {
-    name: 'turnOffAll',
-    aliases: ['relayAllOff'],
+    name: 'hwPowerOffAll',
     category: 'Hardware Automation',
     description: 'Turn OFF all relay power channels',
     hasParams: false
   },
   {
-    name: 'powerCycle',
+    name: 'hwPowerCycle',
     category: 'Hardware Automation',
     description: 'Hard Power Reboot (Turn off -> wait -> Turn on)',
     hasParams: true,
-    snippet: 'powerCycle: ${1:1}',
+    snippet: 'hwPowerCycle: ${1:1}',
     params: [
       { name: 'channel', type: 'number', description: 'Relay channel number (1..4)' },
       { name: 'offMs', type: 'number', description: 'Off duration in milliseconds (default: 1000)' }
     ]
   },
   {
-    name: 'clickButton',
-    aliases: ['click'],
+    name: 'hwClick',
     category: 'Hardware Automation',
     description: 'Click physical button via servo motor',
     hasParams: true,
-    snippet: 'clickButton: ${1:1}',
+    snippet: 'hwClick: ${1:1}',
     params: [
       { name: 'channel', type: 'number', description: 'Servo channel number (1..8)' },
       { name: 'holdMs', type: 'number', description: 'Button hold duration in milliseconds (default: 300)' }
     ]
   },
   {
-    name: 'repeatClick',
+    name: 'hwRepeatClick',
     category: 'Hardware Automation',
     description: 'Click physical button N times (Multi-tap)',
     hasParams: true,
-    snippet: 'repeatClick:\n    channel: ${1:1}\n    count: ${2:3}',
+    snippet: 'hwRepeatClick:\n    channel: ${1:1}\n    count: ${2:3}',
     params: [
       { name: 'channel', type: 'number', description: 'Servo channel number (1..8)' },
       { name: 'count', type: 'number', description: 'Number of repetitions (e.g. 3)' },
@@ -1611,113 +1609,110 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     ]
   },
   {
-    name: 'pressButton',
-    aliases: ['press', 'holdButton', 'hold'],
+    name: 'hwPress',
     category: 'Hardware Automation',
-    description: 'Press and hold physical button (Pairing/Reset)',
+    description: 'Press physical button (Pairing/Reset)',
     hasParams: true,
-    snippet: 'pressButton: ${1:1}',
+    snippet: 'hwPress: ${1:1}',
     params: [
       { name: 'channel', type: 'number', description: 'Servo channel number (1..8)' }
     ]
   },
   {
-    name: 'holdButton',
-    aliases: ['press', 'pressButton', 'hold'],
-    category: 'Hardware Automation',
-    description: 'Press and hold physical button (Pairing/Reset)',
-    hasParams: true,
-    snippet: 'holdButton: ${1:1}',
-    params: [
-      { name: 'channel', type: 'number', description: 'Servo channel number (1..8)' }
-    ]
-  },
-  {
-    name: 'releaseButton',
-    aliases: ['release'],
+    name: 'hwRelease',
     category: 'Hardware Automation',
     description: 'Release held physical button',
     hasParams: true,
-    snippet: 'releaseButton: ${1:1}',
+    snippet: 'hwRelease: ${1:1}',
     params: [
       { name: 'channel', type: 'number', description: 'Servo channel number (1..8)' }
     ]
   },
   {
-    name: 'readServo',
-    aliases: ['getServoState', 'servoState'],
+    name: 'hwRotate',
+    category: 'Hardware Automation',
+    description: 'Rotate servo to specific angle and speed',
+    hasParams: true,
+    snippet: 'hwRotate:\n    channel: ${1:1}\n    angle: ${2:90}',
+    params: [
+      { name: 'channel', type: 'number', description: 'Servo channel number (1..8)' },
+      { name: 'angle', type: 'number', description: 'Target angle (0..180)' },
+      { name: 'speed', type: 'number', description: 'Rotation speed (default: 50)' }
+    ]
+  },
+  {
+    name: 'hwReadServo',
     category: 'Hardware Automation',
     description: 'Read servo state and angle for channel',
     hasParams: true,
-    snippet: 'readServo: ${1:1}',
+    snippet: 'hwReadServo: ${1:1}',
     params: [
       { name: 'channel', type: 'number', description: 'Servo channel number (1..8)' }
     ]
   },
   {
-    name: 'readRelay',
-    aliases: ['getRelayState', 'relayState'],
+    name: 'hwReadRelay',
     category: 'Hardware Automation',
     description: 'Read relay power state (ON/OFF) for channel',
     hasParams: true,
-    snippet: 'readRelay: ${1:1}',
+    snippet: 'hwReadRelay: ${1:1}',
     params: [
       { name: 'channel', type: 'number', description: 'Relay channel number (1..4)' }
     ]
   },
   {
-    name: 'readColor',
-    aliases: ['readColorSensor', 'colorState'],
+    name: 'hwReadColor',
     category: 'Hardware Automation',
     description: 'Read color sensor RGBC sample and color confidence for channel',
     hasParams: true,
-    snippet: 'readColor: ${1:1}',
+    snippet: 'hwReadColor: ${1:1}',
     params: [
       { name: 'channel', type: 'number', description: 'Color sensor channel number (1..8)' }
     ]
   },
   {
-    name: 'readSensorLight',
-    aliases: ['getSensorLightState', 'lightState'],
+    name: 'hwReadSensorLight',
     category: 'Hardware Automation',
     description: 'Read color sensor LED light state (PB15 ON/OFF)',
-    hasParams: false
+    hasParams: true,
+    snippet: 'hwReadSensorLight: ${1:1}',
+    params: [
+      { name: 'channel', type: 'number', description: 'Color sensor channel number (default: 1)' }
+    ]
   },
   {
-    name: 'releaseAllButtons',
-    aliases: ['releaseAll'],
+    name: 'hwReleaseAll',
     category: 'Hardware Automation',
     description: 'Release all servo buttons to idle position',
     hasParams: false
   },
   {
-    name: 'startRepeatClick',
+    name: 'hwStartRepeatClick',
     category: 'Hardware Automation',
     description: 'Start continuous button click repeat on STM32',
     hasParams: true,
-    snippet: 'startRepeatClick:\n    channel: ${1:1}\n    periodMs: ${2:1500}',
+    snippet: 'hwStartRepeatClick:\n    channel: ${1:1}\n    periodMs: ${2:1500}',
     params: [
       { name: 'channel', type: 'number', description: 'Servo channel number (1..8)' },
       { name: 'periodMs', type: 'number', description: 'Repetition period in milliseconds (e.g. 1500)' }
     ]
   },
   {
-    name: 'stopRepeatClick',
+    name: 'hwStopRepeatClick',
     category: 'Hardware Automation',
     description: 'Stop continuous button click repeat on STM32',
     hasParams: true,
-    snippet: 'stopRepeatClick: ${1:1}',
+    snippet: 'hwStopRepeatClick: ${1:1}',
     params: [
       { name: 'channel', type: 'number', description: 'Servo channel number (1..8)' }
     ]
   },
   {
-    name: 'configureServo',
-    aliases: ['setServoConfig'],
+    name: 'hwConfigureServo',
     category: 'Hardware Automation',
     description: 'Configure servo channel angles and motion durations',
     hasParams: true,
-    snippet: 'configureServo:\n    channel: ${1:1}\n    pressAngle: ${2:75}\n    releaseAngle: ${3:15}',
+    snippet: 'hwConfigureServo:\n    channel: ${1:1}\n    pressAngle: ${2:75}\n    releaseAngle: ${3:15}',
     params: [
       { name: 'channel', type: 'number', description: 'Servo channel number (1..8)' },
       { name: 'pressAngle', type: 'number', description: 'Angle when button is pressed (default: 72/75)' },
@@ -1728,11 +1723,11 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     ]
   },
   {
-    name: 'seeLedColor',
+    name: 'hwSeeLed',
     category: 'Hardware Automation',
     description: 'Assert/Wait for LED color reading from TCS sensor',
     hasParams: true,
-    snippet: 'seeLedColor: "${1:GREEN}"',
+    snippet: 'hwSeeLed: "${1:GREEN}"',
     params: [
       { name: 'channel', type: 'number', description: 'Color sensor channel number (1..8)' },
       { name: 'expected', type: 'object', description: 'Expected color string or list (e.g. ["RED", "GREEN"])' },
@@ -1740,44 +1735,49 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     ]
   },
   {
-    name: 'seeLedBlink',
+    name: 'hwSeeLedBlink',
     category: 'Hardware Automation',
-    description: 'Assert/Wait for LED blink pattern detection',
+    description: 'Assert/Wait for LED blink pattern detection (with color and count filter)',
     hasParams: true,
-    snippet: 'seeLedBlink: ${1:1}',
+    snippet: 'hwSeeLedBlink:\n    channel: ${1:1}\n    color: "${2:BLUE}"\n    count: ${3:2}',
     params: [
       { name: 'channel', type: 'number', description: 'Color sensor channel number (1..8)' },
-      { name: 'timeoutMs', type: 'number', description: 'Timeout in milliseconds (default: 5000)' }
+      { name: 'color', type: 'string', description: 'Expected blink color (e.g. BLUE, RED, PINK)' },
+      { name: 'count', type: 'number', description: 'Expected number of blinks (e.g. 2)' },
+      { name: 'timeoutMs', type: 'number', description: 'Timeout in milliseconds (default: 5000)' },
+      { name: 'minPulseMs', type: 'number', description: 'Minimum pulse duration in ms (default: 50)' },
+      { name: 'maxPulseMs', type: 'number', description: 'Maximum pulse duration in ms (default: 800)' },
+      { name: 'maxGapMs', type: 'number', description: 'Maximum gap between pulses in ms (default: 300)' }
     ]
   },
   {
-    name: 'seeLedOff',
+    name: 'hwSeeLedOff',
     category: 'Hardware Automation',
     description: 'Assert/Wait for LED to turn completely OFF',
     hasParams: true,
-    snippet: 'seeLedOff: ${1:1}',
+    snippet: 'hwSeeLedOff: ${1:1}',
     params: [
       { name: 'channel', type: 'number', description: 'Color sensor channel number (1..8)' },
       { name: 'timeoutMs', type: 'number', description: 'Timeout in milliseconds (default: 5000)' }
     ]
   },
   {
-    name: 'setSensorLight',
-    aliases: ['toggleLight', 'sensorLight'],
+    name: 'hwSensorLight',
     category: 'Hardware Automation',
     description: 'Turn color sensor illumination light ON or OFF',
     hasParams: true,
-    snippet: 'setSensorLight: "${1|on,off|}"',
+    snippet: 'hwSensorLight: "${1|on,off|}"',
     params: [
+      { name: 'channel', type: 'number', description: 'Color sensor channel number (default: 1)' },
       { name: 'enabled', type: 'boolean', description: 'Light enabled state (true/false or on/off)' }
     ]
   },
   {
-    name: 'setBrightnessThresholds',
+    name: 'hwSetBrightnessThresholds',
     category: 'Hardware Automation',
     description: 'Configure brightness thresholds and blink detection window',
     hasParams: true,
-    snippet: 'setBrightnessThresholds:\n    channel: ${1:1}\n    offBelowPercent: ${2:30}\n    onAbovePercent: ${3:70}',
+    snippet: 'hwSetBrightnessThresholds:\n    channel: ${1:1}\n    offBelowPercent: ${2:30}\n    onAbovePercent: ${3:70}',
     params: [
       { name: 'channel', type: 'number', description: 'Color sensor channel number (1..8)' },
       { name: 'offBelowPercent', type: 'number', description: 'OFF threshold percentage (0..99)' },
@@ -1788,11 +1788,11 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     ]
   },
   {
-    name: 'waitForBrightness',
+    name: 'hwWaitForBrightness',
     category: 'Hardware Automation',
     description: 'Wait for brightness percentage in range',
     hasParams: true,
-    snippet: 'waitForBrightness:\n    channel: ${1:1}\n    minPercent: ${2:70}',
+    snippet: 'hwWaitForBrightness:\n    channel: ${1:1}\n    minPercent: ${2:70}',
     params: [
       { name: 'channel', type: 'number', description: 'Color sensor channel number (1..8)' },
       { name: 'minPercent', type: 'number', description: 'Minimum brightness percentage' },
@@ -1801,11 +1801,11 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     ]
   },
   {
-    name: 'waitForCct',
+    name: 'hwWaitForCct',
     category: 'Hardware Automation',
     description: 'Wait for CCT color temperature in Kelvin',
     hasParams: true,
-    snippet: 'waitForCct:\n    channel: ${1:1}\n    minKelvin: ${2:2700}\n    maxKelvin: ${3:6500}',
+    snippet: 'hwWaitForCct:\n    channel: ${1:1}\n    minKelvin: ${2:2700}\n    maxKelvin: ${3:6500}',
     params: [
       { name: 'channel', type: 'number', description: 'Color sensor channel number (1..8)' },
       { name: 'minKelvin', type: 'number', description: 'Minimum color temperature in Kelvin' },
@@ -1814,70 +1814,71 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     ]
   },
   {
-    name: 'calibrateColor',
+    name: 'hwCalibrateColor',
     category: 'Hardware Automation',
     description: 'Calibrate reference color (RED, GREEN, BLUE, YELLOW, CYAN, MAGENTA, PINK, WHITE)',
     hasParams: true,
-    snippet: 'calibrateColor:\n    channel: ${1:1}\n    color: "${2|RED,GREEN,BLUE,YELLOW,CYAN,MAGENTA,PINK,WHITE|}"',
+    snippet: 'hwCalibrateColor:\n    channel: ${1:1}\n    color: "${2|RED,GREEN,BLUE,YELLOW,CYAN,MAGENTA,PINK,WHITE|}"',
     params: [
       { name: 'channel', type: 'number', description: 'Color sensor channel number (1..8)' },
       { name: 'color', type: 'string', description: 'Target reference color name' }
     ]
   },
   {
-    name: 'calibrateBrightness',
+    name: 'hwCalibrateBrightness',
     category: 'Hardware Automation',
-    description: 'Calibrate reference brightness (dark or on)',
+    description: 'Calibrate reference brightness (dark or on) by LED color',
     hasParams: true,
-    snippet: 'calibrateBrightness:\n    channel: ${1:1}\n    mode: "${2|dark,on|}"',
+    snippet: 'hwCalibrateBrightness:\n    channel: ${1:1}\n    mode: "${2|dark,on|}"',
     params: [
       { name: 'channel', type: 'number', description: 'Color sensor channel number (1..8)' },
-      { name: 'mode', type: 'string', description: 'Calibration mode: dark (LED off) or on (LED on)' }
+      { name: 'mode', type: 'string', description: 'Calibration mode: dark (LED off) or on (LED on)' },
+      { name: 'color', type: 'string', description: 'Optional color for on mode calibration' }
     ]
   },
   {
-    name: 'addCctPoint',
+    name: 'hwAddCctPoint',
     category: 'Hardware Automation',
     description: 'Add CCT calibration point in Kelvin',
     hasParams: true,
-    snippet: 'addCctPoint:\n    channel: ${1:1}\n    knownKelvin: ${2:4000}',
+    snippet: 'hwAddCctPoint:\n    channel: ${1:1}\n    knownKelvin: ${2:4000}',
     params: [
       { name: 'channel', type: 'number', description: 'Color sensor channel number (1..8)' },
       { name: 'knownKelvin', type: 'number', description: 'Known CCT Kelvin value (e.g. 2700, 4000, 6500)' }
     ]
   },
   {
-    name: 'saveCalibration',
+    name: 'hwSaveCalibration',
     category: 'Hardware Automation',
     description: 'Save calibration data to MCU Flash memory',
     hasParams: false
   },
   {
-    name: 'loadCalibration',
+    name: 'hwLoadCalibration',
     category: 'Hardware Automation',
     description: 'Load calibration data from MCU Flash memory',
     hasParams: false
   },
   {
-    name: 'resetCalibration',
+    name: 'hwResetCalibration',
     category: 'Hardware Automation',
     description: 'Reset calibration data to factory defaults',
     hasParams: false
   },
   {
-    name: 'eraseCalibration',
+    name: 'hwEraseCalibration',
     category: 'Hardware Automation',
     description: 'Erase MCU Flash calibration data',
     hasParams: false
   },
   {
-    name: 'enterSafeState',
+    name: 'hwSafeState',
     category: 'Hardware Automation',
     description: 'Trigger hardware safety shutdown (relays off, servos released, sensor light off)',
     hasParams: false
   },
   {
-    name: 'systemDiagnostics',
+    name: 'hwDiagnostics',
     category: 'Hardware Automation',
     description: 'Query hardware diagnostics from MCU',
     hasParams: false

@@ -8,6 +8,7 @@ use crate::hardware::protocol::ResponseLine;
 
 pub struct SerialTransport {
     port: Option<Box<dyn serialport::SerialPort>>,
+    port_name: Option<String>,
     log_file: Option<File>,
     log_path: PathBuf,
 }
@@ -19,6 +20,7 @@ impl SerialTransport {
             .join("hardware_control_serial.log");
         Self {
             port: None,
+            port_name: None,
             log_file: None,
             log_path,
         }
@@ -28,9 +30,10 @@ impl SerialTransport {
         let port = serialport::new(port_name, baudrate)
             .timeout(Duration::from_millis(100))
             .open()
-            .with_context(|| format!("Failed to open serial port {}", port_name))?;
+            .with_context(|| format!("Failed to open serial port '{}'", port_name))?;
 
         self.port = Some(port);
+        self.port_name = Some(port_name.to_string());
         self.init_log()?;
         self.log_event("OPEN", &format!("Port {} @ {}", port_name, baudrate));
         Ok(())
@@ -40,6 +43,7 @@ impl SerialTransport {
         if self.port.is_some() {
             self.log_event("CLOSE", "Serial port closed");
             self.port = None;
+            self.port_name = None;
         }
     }
 
@@ -111,7 +115,12 @@ impl SerialTransport {
                 let port = self.port.as_mut().unwrap();
                 let _ = port.flush();
                 self.log_event("TIMEOUT", &format!("Timeout waiting for command: {}", cmd.trim()));
-                anyhow::bail!("Command timeout ({:.1}s) for command: {}", timeout_s, cmd.trim());
+                anyhow::bail!(
+                    "Firmware command timeout ({:.1}s) on port '{}' for command: '{}'",
+                    timeout_s,
+                    self.port_name.as_deref().unwrap_or("unknown"),
+                    cmd.trim()
+                );
             }
 
             let mut byte_buf = [0u8; 1];

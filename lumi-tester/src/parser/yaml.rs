@@ -461,16 +461,16 @@ fn parse_simple_command(name: &str) -> Result<Option<TestCommand>> {
         "openQuickSettings" => TestCommand::OpenQuickSettings,
         "lockDevice" => TestCommand::LockDevice,
         "unlockDevice" => TestCommand::UnlockDevice,
-        "disconnectJig" => TestCommand::DisconnectJig,
-        "turnOffAll" | "relayAllOff" => TestCommand::TurnOffAll,
-        "releaseAllButtons" | "releaseAll" => TestCommand::ReleaseAllButtons,
-        "readSensorLight" | "getSensorLightState" | "lightState" => TestCommand::ReadSensorLight,
-        "saveCalibration" => TestCommand::SaveCalibration,
-        "loadCalibration" => TestCommand::LoadCalibration,
-        "resetCalibration" => TestCommand::ResetCalibration,
-        "eraseCalibration" => TestCommand::EraseCalibration,
-        "enterSafeState" => TestCommand::EnterSafeState,
-        "systemDiagnostics" => TestCommand::SystemDiagnostics,
+        "hwDisconnect" => TestCommand::HwDisconnect,
+        "hwPowerOffAll" => TestCommand::HwPowerOffAll,
+        "hwReleaseAll" => TestCommand::HwReleaseAll,
+        "hwReadSensorLight" => TestCommand::HwReadSensorLight(None),
+        "hwSaveCalibration" => TestCommand::HwSaveCalibration,
+        "hwLoadCalibration" => TestCommand::HwLoadCalibration,
+        "hwResetCalibration" => TestCommand::HwResetCalibration,
+        "hwEraseCalibration" => TestCommand::HwEraseCalibration,
+        "hwSafeState" => TestCommand::HwSafeState,
+        "hwDiagnostics" => TestCommand::HwDiagnostics,
         "click" => TestCommand::Click(crate::parser::types::ClickParams {
             selector: None,
             text: None,
@@ -861,21 +861,9 @@ fn parse_command_with_params(
         }
 
         "press" => {
-            if params.get("channel").is_some() || params.is_number() {
-                let p: crate::parser::types::ServoActionParams = if params.is_number() {
-                    crate::parser::types::ServoActionParams {
-                        channel: params.as_u64().unwrap_or(1) as u8,
-                    }
-                } else {
-                    serde_yaml::from_value(params.clone())
-                        .unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
-                };
-                TestCommand::PressButton(p)
-            } else {
-                let p: crate::parser::types::PressKeyParamsInput =
-                    serde_yaml::from_value(params.clone())?;
-                TestCommand::PressKey(p)
-            }
+            let p: crate::parser::types::PressKeyParamsInput =
+                serde_yaml::from_value(params.clone())?;
+            TestCommand::PressKey(p)
         }
 
         "pushFile" => {
@@ -1134,34 +1122,15 @@ fn parse_command_with_params(
         }
 
         "click" => {
-            if params.get("channel").is_some()
-                || (params.is_number() && params.as_u64().map(|n| n <= 16).unwrap_or(false))
-            {
-                let p: crate::parser::types::ServoClickParams = if params.is_number() {
-                    crate::parser::types::ServoClickParams {
-                        channel: params.as_u64().unwrap_or(1) as u8,
-                        hold_ms: None,
-                    }
-                } else {
-                    serde_yaml::from_value(params.clone()).unwrap_or(
-                        crate::parser::types::ServoClickParams {
-                            channel: 1,
-                            hold_ms: None,
-                        },
-                    )
-                };
-                TestCommand::ClickButton(p)
+            let p = if params.is_string() {
+                crate::parser::types::ClickParams {
+                    text: Some(params.as_str().unwrap().to_string()),
+                    selector: None,
+                }
             } else {
-                let p = if params.is_string() {
-                    crate::parser::types::ClickParams {
-                        text: Some(params.as_str().unwrap().to_string()),
-                        selector: None,
-                    }
-                } else {
-                    serde_yaml::from_value(params.clone())?
-                };
-                TestCommand::Click(p)
-            }
+                serde_yaml::from_value(params.clone())?
+            };
+            TestCommand::Click(p)
         }
 
         "setLocale" | "locale" => {
@@ -1205,36 +1174,25 @@ fn parse_command_with_params(
             TestCommand::VerifyAudioDucking(p)
         }
 
-        // Hardware verification via camera
-        "assertDeviceState" | "checkDevice" => {
-            TestCommand::AssertDeviceState(serde_yaml::from_value(params.clone())?)
-        }
-        "waitDeviceState" => TestCommand::WaitDeviceState(serde_yaml::from_value(params.clone())?),
-        "assertDeviceTransition" | "assertDeviceChange" => {
-            TestCommand::AssertDeviceTransition(serde_yaml::from_value(params.clone())?)
-        }
-        "waitLedPattern" | "assertDevicePattern" => {
-            TestCommand::WaitLedPattern(serde_yaml::from_value(params.clone())?)
-        }
-        "getDeviceState" => TestCommand::GetDeviceState(serde_yaml::from_value(params.clone())?),
-
-        // Hardware Automation Commands (Canonical Natural Language Commands)
-        "connectJig" => {
+        // Hardware Automation Commands (Standardized hw* Commands)
+        "hwConnect" => {
             let p: crate::parser::types::HardwareConnectParams = if params.is_string() {
                 crate::parser::types::HardwareConnectParams {
                     port: params.as_str().unwrap().to_string(),
                     baudrate: None,
                     auto_power_off: Some(true),
                     timeout_ms: None,
+                    file: None,
+                    servos: None,
                 }
             } else {
                 serde_yaml::from_value(params.clone())?
             };
-            TestCommand::ConnectJig(p)
+            TestCommand::HwConnect(p)
         }
-        "disconnectJig" => TestCommand::DisconnectJig,
+        "hwDisconnect" => TestCommand::HwDisconnect,
 
-        "clickButton" => {
+        "hwClick" => {
             let p: crate::parser::types::ServoClickParams = if params.is_number() {
                 crate::parser::types::ServoClickParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
@@ -1248,9 +1206,9 @@ fn parse_command_with_params(
                     },
                 )
             };
-            TestCommand::ClickButton(p)
+            TestCommand::HwClick(p)
         }
-        "pressButton" | "holdButton" | "hold" => {
+        "hwPress" => {
             let p: crate::parser::types::ServoActionParams = if params.is_number() {
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
@@ -1259,9 +1217,9 @@ fn parse_command_with_params(
                 serde_yaml::from_value(params.clone())
                     .unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
             };
-            TestCommand::PressButton(p)
+            TestCommand::HwPress(p)
         }
-        "releaseButton" | "release" => {
+        "hwRelease" => {
             let p: crate::parser::types::ServoActionParams = if params.is_number() {
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
@@ -1270,14 +1228,14 @@ fn parse_command_with_params(
                 serde_yaml::from_value(params.clone())
                     .unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
             };
-            TestCommand::ReleaseButton(p)
+            TestCommand::HwRelease(p)
         }
-        "rotateServo" | "servoRotate" => {
+        "hwRotate" => {
             let p: crate::parser::types::ServoRotateParams =
                 serde_yaml::from_value(params.clone())?;
-            TestCommand::RotateServo(p)
+            TestCommand::HwRotate(p)
         }
-        "readServo" | "getServoState" | "servoState" => {
+        "hwReadServo" => {
             let p: crate::parser::types::ServoActionParams = if params.is_number() {
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
@@ -1286,9 +1244,9 @@ fn parse_command_with_params(
                 serde_yaml::from_value(params.clone())
                     .unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
             };
-            TestCommand::ReadServo(p)
+            TestCommand::HwReadServo(p)
         }
-        "readRelay" | "getRelayState" | "relayState" => {
+        "hwReadRelay" => {
             let p: crate::parser::types::ServoActionParams = if params.is_number() {
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
@@ -1297,9 +1255,9 @@ fn parse_command_with_params(
                 serde_yaml::from_value(params.clone())
                     .unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
             };
-            TestCommand::ReadRelay(p)
+            TestCommand::HwReadRelay(p)
         }
-        "readColor" | "readColorSensor" | "colorState" => {
+        "hwReadColor" => {
             let p: crate::parser::types::ServoActionParams = if params.is_number() {
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
@@ -1308,10 +1266,22 @@ fn parse_command_with_params(
                 serde_yaml::from_value(params.clone())
                     .unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
             };
-            TestCommand::ReadColor(p)
+            TestCommand::HwReadColor(p)
+        }
+        "hwReadSensorLight" => {
+            let p: Option<crate::parser::types::ServoActionParams> = if params.is_number() {
+                Some(crate::parser::types::ServoActionParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                })
+            } else if params.is_null() {
+                None
+            } else {
+                serde_yaml::from_value(params.clone()).ok()
+            };
+            TestCommand::HwReadSensorLight(p)
         }
 
-        "turnOn" | "relayOn" => {
+        "hwPowerOn" => {
             let p: crate::parser::types::RelaySetParams = if params.is_number() {
                 crate::parser::types::RelaySetParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
@@ -1323,9 +1293,9 @@ fn parse_command_with_params(
                 parsed.state = "on".to_string();
                 parsed
             };
-            TestCommand::TurnOn(p)
+            TestCommand::HwPowerOn(p)
         }
-        "turnOff" | "relayOff" => {
+        "hwPowerOff" => {
             let p: crate::parser::types::RelaySetParams = if params.is_number() {
                 crate::parser::types::RelaySetParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
@@ -1337,54 +1307,11 @@ fn parse_command_with_params(
                 parsed.state = "off".to_string();
                 parsed
             };
-            TestCommand::TurnOff(p)
+            TestCommand::HwPowerOff(p)
         }
-        "turnOffAll" => TestCommand::TurnOffAll,
+        "hwPowerOffAll" => TestCommand::HwPowerOffAll,
 
-        "seeLedColor" => {
-            let p: crate::parser::types::SeeColorParams = if params.is_string() {
-                crate::parser::types::SeeColorParams {
-                    channel: 1,
-                    expected: Some(vec![params.as_str().unwrap().to_string()]),
-                    timeout_ms: None,
-                }
-            } else {
-                serde_yaml::from_value(params.clone())?
-            };
-            TestCommand::SeeLedColor(p)
-        }
-        "seeLedBlink" => {
-            let p: crate::parser::types::SeeBlinkParams = if params.is_number() {
-                crate::parser::types::SeeBlinkParams {
-                    channel: params.as_u64().unwrap_or(1) as u8,
-                    timeout_ms: None,
-                }
-            } else if params.is_null() {
-                crate::parser::types::SeeBlinkParams {
-                    channel: 1,
-                    timeout_ms: None,
-                }
-            } else {
-                serde_yaml::from_value(params.clone())?
-            };
-            TestCommand::SeeLedBlink(p)
-        }
-
-        "repeatClick" => {
-            let p: crate::parser::types::ServoRepeatParams = if params.is_number() {
-                crate::parser::types::ServoRepeatParams {
-                    channel: params.as_u64().unwrap_or(1) as u8,
-                    count: 2,
-                    press_ms: None,
-                    release_ms: None,
-                }
-            } else {
-                serde_yaml::from_value(params.clone())?
-            };
-            TestCommand::RepeatClick(p)
-        }
-
-        "powerCycle" => {
+        "hwPowerCycle" => {
             let p: crate::parser::types::PowerCycleParams = if params.is_number() {
                 crate::parser::types::PowerCycleParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
@@ -1398,35 +1325,108 @@ fn parse_command_with_params(
             } else {
                 serde_yaml::from_value(params.clone())?
             };
-            TestCommand::PowerCycle(p)
+            TestCommand::HwPowerCycle(p)
         }
 
-        "seeLedOff" => {
-            let p: crate::parser::types::SeeBlinkParams = if params.is_number() {
-                crate::parser::types::SeeBlinkParams {
-                    channel: params.as_u64().unwrap_or(1) as u8,
-                    timeout_ms: None,
-                }
-            } else if params.is_null() {
-                crate::parser::types::SeeBlinkParams {
+        "hwSeeLed" => {
+            let p: crate::parser::types::SeeColorParams = if params.is_string() {
+                crate::parser::types::SeeColorParams {
                     channel: 1,
+                    expected: Some(vec![params.as_str().unwrap().to_string()]),
                     timeout_ms: None,
                 }
             } else {
                 serde_yaml::from_value(params.clone())?
             };
-            TestCommand::SeeLedOff(p)
+            TestCommand::HwSeeLed(p)
+        }
+        "hwSeeLedBlink" => {
+            let p: crate::parser::types::SeeBlinkParams = if params.is_number() {
+                crate::parser::types::SeeBlinkParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                    color: None,
+                    count: None,
+                    timeout_ms: None,
+                    min_pulse_ms: None,
+                    max_pulse_ms: None,
+                    max_gap_ms: None,
+                }
+            } else if params.is_string() {
+                crate::parser::types::SeeBlinkParams {
+                    channel: 1,
+                    color: Some(params.as_str().unwrap().to_string()),
+                    count: None,
+                    timeout_ms: None,
+                    min_pulse_ms: None,
+                    max_pulse_ms: None,
+                    max_gap_ms: None,
+                }
+            } else if params.is_null() {
+                crate::parser::types::SeeBlinkParams {
+                    channel: 1,
+                    color: None,
+                    count: None,
+                    timeout_ms: None,
+                    min_pulse_ms: None,
+                    max_pulse_ms: None,
+                    max_gap_ms: None,
+                }
+            } else {
+                serde_yaml::from_value(params.clone())?
+            };
+            TestCommand::HwSeeLedBlink(p)
         }
 
-        "configureServo" | "setServoConfig" => {
+        "hwSeeLedOff" => {
+            let p: crate::parser::types::SeeBlinkParams = if params.is_number() {
+                crate::parser::types::SeeBlinkParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                    color: None,
+                    count: None,
+                    timeout_ms: None,
+                    min_pulse_ms: None,
+                    max_pulse_ms: None,
+                    max_gap_ms: None,
+                }
+            } else if params.is_null() {
+                crate::parser::types::SeeBlinkParams {
+                    channel: 1,
+                    color: None,
+                    count: None,
+                    timeout_ms: None,
+                    min_pulse_ms: None,
+                    max_pulse_ms: None,
+                    max_gap_ms: None,
+                }
+            } else {
+                serde_yaml::from_value(params.clone())?
+            };
+            TestCommand::HwSeeLedOff(p)
+        }
+
+        "hwRepeatClick" => {
+            let p: crate::parser::types::ServoRepeatParams = if params.is_number() {
+                crate::parser::types::ServoRepeatParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                    count: 2,
+                    press_ms: None,
+                    release_ms: None,
+                }
+            } else {
+                serde_yaml::from_value(params.clone())?
+            };
+            TestCommand::HwRepeatClick(p)
+        }
+
+        "hwConfigureServo" => {
             let p: crate::parser::types::ServoConfigParams =
                 serde_yaml::from_value(params.clone())?;
-            TestCommand::ConfigureServo(p)
+            TestCommand::HwConfigureServo(p)
         }
 
-        "releaseAllButtons" | "releaseAll" => TestCommand::ReleaseAllButtons,
+        "hwReleaseAll" => TestCommand::HwReleaseAll,
 
-        "startRepeatClick" => {
+        "hwStartRepeatClick" => {
             let p: crate::parser::types::ServoStartRepeatParams = if params.is_number() {
                 crate::parser::types::ServoStartRepeatParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
@@ -1435,10 +1435,10 @@ fn parse_command_with_params(
             } else {
                 serde_yaml::from_value(params.clone())?
             };
-            TestCommand::StartRepeatClick(p)
+            TestCommand::HwStartRepeatClick(p)
         }
 
-        "stopRepeatClick" => {
+        "hwStopRepeatClick" => {
             let p: crate::parser::types::ServoActionParams = if params.is_number() {
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
@@ -1448,67 +1448,69 @@ fn parse_command_with_params(
             } else {
                 serde_yaml::from_value(params.clone())?
             };
-            TestCommand::StopRepeatClick(p)
+            TestCommand::HwStopRepeatClick(p)
         }
 
-        "setSensorLight" | "sensorLight" => {
+        "hwSensorLight" => {
             let p: crate::parser::types::SensorLightParams = if params.is_bool() {
                 crate::parser::types::SensorLightParams {
+                    channel: 1,
                     state: None,
                     enabled: params.as_bool(),
                 }
             } else if params.is_string() {
                 crate::parser::types::SensorLightParams {
+                    channel: 1,
                     state: Some(params.as_str().unwrap().to_string()),
                     enabled: None,
                 }
             } else {
                 serde_yaml::from_value(params.clone())?
             };
-            TestCommand::SetSensorLight(p)
+            TestCommand::HwSensorLight(p)
         }
 
-        "setBrightnessThresholds" => {
+        "hwSetBrightnessThresholds" => {
             let p: crate::parser::types::BrightnessThresholdsParams =
                 serde_yaml::from_value(params.clone())?;
-            TestCommand::SetBrightnessThresholds(p)
+            TestCommand::HwSetBrightnessThresholds(p)
         }
 
-        "waitForBrightness" => {
+        "hwWaitForBrightness" => {
             let p: crate::parser::types::WaitForBrightnessParams =
                 serde_yaml::from_value(params.clone())?;
-            TestCommand::WaitForBrightness(p)
+            TestCommand::HwWaitForBrightness(p)
         }
 
-        "waitForCct" => {
+        "hwWaitForCct" => {
             let p: crate::parser::types::WaitForCctParams = serde_yaml::from_value(params.clone())?;
-            TestCommand::WaitForCct(p)
+            TestCommand::HwWaitForCct(p)
         }
 
-        "calibrateColor" => {
+        "hwCalibrateColor" => {
             let p: crate::parser::types::CalibrateColorParams =
                 serde_yaml::from_value(params.clone())?;
-            TestCommand::CalibrateColor(p)
+            TestCommand::HwCalibrateColor(p)
         }
 
-        "calibrateBrightness" => {
+        "hwCalibrateBrightness" => {
             let p: crate::parser::types::CalibrateBrightnessParams =
                 serde_yaml::from_value(params.clone())?;
-            TestCommand::CalibrateBrightness(p)
+            TestCommand::HwCalibrateBrightness(p)
         }
 
-        "addCctPoint" => {
+        "hwAddCctPoint" => {
             let p: crate::parser::types::AddCctPointParams =
                 serde_yaml::from_value(params.clone())?;
-            TestCommand::AddCctPoint(p)
+            TestCommand::HwAddCctPoint(p)
         }
 
-        "saveCalibration" => TestCommand::SaveCalibration,
-        "loadCalibration" => TestCommand::LoadCalibration,
-        "resetCalibration" => TestCommand::ResetCalibration,
-        "eraseCalibration" => TestCommand::EraseCalibration,
-        "enterSafeState" => TestCommand::EnterSafeState,
-        "systemDiagnostics" => TestCommand::SystemDiagnostics,
+        "hwSaveCalibration" => TestCommand::HwSaveCalibration,
+        "hwLoadCalibration" => TestCommand::HwLoadCalibration,
+        "hwResetCalibration" => TestCommand::HwResetCalibration,
+        "hwEraseCalibration" => TestCommand::HwEraseCalibration,
+        "hwSafeState" => TestCommand::HwSafeState,
+        "hwDiagnostics" => TestCommand::HwDiagnostics,
 
         "runPython" | "execPython" | "python" => {
             let p: crate::parser::types::RunPythonParams = if params.is_string() {
@@ -1802,57 +1804,84 @@ not a shell assignment
     }
 
     #[test]
-    fn test_servo_button_aliases_parsing() {
+    fn test_hardware_commands_parsing() {
         let yaml = r#"
 platform: android
 ---
-- clickButton: 1
-- click: { channel: 2, hold_ms: 500 }
-- pressButton: 1
-- hold: 2
-- holdButton: 3
-- press: 4
-- releaseButton: 1
-- release: 2
+- hwClick: 1
+- hwClick: { channel: 2, hold_ms: 500 }
+- hwPress: 1
+- hwRelease: 1
+- hwSeeLedBlink:
+    channel: 1
+    color: "BLUE"
+    count: 2
+    minPulseMs: 50
+    maxPulseMs: 800
 "#;
         let flow = parse_yaml_content(yaml, Path::new("hardware.yaml")).unwrap();
-        assert_eq!(flow.commands.len(), 8);
+        assert_eq!(flow.commands.len(), 5);
 
         match &flow.commands[0] {
-            TestCommand::ClickButton(p) => assert_eq!(p.channel, 1),
-            _ => panic!("Expected ClickButton for command 0"),
+            TestCommand::HwClick(p) => assert_eq!(p.channel, 1),
+            _ => panic!("Expected HwClick for command 0"),
         }
         match &flow.commands[1] {
-            TestCommand::ClickButton(p) => {
+            TestCommand::HwClick(p) => {
                 assert_eq!(p.channel, 2);
                 assert_eq!(p.hold_ms, Some(500));
             }
-            _ => panic!("Expected ClickButton for command 1"),
+            _ => panic!("Expected HwClick for command 1"),
         }
         match &flow.commands[2] {
-            TestCommand::PressButton(p) => assert_eq!(p.channel, 1),
-            _ => panic!("Expected PressButton for command 2"),
+            TestCommand::HwPress(p) => assert_eq!(p.channel, 1),
+            _ => panic!("Expected HwPress for command 2"),
         }
         match &flow.commands[3] {
-            TestCommand::PressButton(p) => assert_eq!(p.channel, 2),
-            _ => panic!("Expected PressButton for command 3"),
+            TestCommand::HwRelease(p) => assert_eq!(p.channel, 1),
+            _ => panic!("Expected HwRelease for command 3"),
         }
         match &flow.commands[4] {
-            TestCommand::PressButton(p) => assert_eq!(p.channel, 3),
-            _ => panic!("Expected PressButton for command 4"),
+            TestCommand::HwSeeLedBlink(p) => {
+                assert_eq!(p.channel, 1);
+                assert_eq!(p.color, Some("BLUE".to_string()));
+                assert_eq!(p.count, Some(2));
+                assert_eq!(p.min_pulse_ms, Some(50));
+                assert_eq!(p.max_pulse_ms, Some(800));
+            }
+            _ => panic!("Expected HwSeeLedBlink for command 4"),
         }
-        match &flow.commands[5] {
-            TestCommand::PressButton(p) => assert_eq!(p.channel, 4),
-            _ => panic!("Expected PressButton for command 5"),
-        }
-        match &flow.commands[6] {
-            TestCommand::ReleaseButton(p) => assert_eq!(p.channel, 1),
-            _ => panic!("Expected ReleaseButton for command 6"),
-        }
-        match &flow.commands[7] {
-            TestCommand::ReleaseButton(p) => assert_eq!(p.channel, 2),
-            _ => panic!("Expected ReleaseButton for command 7"),
-        }
+    }
+
+    #[test]
+    fn test_jig_profile_and_servos_parsing() {
+        let yaml = r#"
+platform: android
+jig:
+  port: "COM5"
+  baudrate: 115200
+  servos:
+    - channel: 1
+      pressAngle: 75
+      releaseAngle: 15
+    - channel: 2
+      pressAngle: 70
+---
+- hwClick: 1
+"#;
+        let flow = parse_yaml_content(yaml, Path::new("jig_test.yaml")).unwrap();
+        assert!(flow.jig.is_some());
+        let jig = flow.jig.unwrap();
+        let params = jig.resolve(None).unwrap();
+        assert_eq!(params.port, "COM5");
+        assert_eq!(params.baudrate, Some(115200));
+        let servos = params.servos.unwrap();
+        assert_eq!(servos.len(), 2);
+        assert_eq!(servos[0].channel, 1);
+        assert_eq!(servos[0].press_angle, Some(75));
+        assert_eq!(servos[0].release_angle, Some(15));
+        assert_eq!(servos[1].channel, 2);
+        assert_eq!(servos[1].press_angle, Some(70));
     }
 
     #[test]

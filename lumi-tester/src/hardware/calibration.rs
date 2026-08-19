@@ -32,10 +32,10 @@ impl CalibrationService {
         })
     }
 
-    pub fn calibrate_brightness(&self, channel: u8, mode: &str) -> Result<ActionResult> {
+    pub fn calibrate_brightness(&self, channel: u8, mode: &str, color: Option<&str>) -> Result<ActionResult> {
         let mut transport = self.transport.lock().unwrap();
         let resp = transport.request(
-            &cmd_calibration_brightness(channel, mode),
+            &cmd_calibration_brightness(channel, mode, color),
             |line| line.kind == "cal" || line.kind == "ok",
             10.0,
         )?;

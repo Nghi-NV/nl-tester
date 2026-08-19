@@ -5,59 +5,49 @@ tags:
   - full-suite
 defaultTimeout: 10000
 
-# 🔌 Khai báo kết nối Jig phần cứng toàn cục
-jig:
-  port: "${JIG_PORT:-COM5}"
-  baudrate: 115200
-  autoPowerOff: true
-  timeoutMs: 4000
+# 🔌 Nạp cấu hình Jig & Servo dùng chung từ Profile
+jig: "profiles/jig_switch_sample.yaml"
 
 ---
-# 1. Cấu hình góc xoay và thời gian gạt Servo vật lý
-- configureServo:
-    channel: 1
-    pressAngle: 75
-    releaseAngle: 15
-    pressDurationMs: 400
-    releaseDurationMs: 150
-    holdDurationMs: 300
-
-# 2. Điều khiển nguồn Rơ-le
-- turnOn: 1
-- powerCycle:
+# 1. Điều khiển nguồn Rơ-le (Servo đã được tự động nạp cấu hình từ profile)
+- hwPowerOn: 1
+- hwPowerCycle:
     channel: 1
     offMs: 1000
 
 # 3. Điều khiển Servo bấm/nhấn/nhả nút
-- clickButton: 1
-- pressButton: 1
-- rotateServo:
+- hwClick: 1
+- hwPress: 1
+- hwRotate:
     channel: 1
     angle: 90
     speed: 50
 - wait: 1000
-- releaseButton: 1
+- hwRelease: 1
 
-- repeatClick:
+- hwRepeatClick:
     channel: 1
     count: 3
     pressMs: 150
     releaseMs: 150
 
-- startRepeatClick:
+- hwStartRepeatClick:
     channel: 1
     periodMs: 1500
 - wait: 3000
-- stopRepeatClick: 1
-- releaseAllButtons
+- hwStopRepeatClick: 1
+- hwReleaseAll
 
-# 4. Điều khiển Đèn & Cảm biến màu sắc
-- setSensorLight: "on"
-- seeLedColor: "GREEN"
-- seeLedBlink: 1
-- seeLedOff: 1
+# 4. Điều khiển Đèn & Cảm biến màu sắc / Nháy LED
+- hwSensorLight: "on"
+- hwSeeLed: "GREEN"
+- hwSeeLedBlink:
+    channel: 1
+    color: "BLUE"
+    count: 2
+- hwSeeLedOff: 1
 
-- setBrightnessThresholds:
+- hwSetBrightnessThresholds:
     channel: 1
     offBelowPercent: 30
     onAbovePercent: 70
@@ -65,31 +55,31 @@ jig:
     maxPulseMs: 1000
     sequenceEndGapMs: 500
 
-- setSensorLight: "off"
+- hwSensorLight: "off"
 
 # 5. Hiệu chuẩn phần cứng (Calibration)
-- calibrateColor:
+- hwCalibrateColor:
     channel: 1
     color: "RED"
 
-- calibrateBrightness:
+- hwCalibrateBrightness:
     channel: 1
     mode: "dark"
 
-- addCctPoint:
+- hwAddCctPoint:
     channel: 1
     knownKelvin: 4000
 
-- saveCalibration
-- loadCalibration
+- hwSaveCalibration
+- hwLoadCalibration
 
 # 6. Đọc trạng thái cảm biến, nút bấm, relay và đèn LED
-- readServo: 1
-- readRelay: 1
-- readColor: 1
-- readSensorLight
+- hwReadServo: 1
+- hwReadRelay: 1
+- hwReadColor: 1
+- hwReadSensorLight: 1
 
 # 7. Chẩn đoán & Trạng thái an toàn
-- systemDiagnostics
-- enterSafeState
-- turnOffAll
+- hwDiagnostics
+- hwSafeState
+- hwPowerOffAll

@@ -32,9 +32,9 @@
     "desktopState": { "$ref": "#/$defs/desktopState" },
     "env": { "$ref": "#/$defs/env" },
     "vars": { "$ref": "#/$defs/envMap" },
-    "var": { "$ref": "#/$defs/envMap" },
     "camera": { "$ref": "#/$defs/cameraConfig" },
     "cameras": { "$ref": "#/$defs/camerasConfig" },
+    "jig": { "$ref": "#/$defs/jigConfig" },
     "data": { "type": "string" },
     "steps": {
       "type": "array",
@@ -88,6 +88,38 @@
           "additionalProperties": { "$ref": "#/$defs/cameraConfig" }
         }
       ]
+    },
+    "jigConfig": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "properties": {
+            "port": { "type": "string" },
+            "baudrate": { "type": "integer" },
+            "autoPowerOff": { "type": "boolean" },
+            "timeoutMs": { "type": "integer" },
+            "file": { "type": "string" },
+            "servos": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/servoConfig" }
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "servoConfig": {
+      "type": "object",
+      "properties": {
+        "channel": { "type": "integer" },
+        "pressAngle": { "type": "integer" },
+        "releaseAngle": { "type": "integer" },
+        "pressDurationMs": { "type": "integer" },
+        "releaseDurationMs": { "type": "integer" },
+        "holdDurationMs": { "type": "integer" }
+      },
+      "additionalProperties": true
     },
     "desktopState": {
       "type": "object",
@@ -177,13 +209,44 @@
         "getRelayState",
         "getSensorLightState",
         "getServoState",
-        "gps",
         "hideKbd",
         "hideKeyboard",
-        "hold",
-        "holdButton",
-        "home",
         "httpRequest",
+        "hwAddCctPoint",
+        "hwCalibrateBrightness",
+        "hwCalibrateColor",
+        "hwClick",
+        "hwConfigureServo",
+        "hwConnect",
+        "hwDiagnostics",
+        "hwDisconnect",
+        "hwEraseCalibration",
+        "hwLoadCalibration",
+        "hwPowerCycle",
+        "hwPowerOff",
+        "hwPowerOffAll",
+        "hwPowerOn",
+        "hwPress",
+        "hwReadColor",
+        "hwReadRelay",
+        "hwReadSensorLight",
+        "hwReadServo",
+        "hwRelease",
+        "hwReleaseAll",
+        "hwRepeatClick",
+        "hwResetCalibration",
+        "hwRotate",
+        "hwSafeState",
+        "hwSaveCalibration",
+        "hwSeeLed",
+        "hwSeeLedBlink",
+        "hwSeeLedOff",
+        "hwSensorLight",
+        "hwSetBrightnessThresholds",
+        "hwStartRepeatClick",
+        "hwStopRepeatClick",
+        "hwWaitForBrightness",
+        "hwWaitForCct",
         "inputAt",
         "inputRandomEmail",
         "inputRandomNumber",

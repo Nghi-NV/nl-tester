@@ -28,16 +28,16 @@ impl RelayControl for RelayService {
         let mut transport = self.transport.lock().unwrap();
         let resp = transport.request(
             &cmd,
-            |line| line.kind == "relay" && line.get_u8("channel") == Some(channel),
+            |line| line.kind == "relay" || line.kind == "ok",
             3.0,
         )?;
 
         Ok(ActionResult {
             action: format!("relay.set_{}", state.as_str()),
             channel: Some(channel),
-            completed: resp.get_str("status") == Some("completed") || resp.kind == "relay",
+            completed: resp.get_str("status") != Some("error"),
             duration_ms: start.elapsed().as_millis() as u64,
-            message: None,
+            message: resp.get_str("message").map(|s| s.to_string()),
         })
     }
 
@@ -46,16 +46,16 @@ impl RelayControl for RelayService {
         let mut transport = self.transport.lock().unwrap();
         let resp = transport.request(
             &cmd_relay_all_off(),
-            |line| line.kind == "relay" && line.get_str("action") == Some("all_off"),
+            |line| line.kind == "relay" || line.kind == "ok",
             3.0,
         )?;
 
         Ok(ActionResult {
             action: "relay.all_off".to_string(),
             channel: None,
-            completed: resp.get_str("status") == Some("completed") || resp.kind == "relay",
+            completed: resp.get_str("status") != Some("error"),
             duration_ms: start.elapsed().as_millis() as u64,
-            message: None,
+            message: resp.get_str("message").map(|s| s.to_string()),
         })
     }
 

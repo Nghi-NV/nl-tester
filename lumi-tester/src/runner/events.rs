@@ -339,7 +339,7 @@ impl ConsoleEventListener {
                 }
 
                 TestEvent::CommandFailed {
-                    error: _error, // Bind 'error' field to '_error' to ignore unused warning
+                    error,
                     duration_ms,
                     depth,
                     ..
@@ -366,6 +366,10 @@ impl ConsoleEventListener {
                                 command_texts[depth],
                                 duration_ms
                             );
+                        }
+
+                        if !error.is_empty() {
+                            println!("{}      {} {}", indent, "└─ Error:".red().bold(), error.red());
                         }
                     }
                 }

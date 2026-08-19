@@ -18,6 +18,7 @@ LUMI_COMMANDS = [
     "devices",
     "doctor",
     "inspect",
+    "jig",
     "list",
     "record",
     "report",

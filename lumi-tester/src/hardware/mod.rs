@@ -50,19 +50,18 @@ impl HardwareController {
     pub fn connect(&self, port: &str, baudrate: Option<u32>) -> Result<()> {
         let baud = baudrate.unwrap_or(self.config.baudrate);
         let mut transport = self.transport.lock().unwrap();
-        transport.connect(port, baud)?;
+        transport.connect(port, baud)
+            .map_err(|e| anyhow::anyhow!("Failed to connect to hardware Jig on '{}' (baudrate: {}): {}", port, baud, e))?;
 
-        // Send ping handshake
-        let ping_resp =
-            transport.request(&protocol::cmd_ping(), |line| line.kind == "system", 2.0)?;
-        if ping_resp.get_str("status") != Some("ready") {
-            log::warn!("Handshake returned unexpected status: {:?}", ping_resp.raw);
-        }
+        // Send ping handshake (accept system status or ok)
+        let ping_resp = transport.request(
+            &protocol::cmd_ping(),
+            |line| line.kind == "system" || line.kind == "ok",
+            2.0,
+        ).map_err(|e| anyhow::anyhow!("Connected to Jig on '{}', but handshake failed (no valid response from MCU): {}", port, e))?;
 
-        drop(transport);
-
-        for ch in 1..=8 {
-            let _ = self.servo.set_config(ch, 15, 72, 400, 150, 300);
+        if ping_resp.kind == "system" && ping_resp.get_str("status") != Some("ready") {
+            log::warn!("Handshake returned status: {:?}", ping_resp.raw);
         }
 
         Ok(())
@@ -71,7 +70,7 @@ impl HardwareController {
     pub fn enter_safe_state(&self) -> Result<()> {
         let _ = self.relay.all_off();
         let _ = self.servo.release_all();
-        let _ = self.color_sensor.light_off();
+        let _ = self.color_sensor.light_off(None);
         Ok(())
     }
 
@@ -112,4 +111,91 @@ impl HardwareDriver for HardwareController {
         let mut transport = self.transport.lock().unwrap();
         transport.disconnect();
     }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JigPortInfo {
+    pub port_name: String,
+    pub port_type: String,
+    pub manufacturer: Option<String>,
+    pub product: Option<String>,
+    pub serial_number: Option<String>,
+    pub vid: Option<u16>,
+    pub pid: Option<u16>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JigPingResult {
+    pub port: String,
+    pub baudrate: u32,
+    pub connected: bool,
+    pub latency_ms: u64,
+    pub raw_response: String,
+    pub node_id: Option<u8>,
+    pub firmware_version: Option<String>,
+    pub system_status: Option<String>,
+}
+
+/// Liệt kê toàn bộ các cổng Serial / COM đang cắm vào máy tính kèm metadata
+pub fn list_serial_ports() -> Vec<JigPortInfo> {
+    let mut results = Vec::new();
+    if let Ok(ports) = serialport::available_ports() {
+        for p in ports {
+            let (port_type, manufacturer, product, serial_number, vid, pid) = match p.port_type {
+                serialport::SerialPortType::UsbPort(info) => (
+                    "USB".to_string(),
+                    info.manufacturer,
+                    info.product,
+                    info.serial_number,
+                    Some(info.vid),
+                    Some(info.pid),
+                ),
+                serialport::SerialPortType::PciPort => ("PCI".to_string(), None, None, None, None, None),
+                serialport::SerialPortType::BluetoothPort => ("Bluetooth".to_string(), None, None, None, None, None),
+                serialport::SerialPortType::Unknown => ("Unknown".to_string(), None, None, None, None, None),
+            };
+            results.push(JigPortInfo {
+                port_name: p.port_name,
+                port_type,
+                manufacturer,
+                product,
+                serial_number,
+                vid,
+                pid,
+            });
+        }
+    }
+    results
+}
+
+/// Thử kết nối nhanh và Ping thiết bị Jig phần cứng, trả về thông tin chi tiết
+pub fn ping_details(port: &str, baudrate: Option<u32>) -> Result<JigPingResult> {
+    let baud = baudrate.unwrap_or(115200);
+    let start = std::time::Instant::now();
+    let controller = HardwareController::new(None);
+    let mut transport = controller.transport.lock().unwrap();
+    transport.connect(port, baud)?;
+    let resp = transport.request(
+        &protocol::cmd_ping(),
+        |line| line.kind == "system" || line.kind == "ok" || line.kind == "version",
+        2.0,
+    )?;
+    let latency_ms = start.elapsed().as_millis() as u64;
+
+    let node_id = resp.get_u32("node_id").map(|n| n as u8);
+    let firmware_version = resp.get_str("version").or_else(|| resp.get_str("fw")).map(|s| s.to_string());
+    let system_status = resp.get_str("status").map(|s| s.to_string());
+
+    Ok(JigPingResult {
+        port: port.to_string(),
+        baudrate: baud,
+        connected: true,
+        latency_ms,
+        raw_response: resp.raw,
+        node_id,
+        firmware_version,
+        system_status,
+    })
 }

@@ -151,6 +151,16 @@ Manual download from the [lumi-tester Releases](https://github.com/Nghi-NV/nl-te
 - **macOS**: `lumi-tester-aarch64-apple-darwin` for Apple Silicon, or `lumi-tester-x86_64-apple-darwin` for Intel
 - **Linux**: `lumi-tester-x86_64-unknown-linux-gnu` or `lumi-tester-aarch64-unknown-linux-gnu`
 
+### Lumi Tester VS Code Extension
+
+Download the latest `.vsix` package from the [Extension Releases](https://github.com/Nghi-NV/nl-tester/releases?q=extension-v):
+
+- **Extension Package**: `lumi-tester-0.1.24.vsix`
+- **Installation in VS Code**:
+  ```bash
+  code --install-extension lumi-tester-0.1.24.vsix
+  ```
+
 ## 🛠️ Development
 
 ### Prerequisites

@@ -289,29 +289,32 @@ the expected state.
 jig: "COM5"   # Or advanced: { port: "${JIG_PORT:-COM5}", baudrate: 115200, autoPowerOff: true, timeoutMs: 4000 }
 ```
 
-Hardware commands:
-- `turnOn`, `turnOff`, `turnOffAll`: Relay power control.
-- `powerCycle`: Hard Power Reboot (`offMs: 2000`).
-- `clickButton`, `repeatClick`, `holdButton`, `releaseButton`, `releaseAllButtons`: Servo physical button control.
-- `startRepeatClick`, `stopRepeatClick`: Continuous click repeat loop on STM32.
-- `configureServo`: Set servo angles (`pressAngle`, `releaseAngle`) and durations.
-- `seeLedColor`, `seeLedBlink`, `seeLedOff`: Color and blink detection via TCS sensor.
-- `setSensorLight`: Sensor LED illumination (`on` / `off`).
-- `setBrightnessThresholds`, `waitForBrightness`, `waitForCct`: Advanced optical metrics.
-- `calibrateColor`, `calibrateBrightness`, `addCctPoint`: Hardware sensor calibration.
-- `saveCalibration`, `loadCalibration`, `resetCalibration`, `eraseCalibration`: Flash storage.
-- `enterSafeState`, `systemDiagnostics`: Safety shutdown and diagnostics.
+Hardware commands (all prefixed with `hw`):
+- `hwPowerOn`, `hwPowerOff`, `hwPowerOffAll`: Relay power control.
+- `hwPowerCycle`: Hard Power Reboot (`offMs: 2000`).
+- `hwClick`, `hwRepeatClick`, `hwPress`, `hwRelease`, `hwReleaseAll`: Servo physical button control.
+- `hwStartRepeatClick`, `hwStopRepeatClick`: Continuous click repeat loop on STM32.
+- `hwConfigureServo`: Set servo angles (`pressAngle`, `releaseAngle`) and durations.
+- `hwSeeLed`, `hwSeeLedBlink`, `hwSeeLedOff`: Color and blink detection via TCS sensor.
+- `hwSensorLight`: Sensor LED illumination (`on` / `off`).
+- `hwSetBrightnessThresholds`, `hwWaitForBrightness`, `hwWaitForCct`: Advanced optical metrics.
+- `hwCalibrateColor`, `hwCalibrateBrightness`, `hwAddCctPoint`: Hardware sensor calibration.
+- `hwSaveCalibration`, `hwLoadCalibration`, `hwResetCalibration`, `hwEraseCalibration`: Flash storage.
+- `hwSafeState`, `hwDiagnostics`: Safety shutdown and diagnostics.
 
 ```yaml
-- turnOn: 1
-- clickButton: 1
-- repeatClick:
+- hwPowerOn: 1
+- hwClick: 1
+- hwRepeatClick:
     channel: 1
     count: 3
-- seeLedColor: "GREEN"
-- seeLedBlink: 1
-- seeLedOff: 1
-- enterSafeState
+- hwSeeLed: "GREEN"
+- hwSeeLedBlink:
+    channel: 1
+    color: "BLUE"
+    count: 2
+- hwSeeLedOff: 1
+- hwSafeState
 ```
 
 ## Command Selection Rules

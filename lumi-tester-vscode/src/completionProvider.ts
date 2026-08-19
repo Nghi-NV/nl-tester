@@ -27,8 +27,8 @@ const HEADER_FIELDS: HeaderField[] = [
   { name: 'retryOnFail', description: 'Retry flow on failure', type: 'boolean', snippet: 'retryOnFail: ${1|true,false|}' },
   { name: 'locale', description: 'Device locale setting', type: 'string', snippet: 'locale: "${1:en_US}"' },
   { name: 'device', description: 'Target device ID', type: 'string', snippet: 'device: "$1"' },
-  { name: 'platform', description: 'Target platform (android/ios/web)', type: 'string', snippet: 'platform: "${1|android,ios,web|}"' },
-  { name: 'jig', description: 'Hardware Jig serial port configuration (e.g. COM5, /dev/ttyUSB0, or struct)', type: 'object', snippet: 'jig: "${1:COM5}"' },
+  { name: 'jig', description: 'Hardware Jig serial port configuration (e.g. COM5, struct, or profile file)', type: 'object', snippet: 'jig: "${1:COM5}"' },
+  { name: 'jig (profile)', description: 'Hardware Jig reusable profile file (e.g. profiles/jig_switch_sample.yaml)', type: 'string', snippet: 'jig: "${1:profiles/jig_switch_sample.yaml}"' },
 ];
 
 export class LumiCompletionProvider implements vscode.CompletionItemProvider {
