@@ -17,14 +17,8 @@
     <!-- Screen Panel (Left Viewport) -->
     <div class="screen-panel" id="screenPanel">
       
-      <!-- Studio Header Toolbar (Top, Non-overlapping) -->
+      <!-- Studio Header Toolbar (Compact Search & Refresh) -->
       <header class="studio-topbar">
-        <div class="brand-badge">
-          <span class="brand-dot"></span>
-          <span class="brand-name">LUMI</span>
-          <span class="brand-sub">STUDIO</span>
-        </div>
-
         <div class="app-search-wrapper">
           <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8"></circle>
@@ -35,21 +29,12 @@
           <div id="appDropdown" class="app-dropdown" style="display:none"></div>
         </div>
 
-        <div class="topbar-actions">
-          <div class="toggle-pill" onclick="toggleBoxes()" title="Toggle element bounding boxes">
-            <span class="toggle-pill-label">Bounds</span>
-            <div class="switch-control on" id="boxToggle">
-              <div class="switch-thumb"></div>
-            </div>
-          </div>
-
-          <button class="btn-refresh" onclick="capture()" title="Capture Screenshot (R)">
-            <svg class="refresh-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
-            </svg>
-            <span>Refresh</span>
-          </button>
-        </div>
+        <button class="btn-refresh" onclick="capture()" title="Capture Screenshot (R)">
+          <svg class="refresh-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+          </svg>
+          <span>Refresh</span>
+        </button>
       </header>
 
       <!-- Canvas Viewport with Grid Blueprint background -->
@@ -176,19 +161,6 @@
 
       <!-- Details Scroll Body -->
       <div class="details-content" id="detailsContent">
-
-        <!-- VIEW 1: SELECTORS -->
-        <div id="selectorsView">
-          <!-- Supported Commands Accordion -->
-          <div class="commands-accordion" id="commandsSection" style="display:none">
-            <div class="accordion-trigger" onclick="toggleSection('commandsList', 'cmdArrow')">
-              <svg class="chevron-icon" id="cmdArrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <polyline points="9 18 15 12 9 6"></polyline>
-              </svg>
-              <span>Supported DSL Commands</span>
-            </div>
-            <div class="accordion-content" id="commandsList" style="display:none"></div>
-          </div>
 
           <!-- Cards Stack -->
           <div id="selectorsList" class="selectors-stack"></div>

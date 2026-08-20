@@ -102,15 +102,6 @@ function formatYamlHighlight(yamlText) {
       return l;
     })
     .join('\n');
-}
-
-function toggleBoxes() {
-  showBoxes = !showBoxes;
-  const toggle = document.getElementById('boxToggle');
-  if (toggle) toggle.classList.toggle('on', showBoxes);
-  drawOverlay(lastSelectedBounds);
-}
-
 // Zoom & Viewport Controls
 function updateZoom() {
   const wrapper = document.getElementById('screenWrapper');
@@ -375,7 +366,6 @@ async function inspectAt(x, y, clickX, clickY) {
       }
 
       renderAppInfo(data.app_id);
-      renderCommands(data.supported_commands);
       renderBreadcrumbs(currentHierarchy);
       renderSelectors();
       renderAttributes(currentAttributes);
@@ -409,7 +399,6 @@ async function inspectAt(x, y, clickX, clickY) {
 function clearDetails() {
   document.getElementById('appInfo').textContent = '';
   document.getElementById('elementMeta').style.display = 'none';
-  document.getElementById('commandsSection').style.display = 'none';
   document.getElementById('breadcrumbBar').style.display = 'none';
   document.getElementById('actionBar').style.display = 'none';
   document.getElementById('tabBar').style.display = 'none';
@@ -425,34 +414,6 @@ function renderAppInfo(appId) {
     el.textContent = appId;
   } else {
     el.textContent = '';
-  }
-}
-
-function renderCommands(commands) {
-  const section = document.getElementById('commandsSection');
-  const list = document.getElementById('commandsList');
-
-  if (!commands || commands.length === 0) {
-    section.style.display = 'none';
-    return;
-  }
-
-  section.style.display = 'block';
-  list.innerHTML = commands.map(cmd =>
-    `<div class="command-item">- ${cmd}</div>`
-  ).join('');
-}
-
-function toggleSection(listId, arrowId) {
-  const list = document.getElementById(listId);
-  const trigger = document.getElementById(arrowId).closest('.accordion-trigger');
-
-  if (list.style.display === 'none') {
-    list.style.display = 'flex';
-    trigger.classList.add('expanded');
-  } else {
-    list.style.display = 'none';
-    trigger.classList.remove('expanded');
   }
 }
 
@@ -871,7 +832,22 @@ async function clearAppSelection() {
   }
 }
 
+function enableHorizontalWheelScroll(elem) {
+  if (!elem) return;
+  elem.addEventListener('wheel', (e) => {
+    if (e.deltaY !== 0 && !e.shiftKey) {
+      e.preventDefault();
+      elem.scrollLeft += e.deltaY;
+    }
+  }, { passive: false });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  const breadcrumbList = document.getElementById('breadcrumbList');
+  const actionContainer = document.querySelector('.action-segment-container');
+  if (breadcrumbList) enableHorizontalWheelScroll(breadcrumbList);
+  if (actionContainer) enableHorizontalWheelScroll(actionContainer);
+
   const searchInput = document.getElementById('appSearchInput');
   if (searchInput) {
     searchInput.addEventListener('keydown', (e) => {
