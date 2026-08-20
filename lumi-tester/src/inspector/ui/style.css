@@ -394,6 +394,12 @@ body {
   -webkit-user-select: text !important;
 }
 
+.sel-value::selection,
+.sel-value *::selection {
+  background: #264f78 !important;
+  color: #ffffff !important;
+}
+
 .yaml-cmd {
   color: #ff7b72;
   font-weight: 600;

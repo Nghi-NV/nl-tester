@@ -360,7 +360,7 @@ function renderDetails(selectors) {
           <span class="sel-type">${s.selector_type}</span>
           <span class="sel-score">${s.score} pts</span>
         </div>
-        <pre class="sel-value" title="Click to copy or select text" onclick="copyToClipboard(${i})">${displayValue}</pre>
+        <pre class="sel-value">${displayValue}</pre>
         ${s.description ? `<div class="sel-desc">${escapeHtml(s.description)}</div>` : ''}
         <div class="sel-actions">
           <button class="btn btn-outline btn-sm" onclick="copyToClipboard(${i})">Copy</button>
