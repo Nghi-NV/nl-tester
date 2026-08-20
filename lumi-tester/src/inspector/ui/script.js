@@ -376,9 +376,10 @@ function renderDetails(selectors) {
 
 // External Actions
 async function copyToClipboard(idx) {
+  const selectedText = window.getSelection() ? window.getSelection().toString().trim() : '';
   const s = currentSelectors[idx];
-  if (!s) return;
-  const text = s.yaml || s.value || '';
+  // If user highlighted a specific part of text, copy only that highlighted portion!
+  const text = selectedText || (s ? (s.yaml || s.value || '') : '');
   if (!text) return;
 
   let copied = false;
@@ -420,8 +421,24 @@ async function copyToClipboard(idx) {
     }, '*');
   }
 
-  showToast('Copied to Clipboard');
+  showToast(selectedText ? 'Copied Selection' : 'Copied to Clipboard');
 }
+
+// Global copy event listener: guarantees manual Cmd+C / Ctrl+C works in VS Code webview iframe
+document.addEventListener('copy', (e) => {
+  const selected = window.getSelection() ? window.getSelection().toString() : '';
+  if (selected) {
+    if (e.clipboardData) {
+      e.clipboardData.setData('text/plain', selected);
+    }
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({
+        type: 'copySelector',
+        value: selected
+      }, '*');
+    }
+  }
+});
 
 function insertToEditor(idx) {
   const s = currentSelectors[idx];

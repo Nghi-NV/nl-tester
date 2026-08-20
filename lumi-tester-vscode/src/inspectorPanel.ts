@@ -225,7 +225,7 @@ export class InspectorPanel {
     </style>
 </head>
 <body>
-    <iframe src="http://localhost:${this._port}" id="inspectorFrame"></iframe>
+    <iframe src="http://localhost:${this._port}" id="inspectorFrame" allow="clipboard-read; clipboard-write"></iframe>
     <script>
         const vscode = acquireVsCodeApi();
         // Listen for messages from iframe
