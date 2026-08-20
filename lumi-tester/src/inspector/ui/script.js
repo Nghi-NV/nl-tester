@@ -53,14 +53,20 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }, { passive: false });
 
-  window.addEventListener('resize', syncOverlaySize);
+  window.addEventListener('resize', () => {
+    requestAnimationFrame(syncOverlaySize);
+  });
 
   if (window.ResizeObserver) {
     const ro = new ResizeObserver(() => {
-      syncOverlaySize();
+      requestAnimationFrame(syncOverlaySize);
     });
     const cc = document.getElementById('canvasContainer');
+    const sp = document.getElementById('screenPanel');
+    const app = document.querySelector('.app-container');
     if (cc) ro.observe(cc);
+    if (sp) ro.observe(sp);
+    if (app) ro.observe(app);
   }
 });
 
@@ -238,27 +244,50 @@ async function capture() {
   }
 }
 
-// Canvas & Overlay Alignment (Pixel-Perfect)
+// Canvas & Overlay Alignment (Pixel-Perfect Mathematical Aspect Ratio Containment)
 function syncOverlaySize() {
   const canvas = document.getElementById('overlay');
   const img = document.getElementById('screen');
+  const wrapper = document.getElementById('screenWrapper');
+  const container = document.getElementById('canvasContainer');
 
-  if (!img || img.style.display === 'none' || !img.naturalWidth) return;
+  if (!img || img.style.display === 'none' || !img.naturalWidth || !container || !wrapper) return;
 
-  const renderWidth = img.clientWidth || img.offsetWidth;
-  const renderHeight = img.clientHeight || img.offsetHeight;
+  const pad = 16;
+  const availW = Math.max(40, container.clientWidth - pad);
+  const availH = Math.max(40, container.clientHeight - pad);
 
-  if (!renderWidth || !renderHeight) return;
+  const imgRatio = img.naturalWidth / img.naturalHeight;
+  const contRatio = availW / availH;
 
-  canvas.width = renderWidth;
-  canvas.height = renderHeight;
-  canvas.style.width = renderWidth + 'px';
-  canvas.style.height = renderHeight + 'px';
+  let targetW, targetH;
+
+  if (contRatio > imgRatio) {
+    // Height is constraint -> fit to full available height
+    targetH = availH;
+    targetW = Math.round(targetH * imgRatio);
+  } else {
+    // Width is constraint -> fit to full available width
+    targetW = availW;
+    targetH = Math.round(targetW / imgRatio);
+  }
+
+  // Explicitly size wrapper, img, and canvas so nothing overflows or gets cropped
+  wrapper.style.width = targetW + 'px';
+  wrapper.style.height = targetH + 'px';
+
+  img.style.width = targetW + 'px';
+  img.style.height = targetH + 'px';
+
+  canvas.width = targetW;
+  canvas.height = targetH;
+  canvas.style.width = targetW + 'px';
+  canvas.style.height = targetH + 'px';
   canvas.style.left = '0px';
   canvas.style.top = '0px';
 
-  scaleX = renderWidth / img.naturalWidth;
-  scaleY = renderHeight / img.naturalHeight;
+  scaleX = targetW / img.naturalWidth;
+  scaleY = targetH / img.naturalHeight;
 
   drawOverlay(lastSelectedBounds);
 }
@@ -839,47 +868,96 @@ function initPanelResizer() {
 
   if (!resizer || !screenPanel || !appContainer) return;
 
-  // Restore saved width
+  const isOneColumn = () => window.innerWidth <= 540;
+
+  // Restore saved dimensions
   const savedWidth = localStorage.getItem('lumi_panel_width');
-  if (savedWidth && window.innerWidth > 540) {
+  const savedHeight = localStorage.getItem('lumi_panel_height');
+
+  if (isOneColumn() && savedHeight) {
+    const h = parseInt(savedHeight, 10);
+    if (h >= 140 && h <= window.innerHeight - 200) {
+      screenPanel.style.flex = `0 0 ${h}px`;
+      screenPanel.style.height = `${h}px`;
+      screenPanel.style.maxHeight = 'none';
+    }
+  } else if (!isOneColumn() && savedWidth) {
     const w = parseInt(savedWidth, 10);
-    if (w >= 240 && w <= window.innerWidth - 280) {
+    if (w >= 200 && w <= window.innerWidth - 250) {
       screenPanel.style.flex = `0 0 ${w}px`;
+      screenPanel.style.width = `${w}px`;
+      screenPanel.style.maxWidth = 'none';
     }
   }
 
   let isDragging = false;
+  let activePointerId = null;
 
-  resizer.addEventListener('mousedown', (e) => {
+  resizer.addEventListener('pointerdown', (e) => {
     isDragging = true;
+    activePointerId = e.pointerId;
+    resizer.setPointerCapture(e.pointerId);
     resizer.classList.add('is-dragging');
-    document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     e.preventDefault();
   });
 
-  document.addEventListener('mousemove', (e) => {
+  let rAF = null;
+
+  resizer.addEventListener('pointermove', (e) => {
     if (!isDragging) return;
     const containerRect = appContainer.getBoundingClientRect();
-    const minWidth = 240;
-    const maxWidth = containerRect.width - 280;
-    const newWidth = Math.max(minWidth, Math.min(maxWidth, e.clientX - containerRect.left));
 
-    screenPanel.style.flex = `0 0 ${newWidth}px`;
-    syncOverlaySize();
+    if (isOneColumn()) {
+      // Vertical resizing (Height) in 1-column mode
+      const minHeight = 140;
+      const maxHeight = Math.max(minHeight, containerRect.height - 200);
+      const newHeight = Math.max(minHeight, Math.min(maxHeight, e.clientY - containerRect.top));
+
+      screenPanel.style.flex = `0 0 ${newHeight}px`;
+      screenPanel.style.height = `${newHeight}px`;
+      screenPanel.style.maxHeight = 'none';
+    } else {
+      // Horizontal resizing (Width) in 2-column mode
+      const minWidth = 200;
+      const maxWidth = Math.max(minWidth, containerRect.width - 250);
+      const newWidth = Math.max(minWidth, Math.min(maxWidth, e.clientX - containerRect.left));
+
+      screenPanel.style.flex = `0 0 ${newWidth}px`;
+      screenPanel.style.width = `${newWidth}px`;
+      screenPanel.style.maxWidth = 'none';
+    }
+
+    if (rAF) cancelAnimationFrame(rAF);
+    rAF = requestAnimationFrame(() => {
+      syncOverlaySize();
+    });
   });
 
-  document.addEventListener('mouseup', () => {
+  const stopDragging = () => {
     if (isDragging) {
       isDragging = false;
+      if (rAF) cancelAnimationFrame(rAF);
+      if (activePointerId !== null) {
+        try { resizer.releasePointerCapture(activePointerId); } catch (_) {}
+        activePointerId = null;
+      }
       resizer.classList.remove('is-dragging');
-      document.body.style.cursor = '';
       document.body.style.userSelect = '';
-      const w = screenPanel.getBoundingClientRect().width;
-      localStorage.setItem('lumi_panel_width', Math.round(w).toString());
-      syncOverlaySize();
+
+      if (isOneColumn()) {
+        const h = screenPanel.getBoundingClientRect().height;
+        localStorage.setItem('lumi_panel_height', Math.round(h).toString());
+      } else {
+        const w = screenPanel.getBoundingClientRect().width;
+        localStorage.setItem('lumi_panel_width', Math.round(w).toString());
+      }
+      requestAnimationFrame(syncOverlaySize);
     }
-  });
+  };
+
+  resizer.addEventListener('pointerup', stopDragging);
+  resizer.addEventListener('pointercancel', stopDragging);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
