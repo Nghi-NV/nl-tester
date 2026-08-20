@@ -464,6 +464,8 @@ pub struct CopyTextFromParams {
     #[serde(default)]
     pub text: Option<String>,
     #[serde(default)]
+    pub regex: Option<String>,
+    #[serde(default)]
     pub id: Option<String>,
     /// Accessibility description/content-desc selector
     #[serde(
@@ -473,8 +475,20 @@ pub struct CopyTextFromParams {
         alias = "accessibilityId"
     )]
     pub description: Option<String>,
+    #[serde(default, alias = "type")]
+    pub element_type: Option<String>,
     #[serde(default)]
     pub index: Option<usize>,
+    #[serde(default)]
+    pub relative: Option<RelativeParams>,
+    #[serde(default, alias = "rightOf")]
+    pub right_of: Option<RelativeAnchorInput>,
+    #[serde(default, alias = "leftOf")]
+    pub left_of: Option<RelativeAnchorInput>,
+    #[serde(default, alias = "aboveOf")]
+    pub above: Option<RelativeAnchorInput>,
+    #[serde(default, alias = "belowOf")]
+    pub below: Option<RelativeAnchorInput>,
     /// OCR text recognition selector
     #[serde(default)]
     pub ocr: Option<OcrSelectorInput>,
@@ -1563,6 +1577,14 @@ pub struct ScrollUntilVisibleParams {
     pub text: Option<String>,
     pub regex: Option<String>,
     pub relative: Option<RelativeParams>,
+    #[serde(default, alias = "rightOf")]
+    pub right_of: Option<RelativeAnchorInput>,
+    #[serde(default, alias = "leftOf")]
+    pub left_of: Option<RelativeAnchorInput>,
+    #[serde(default, alias = "aboveOf")]
+    pub above: Option<RelativeAnchorInput>,
+    #[serde(default, alias = "belowOf")]
+    pub below: Option<RelativeAnchorInput>,
 
     pub id: Option<String>,
 
@@ -3075,6 +3097,10 @@ impl Default for ScrollUntilVisibleParams {
             text: None,
             regex: None,
             relative: None,
+            right_of: None,
+            left_of: None,
+            above: None,
+            below: None,
             id: None,
             css: None,
             xpath: None,

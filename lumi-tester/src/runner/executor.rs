@@ -1573,7 +1573,8 @@ impl TestExecutor {
                 self.driver.double_tap(&selector).await
             }
 
-            TestCommand::RightClick(params) => {
+            TestCommand::RightClick(params_raw) => {
+                let params = self.resolve_tap_params(&crate::parser::types::TapParamsInput::Struct(params_raw.clone()));
                 let selector = self
                     .build_selector(
                         &params.text,
@@ -2281,7 +2282,29 @@ impl TestExecutor {
             TestCommand::ScrollUntilVisible(params_input) => {
                 use crate::driver::traits::SwipeDirection;
 
-                let params = params_input.clone().into_inner();
+                let mut params = params_input.clone().into_inner();
+                // Merge relative aliases for target element
+                if params.right_of.is_some()
+                    || params.left_of.is_some()
+                    || params.above.is_some()
+                    || params.below.is_some()
+                {
+                    let mut r = params.relative.unwrap_or_default();
+                    if params.right_of.is_some() {
+                        r.right_of = params.right_of.clone();
+                    }
+                    if params.left_of.is_some() {
+                        r.left_of = params.left_of.clone();
+                    }
+                    if params.above.is_some() {
+                        r.above = params.above.clone();
+                    }
+                    if params.below.is_some() {
+                        r.below = params.below.clone();
+                    }
+                    params.relative = Some(r);
+                }
+
                 // Scroll commands in parsing don't support index yet, default to None
                 let selector = self
                     .build_selector(
@@ -2317,22 +2340,23 @@ impl TestExecutor {
                 });
 
                 let from_selector = if let Some(ref from) = params.from {
+                    let from_params = self.resolve_tap_params(&crate::parser::types::TapParamsInput::Struct(from.clone()));
                     self.build_selector(
-                        &from.text,
-                        &from.regex,
-                        &from.id,
-                        &from.description,
-                        &from.relative,
-                        &from.css,
-                        &from.xpath,
-                        &from.placeholder,
-                        &from.role,
-                        &from.element_type,
-                        &from.image,
-                        from.index,
-                        &from.scrollable,
-                        from.exact,
-                        &from.ocr,
+                        &from_params.text,
+                        &from_params.regex,
+                        &from_params.id,
+                        &from_params.description,
+                        &from_params.relative,
+                        &from_params.css,
+                        &from_params.xpath,
+                        &from_params.placeholder,
+                        &from_params.role,
+                        &from_params.element_type,
+                        &from_params.image,
+                        from_params.index,
+                        &from_params.scrollable,
+                        from_params.exact,
+                        &from_params.ocr,
                     )
                 } else if let Some(ref scrollable) = params.scrollable {
                     // Fallback: swipe the scrollable container itself
@@ -2900,17 +2924,40 @@ impl TestExecutor {
             }
 
             TestCommand::CopyTextFrom(params) => {
+                let mut params = params.clone();
+                // Merge relative aliases
+                if params.right_of.is_some()
+                    || params.left_of.is_some()
+                    || params.above.is_some()
+                    || params.below.is_some()
+                {
+                    let mut r = params.relative.unwrap_or_default();
+                    if params.right_of.is_some() {
+                        r.right_of = params.right_of.clone();
+                    }
+                    if params.left_of.is_some() {
+                        r.left_of = params.left_of.clone();
+                    }
+                    if params.above.is_some() {
+                        r.above = params.above.clone();
+                    }
+                    if params.below.is_some() {
+                        r.below = params.below.clone();
+                    }
+                    params.relative = Some(r);
+                }
+
                 let selector = self.build_selector(
                     &params.text,
-                    &None, // regex
+                    &params.regex,
                     &params.id,
                     &params.description,
-                    &None, // relative
+                    &params.relative,
                     &None, // css
                     &None, // xpath
                     &None, // placeholder
                     &None, // role
-                    &None, // element_type
+                    &params.element_type,
                     &None, // image
                     params.index.map(|i| i as u32),
                     &None,
@@ -3904,22 +3951,23 @@ impl TestExecutor {
 
                 let from_selector =
                     if let Some(ref from) = params.as_ref().and_then(|p| p.from.as_ref()) {
+                        let from_params = self.resolve_tap_params(&crate::parser::types::TapParamsInput::Struct((*from).clone()));
                         self.build_selector(
-                            &from.text,
-                            &from.regex,
-                            &from.id,
-                            &from.description,
-                            &from.relative,
-                            &from.css,
-                            &from.xpath,
-                            &from.placeholder,
-                            &from.role,
-                            &from.element_type,
-                            &from.image,
-                            from.index,
-                            &from.scrollable,
-                            from.exact,
-                            &from.ocr,
+                            &from_params.text,
+                            &from_params.regex,
+                            &from_params.id,
+                            &from_params.description,
+                            &from_params.relative,
+                            &from_params.css,
+                            &from_params.xpath,
+                            &from_params.placeholder,
+                            &from_params.role,
+                            &from_params.element_type,
+                            &from_params.image,
+                            from_params.index,
+                            &from_params.scrollable,
+                            from_params.exact,
+                            &from_params.ocr,
                         )
                     } else {
                         None
@@ -4824,50 +4872,33 @@ impl TestExecutor {
         &self,
         value: &serde_json::Value,
     ) -> Result<crate::driver::traits::Selector> {
-        if let Some(text) = value.as_str() {
-            return Ok(crate::driver::traits::Selector::Text(
-                self.context.substitute_vars(text),
-                0,
+        if let Ok(params_input) =
+            serde_json::from_value::<crate::parser::types::AssertParamsInput>(value.clone())
+        {
+            let params = self.resolve_assert_params(&params_input);
+            self.build_selector(
+                &params.text,
+                &params.regex,
+                &params.id,
+                &params.description,
+                &params.relative,
+                &params.css,
+                &params.xpath,
+                &params.placeholder,
+                &params.role,
+                &params.element_type,
+                &params.image,
+                params.index,
+                &params.scrollable,
                 false,
-            ));
-        }
-
-        let Some(obj) = value.as_object() else {
+                &params.ocr,
+            )
+            .ok_or_else(|| anyhow::anyhow!("No selector specified for extendedWaitUntil"))
+        } else {
             anyhow::bail!(
                 "extendedWaitUntil expects visible/notVisible to be a string or selector object"
-            );
-        };
-
-        let string_field = |name: &str| {
-            obj.get(name)
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-        };
-        let index = obj.get("index").and_then(|v| v.as_u64()).map(|i| i as u32);
-        let exact = obj.get("exact").and_then(|v| v.as_bool()).unwrap_or(false);
-        let description = string_field("accessibilityId")
-            .or_else(|| string_field("contentDesc"))
-            .or_else(|| string_field("desc"))
-            .or_else(|| string_field("description"));
-
-        self.build_selector(
-            &string_field("text"),
-            &string_field("regex"),
-            &string_field("id"),
-            &description,
-            &None,
-            &string_field("css"),
-            &string_field("xpath"),
-            &string_field("placeholder"),
-            &string_field("role"),
-            &string_field("type").or_else(|| string_field("elementType")),
-            &string_field("image"),
-            index,
-            &None,
-            exact,
-            &None,
-        )
-        .ok_or_else(|| anyhow::anyhow!("No selector specified for extendedWaitUntil"))
+            )
+        }
     }
 
     /// Handle command failure by dumping UI, screenshot, and recent logs.
