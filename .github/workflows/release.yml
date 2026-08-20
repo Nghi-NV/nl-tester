@@ -54,6 +54,7 @@ jobs:
           bash -n lumi-tester/scripts/generate-package-manifests.sh
           bash -n lumi-tester/scripts/publish-package-manager-manifests.sh
           bash -n lumi-tester/scripts/check-package-manifests.sh
+          bash -n lumi-tester/scripts/pack-mcp-bundle.sh
           python3 lumi-tester/scripts/check-ai-reference.py
           bash lumi-tester/scripts/check-package-manifests.sh
 
