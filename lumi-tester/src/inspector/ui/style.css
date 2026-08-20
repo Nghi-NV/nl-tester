@@ -85,13 +85,13 @@ body {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   LEFT SCREEN PANEL (FIXED / BOUNDED PHONE VIEWPORT)
+   LEFT SCREEN PANEL (COMFORTABLE WIDTH FOR BUTTONS & SCREEN)
    ───────────────────────────────────────────────────────────── */
 
 .screen-panel {
-  flex: 0 0 clamp(280px, 35vw, 420px);
-  min-width: 260px;
-  max-width: 460px;
+  flex: 0 0 clamp(340px, 38vw, 500px);
+  min-width: 320px;
+  max-width: 520px;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -153,8 +153,8 @@ body {
   position: relative;
   display: flex;
   align-items: center;
-  flex: 1;
-  min-width: 60px;
+  flex: 1 1 auto;
+  min-width: 80px;
 }
 
 .search-icon {
@@ -200,7 +200,7 @@ body {
   position: absolute;
   top: calc(100% + 5px);
   left: 0;
-  width: 280px;
+  width: 300px;
   max-height: 280px;
   overflow-y: auto;
   background: var(--bg-panel);
@@ -558,7 +558,7 @@ body {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   RIGHT DETAILS PANEL (WIDTH EXPANDS WITH WINDOW)
+   RIGHT DETAILS PANEL (WIDTH EXPANDS FREELY WITH WINDOW)
    ───────────────────────────────────────────────────────────── */
 
 .details-panel {
@@ -1339,43 +1339,63 @@ body {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   1-COLUMN COMPACT MODE (SCREEN WIDTH <= 520PX)
-   Never clips image, enables natural full-page vertical scroll
+   1-COLUMN COMPACT MODE (SCREEN WIDTH <= 540PX)
+   Displays 100% full screenshot without ANY vertical cut-off
    ───────────────────────────────────────────────────────────── */
 
-@media (max-width: 520px) {
+@media (max-width: 540px) {
   .app-container {
     flex-direction: column;
     overflow-y: auto;
     overflow-x: hidden;
+    height: 100vh;
   }
 
   .screen-panel {
-    flex: 0 0 45vh;
-    min-height: 250px;
-    max-height: 50vh;
+    flex: 0 0 auto;
+    height: auto;
+    min-height: auto;
+    max-height: none;
     width: 100%;
     max-width: 100%;
     border-right: none;
     border-bottom: 1px solid var(--border);
+    overflow: visible;
   }
 
   .canvas-container {
-    padding: 6px;
+    height: auto;
+    min-height: auto;
+    max-height: none;
+    padding: 16px 12px;
+    overflow: visible;
+    display: flex;
+    justify-content: center;
+    align-items: center;
   }
 
   .device-frame {
-    max-height: calc(45vh - 76px);
+    width: auto;
+    height: auto;
     max-width: 100%;
+    max-height: none;
+    overflow: visible;
+  }
+
+  #screen {
+    max-width: 100%;
+    height: auto;
+    max-height: none;
+    display: block;
   }
 
   .details-panel {
-    flex: 1 1 auto;
+    flex: 1 0 auto;
     width: 100%;
     min-width: 100%;
     max-width: 100%;
     height: auto;
-    min-height: 55vh;
+    min-height: auto;
     overflow: visible;
   }
 
