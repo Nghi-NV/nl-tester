@@ -198,22 +198,28 @@ async function capture() {
 
   try {
     const r = await fetch(`/api/screenshot?skip_hierarchy=false`);
-    if (!r.ok) throw new Error('Capture failed');
+    if (!r.ok) throw new Error('Capture failed: ' + r.statusText);
     const d = await r.json();
 
     const img = document.getElementById('screen');
-    const loadPromise = new Promise(resolve => img.onload = resolve);
-    img.src = 'data:image/jpeg;base64,' + d.data;
-    img.style.display = 'block';
-    document.getElementById('placeholder').style.display = 'none';
+    const placeholder = document.getElementById('placeholder');
 
-    await loadPromise;
+    await new Promise((resolve) => {
+      img.onload = () => resolve();
+      img.onerror = () => resolve();
+      img.src = 'data:image/jpeg;base64,' + d.data;
+    });
+
+    img.style.display = 'block';
+    if (placeholder) placeholder.style.display = 'none';
 
     // Fetch hierarchy
     try {
       const h = await fetch('/api/hierarchy');
-      const hd = await h.json();
-      cachedElements = hd.elements || [];
+      if (h.ok) {
+        const hd = await h.json();
+        cachedElements = hd.elements || [];
+      }
     } catch (e) {
       console.warn("Hierarchy fetch failed", e);
     }
@@ -230,35 +236,17 @@ async function capture() {
   }
 }
 
-// Canvas & Overlay Alignment (Dual Aspect Ratio Fit: Height & Width)
+// Canvas & Overlay Alignment (Pixel-Perfect)
 function syncOverlaySize() {
   const canvas = document.getElementById('overlay');
   const img = document.getElementById('screen');
-  const container = document.getElementById('canvasContainer');
 
-  if (!img || img.style.display === 'none' || !img.naturalWidth || !container) return;
+  if (!img || img.style.display === 'none' || !img.naturalWidth) return;
 
-  const availW = Math.max(50, container.clientWidth - 24);
-  const availH = Math.max(50, container.clientHeight - 24);
+  const renderWidth = img.clientWidth || img.offsetWidth;
+  const renderHeight = img.clientHeight || img.offsetHeight;
 
-  const imgRatio = img.naturalWidth / img.naturalHeight;
-  const contRatio = availW / availH;
-
-  let renderWidth, renderHeight;
-
-  if (contRatio > imgRatio) {
-    // Container is wider than image aspect ratio -> fit to full available height
-    renderHeight = availH;
-    renderWidth = Math.round(renderHeight * imgRatio);
-  } else {
-    // Container is taller than image aspect ratio -> fit to full available width
-    renderWidth = availW;
-    renderHeight = Math.round(renderWidth / imgRatio);
-  }
-
-  // Explicitly apply computed fit dimensions
-  img.style.width = renderWidth + 'px';
-  img.style.height = renderHeight + 'px';
+  if (!renderWidth || !renderHeight) return;
 
   canvas.width = renderWidth;
   canvas.height = renderHeight;
