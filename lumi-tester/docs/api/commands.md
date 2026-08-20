@@ -908,11 +908,12 @@ Ví dụ đầy đủ các tham số:
 ```
 
 ### `hwPowerOn` / `hwPowerOff` / `hwPowerOffAll` / `hwPowerCycle`
-**Mô tả**: Điều khiển đóng/ngắt các kênh Rơ-le (Relay) cấp nguồn phần cứng.
+**Mô tả**: Điều khiển đóng/ngắt các kênh Rơ-le (Relay) cấp nguồn phần cứng (hỗ trợ số kênh hoặc tên nhóm nguồn định nghĩa trong profile, ví dụ: `"220V"`).
 
 Ví dụ đầy đủ các tham số:
 ```yaml
 - hwPowerOn: 1       # Bật nguồn kênh 1
+- hwPowerOn: "220V"  # Bật đồng thời nhóm rơ-le định nghĩa trong profile (kênh 3 & 4)
 - hwPowerOff: 1      # Tắt nguồn kênh 1
 - hwPowerOffAll      # Tắt toàn bộ rơ-le
 - hwPowerCycle:      # Khởi động lại nguồn (Tắt 2s rồi bật lại)
@@ -921,16 +922,17 @@ Ví dụ đầy đủ các tham số:
 ```
 
 ### `hwClick` / `hwPress` / `hwRelease` / `hwReleaseAll` / `hwRepeatClick`
-**Mô tả**: Điều khiển động cơ Servo nhấn nút vật lý trên thiết bị.
+**Mô tả**: Điều khiển động cơ Servo nhấn nút vật lý trên thiết bị (hỗ trợ số kênh Servo hoặc tên nút thân thiện như `"NC1"`, `"NC2"`, `"NC3"` từ Jig profile).
 
 Ví dụ đầy đủ các tham số:
 ```yaml
-- hwClick: 1          # Click nút vật lý kênh 1
-- hwPress: 1          # Nhấn đè nút kênh 1 (Pairing/Reset)
-- hwRelease: 1        # Nhả nút kênh 1
+- hwClick: "NC3"      # Click nút NC3 (tự động ánh xạ Servo kênh 7 từ profile)
+- hwClick: 1          # Hoặc chỉ định trực tiếp kênh số
+- hwPress: "NC1"      # Nhấn đè nút NC1 (Pairing/Reset)
+- hwRelease: "NC1"    # Nhả nút NC1
 - hwReleaseAll        # Nhả tất cả các nút về vị trí nghỉ
 - hwRepeatClick:      # Nhấn nhấp nhả 3 lần liên tiếp
-    channel: 1
+    button: "NC3"
     count: 3
     pressMs: 150
     releaseMs: 150
@@ -959,12 +961,13 @@ Ví dụ đầy đủ các tham số:
 - hwStopRepeatClick: 1
 ```
 
-### `hwReadServo` / `hwReadRelay`
-**Mô tả**: Đọc trạng thái phản hồi từ Servo và Relay.
+### `hwReadServo` / `hwReadRelay` / `hwReadColor`
+**Mô tả**: Đọc trạng thái phản hồi từ Servo, Relay, hoặc cảm biến màu quang học.
 
 ```yaml
-- hwReadServo: 1
-- hwReadRelay: 1
+- hwReadServo: "NC3"  # Đọc trạng thái servo nút NC3
+- hwReadRelay: 1      # Đọc trạng thái rơ-le kênh 1
+- hwReadColor: "NC3"  # Đọc mẫu màu sắc RGBC của cảm biến tương ứng nút NC3 (kênh 6)
 ```
 
 ---
@@ -972,7 +975,7 @@ Ví dụ đầy đủ các tham số:
 ## 🎨 Hardware LED & Color Sensor (Cảm biến màu & LED Phần cứng)
 
 ### `hwSeeLed` / `hwSeeLedBlink` / `hwSeeLedOff`
-**Mô tả**: Kiểm tra và đợi trạng thái đèn LED phần cứng (RED, GREEN, BLUE, YELLOW, CYAN, MAGENTA, PINK, WHITE, OFF) hoặc kiểm tra sự kiện nháy LED (Blink) kèm lọc màu sắc, số lần nháy (count), thời gian chờ (timeout) và khoảng cách giữa các xung (pulse).
+**Mô tả**: Kiểm tra và đợi trạng thái đèn LED phần cứng (RED, GREEN, BLUE, YELLOW, CYAN, MAGENTA, PINK, WHITE, OFF) hoặc kiểm tra sự kiện nháy LED (Blink) kèm lọc màu sắc, số lần nháy (count), thời gian chờ (timeout) và khoảng cách giữa các xung (pulse). Hỗ trợ truyền tên nút thân thiện (`button: "NC3"` hoặc `"NC3"`).
 
 Ví dụ chi tiết theo các nghiệp vụ thực tế (`hardware_control_services` & `hardware_web`):
 
@@ -980,9 +983,9 @@ Ví dụ chi tiết theo các nghiệp vụ thực tế (`hardware_control_servi
 # 1. Kiểm tra màu LED ổn định (Static Color)
 - hwSeeLed: "GREEN"                     # Rút gọn (kênh 1 mặc định)
 - hwSeeLed:
-    channel: 2                         # Đo trên cảm biến kênh 2 (Switch 1.2)
-    expected: "BLUE"                   # Chờ màu BLUE
-    timeoutMs: 5000
+    button: "NC3"                      # Tự động đọc cảm biến kênh 6 ánh xạ theo NC3
+    color: "BLUE"                      # Chờ màu BLUE
+    timeoutMs: 3000
 
 # 2. Nghiệp vụ: Xác nhận Lưu Cấu Hình Nâng Cao Thành Công (Luto Advanced Config SUCCESS)
 # Quy ước: LED nháy 2 lần màu XANH DƯƠNG (BLUE x 2)

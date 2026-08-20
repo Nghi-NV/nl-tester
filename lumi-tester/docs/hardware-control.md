@@ -297,10 +297,158 @@ Theo thiết kế hệ thống từ thư viện `hardware_control_services` & `h
 
 ---
 
-## 🔍 4. Kết quả Verification
+## 📚 5. Tuyển tập Kịch bản Mẫu Thực tế (Real-World Test Examples)
+
+Dưới đây là các kịch bản test mẫu chuẩn hóa theo cấu trúc Jig Profile và điều khiển phần cứng thực tế (tương tự thư mục `my_testing/lumilife/servo`):
+
+### Ví dụ 1: Nhấn Nút & Kiểm Chứng Chuyển Đổi Màu LED (Toggle Button: Blue -> Click -> Red)
+Kiểm thử công tắc ban đầu ở trạng thái Tắt (LED màu Xanh / BLUE) $\rightarrow$ Nhấn nút NC3 $\rightarrow$ Chuyển sang Bật (LED màu Đỏ / RED):
+
+```yaml
+platform: android
+appId: com.lumi.lumilife
+defaultTimeout: 10000
+jig: "profiles/jig_profile.yaml"
+---
+# 1. Ping kiểm tra kết nối STM32
+- hwPing: 1
+
+# 2. Kiểm chứng trạng thái ban đầu: Công tắc đang TẮT (LED sáng màu BLUE)
+- hwReadColor: "NC3"
+- hwSeeLed:
+    button: "NC3"
+    color: "BLUE"
+    timeoutMs: 3000
+
+# 3. Gạt servo nhấn nút NC3
+- hwClick: "NC3"
+- wait: 500
+
+# 4. Kiểm chứng công tắc đã chuyển sang BẬT (LED đổi sang màu RED)
+- hwReadColor: "NC3"
+- hwSeeLed:
+    button: "NC3"
+    color: "RED"
+    timeoutMs: 3000
+```
+
+---
+
+### Ví dụ 2: Kiểm Chứng Mất Điện & Có Điện Trở Lại (Power Cycle & Safe State Verification)
+Kiểm thử hành vi khi mất nguồn 220V $\rightarrow$ đèn tắt hoàn toàn (`hwSeeLedOff`) $\rightarrow$ cấp lại nguồn $\rightarrow$ đèn sáng trở lại:
+
+```yaml
+platform: android
+appId: com.lumi.lumilife
+defaultTimeout: 15000
+jig: "profiles/jig_profile.yaml"
+---
+- hwPing: 1
+
+# 1. Tắt nguồn 220V để xả điện
+- hwPowerOff: "220V"
+- wait: 2000
+
+# 2. Bật nguồn 220V trở lại
+- hwPowerOn: "220V"
+- wait: 1500
+- hwReadColor: "NC2"
+
+# 3. Ngắt nguồn và kiểm chứng đèn LED tắt hoàn toàn
+- hwPowerOff: "220V"
+- wait: 2000
+- hwSeeLedOff:
+    button: "NC2"
+    timeoutMs: 4000
+
+# 4. Bật lại nguồn và an toàn
+- hwPowerOn: "220V"
+- wait: 1500
+- hwReadColor: "NC2"
+- hwSafeState
+```
+
+---
+
+### Ví dụ 3: Nhấn Giữ Vào Chế Độ Pairing (Press & Hold for Reset / Pairing Blink)
+Nhấn giữ nút trong 5 giây để đưa thiết bị vào chế độ Pairing, sau đó đợi sự kiện nháy LED màu Hồng (`PINK`):
+
+```yaml
+platform: android
+appId: com.lumi.lumilife
+jig: "profiles/jig_profile.yaml"
+---
+# 1. Nhấn đè nút NC1 (Pairing/Reset)
+- hwPress: "NC1"
+- wait: 5000
+- hwRelease: "NC1"
+
+# 2. Chờ đèn LED nháy báo hiệu đang ở chế độ Pairing
+- hwSeeLedBlink:
+    button: "NC1"
+    color: "PINK"
+    count: 3
+    timeoutMs: 10000
+```
+
+---
+
+### Ví dụ 4: Điều Khiển Trợ Sáng & Đọc Mẫu Màu Sắc Quang Học
+Bật đèn LED trợ sáng của cảm biến (PB15) khi cần đo màu trong điều kiện thiếu sáng hoặc cân bằng quang học:
+
+```yaml
+platform: android
+appId: com.lumi.lumilife
+jig: "profiles/jig_profile.yaml"
+---
+# 1. Bật đèn trợ sáng cảm biến trên nút NC3
+- hwSensorLight:
+    button: "NC3"
+    state: "on"
+
+# 2. Đọc giá trị màu sắc quang học RGBC & Confidence
+- hwReadColor: "NC3"
+
+# 3. Tắt đèn trợ sáng sau khi đọc xong
+- hwSensorLight:
+    button: "NC3"
+    state: "off"
+```
+
+---
+
+### Ví dụ 5: Hiệu Chuẩn Màu Sắc & Ngưỡng Độ Sáng Flash MCU
+Hiệu chuẩn mẫu màu thực tế trên thiết bị và lưu vào bộ nhớ Flash của bo mạch:
+
+```yaml
+platform: android
+appId: com.lumi.lumilife
+jig: "profiles/jig_profile.yaml"
+---
+# 1. Hiệu chuẩn màu ĐỎ (RED) và XANH DƯƠNG (BLUE) trên kênh cảm biến NC3
+- hwCalibrateColor:
+    button: "NC3"
+    color: "RED"
+- hwCalibrateColor:
+    button: "NC3"
+    color: "BLUE"
+
+# 2. Cài đặt ngưỡng nhận diện độ sáng bật / tắt (%)
+- hwSetBrightnessThresholds:
+    button: "NC3"
+    offBelowPercent: 25
+    onAbovePercent: 65
+
+# 3. Lưu toàn bộ cấu hình vào Flash MCU
+- hwSaveCalibration
+```
+
+---
+
+## 🔍 6. Kết quả Verification
 
 ```bash
 lumi-tester validate e2e/workspaces/lumi_life/hardware_full_features.yaml --json
 ```
 
-**Output:** `"valid": true` (Tất cả 23 câu lệnh được phân tích cú pháp chuẩn xác).
+**Output:** `"valid": true` (Tất cả câu lệnh phần cứng được phân tích cú pháp chuẩn xác).

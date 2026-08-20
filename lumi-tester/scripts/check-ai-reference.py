@@ -65,6 +65,8 @@ MCP_README = ROOT / "lumi-tester-mcp" / "README.md"
 README_MD = ROOT / "lumi-tester" / "README.md"
 WRITING_TESTS_MD = ROOT / "lumi-tester" / "docs" / "writing_tests.md"
 COMMANDS_MD = ROOT / "lumi-tester" / "docs" / "api" / "commands.md"
+HARDWARE_CONTROL_MD = ROOT / "lumi-tester" / "docs" / "hardware-control.md"
+CAMERA_HARDWARE_MD = ROOT / "lumi-tester" / "docs" / "camera-hardware-testing.md"
 PYTHON_INTEGRATION_MD = ROOT / "lumi-tester" / "docs" / "python-integration.md"
 FLOWS_MD = ROOT / "lumi-tester" / "docs" / "flows" / "test_execution_flow.md"
 DOCS_INDEX_HTML = ROOT / "lumi-tester" / "docs" / "index.html"
@@ -1559,6 +1561,9 @@ def validate_docs_index_content() -> list[str]:
     embedded = json.loads(match.group(1))
     expected = {
         "commands": COMMANDS_MD.read_text(encoding="utf-8"),
+        "hardware_control": HARDWARE_CONTROL_MD.read_text(encoding="utf-8"),
+        "camera_hardware": CAMERA_HARDWARE_MD.read_text(encoding="utf-8"),
+        "desktop_testing": DESKTOP_TESTING_MD.read_text(encoding="utf-8"),
         "python_integration": PYTHON_INTEGRATION_MD.read_text(encoding="utf-8"),
         "flows": FLOWS_MD.read_text(encoding="utf-8"),
         "writing_tests": WRITING_TESTS_MD.read_text(encoding="utf-8"),
@@ -1566,6 +1571,9 @@ def validate_docs_index_content() -> list[str]:
     }
     expected_page_names = {
         "commands": "Commands Reference",
+        "hardware_control": "Hardware Jig Control",
+        "camera_hardware": "Camera & LED Testing",
+        "desktop_testing": "Desktop Testing (macOS & Windows)",
         "python_integration": "Python Integration",
         "flows": "Test Flows",
         "writing_tests": "Writing Tests",

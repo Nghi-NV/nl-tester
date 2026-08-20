@@ -15,6 +15,9 @@ ROOT_DOCS_INDEX = ROOT / "docs" / "index.html"
 
 DOC_SOURCES = {
     "commands": DOCS_DIR / "api" / "commands.md",
+    "hardware_control": DOCS_DIR / "hardware-control.md",
+    "camera_hardware": DOCS_DIR / "camera-hardware-testing.md",
+    "desktop_testing": DOCS_DIR / "desktop-testing.md",
     "python_integration": DOCS_DIR / "python-integration.md",
     "flows": DOCS_DIR / "flows" / "test_execution_flow.md",
     "writing_tests": DOCS_DIR / "writing_tests.md",
@@ -23,6 +26,9 @@ DOC_SOURCES = {
 
 PAGE_NAMES = {
     "commands": "Commands Reference",
+    "hardware_control": "Hardware Jig Control",
+    "camera_hardware": "Camera & LED Testing",
+    "desktop_testing": "Desktop Testing (macOS & Windows)",
     "python_integration": "Python Integration",
     "flows": "Test Flows",
     "writing_tests": "Writing Tests",
