@@ -63,3 +63,7 @@ nl-mock-hook/
 
 app_desktop/
 app_desktop/**
+
+.runtime/
+*.vsix
+

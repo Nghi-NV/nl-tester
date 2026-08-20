@@ -2,7 +2,7 @@
   "name": "lumi-tester",
   "displayName": "Lumi Tester",
   "description": "VSCode extension for lumi-tester: YAML autocomplete, run tests, and status display",
-  "version": "0.1.28",
+  "version": "0.1.31",
   "publisher": "lumijsc",
   "icon": "resources/icon.png",
   "engines": {
@@ -138,7 +138,7 @@
     "vscode:prepublish": "npm run compile",
     "clean": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\"",
     "compile": "npm run clean && tsc -p ./",
-    "test": "npm run compile && node --test out/commandInvocation.test.js out/runtimeResolver.test.js out/deviceDiscovery.test.js",
+    "test": "npm run compile && node --test out/commandInvocation.test.js out/runtimeResolver.test.js out/deviceDiscovery.test.js out/jigProfileResolver.test.js",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "package": "vsce package"

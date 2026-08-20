@@ -60,10 +60,14 @@ pub struct TestFlow {
     #[serde(default, alias = "window", alias = "windowSize")]
     pub window_size: Option<WindowSizeConfig>,
 
-    /// Global Hardware Jig configuration (e.g. `jig: "COM5"` or `jig: { port: "COM5", baudrate: 115200 }`).
+    /// Global Hardware Jig configuration (e.g. `jig: "jig_profile.yaml"` or `hardware: "jig_profile.yaml"`).
     /// Automatically connects before test flow runs, and automatically disconnects when test finishes.
-    #[serde(default)]
+    #[serde(default, alias = "hardware")]
     pub jig: Option<JigConfig>,
+
+    /// Skip or ignore this test flow when running directories in bulk (e.g. `skip: true`, `manual: true`)
+    #[serde(default, alias = "disabled", alias = "manual", alias = "ignore")]
+    pub skip: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -105,7 +109,10 @@ pub enum JigConfig {
 }
 
 impl JigConfig {
-    pub fn resolve(&self, base_dir: Option<&std::path::Path>) -> Result<HardwareConnectParams, String> {
+    pub fn resolve(
+        &self,
+        base_dir: Option<&std::path::Path>,
+    ) -> Result<HardwareConnectParams, String> {
         match self {
             JigConfig::PortOrProfile(path_or_port) => {
                 let is_file_ext = path_or_port.ends_with(".yaml")
@@ -119,30 +126,105 @@ impl JigConfig {
                 };
 
                 if is_file_ext || candidate_path.exists() {
-                    let content = std::fs::read_to_string(&candidate_path)
-                        .map_err(|e| format!("Failed to read jig profile file '{}': {}", candidate_path.display(), e))?;
-                    let mut params: HardwareConnectParams = serde_yaml::from_str(&content)
-                        .map_err(|e| format!("Failed to parse jig profile file '{}': {}", candidate_path.display(), e))?;
+                    let content = std::fs::read_to_string(&candidate_path).map_err(|e| {
+                        format!(
+                            "Failed to read jig profile file '{}': {}",
+                            candidate_path.display(),
+                            e
+                        )
+                    })?;
+                    let raw_val: serde_yaml::Value =
+                        serde_yaml::from_str(&content).map_err(|e| {
+                            format!(
+                                "Failed to parse jig profile file '{}': {}",
+                                candidate_path.display(),
+                                e
+                            )
+                        })?;
+                    let mut params: HardwareConnectParams =
+                        if let Some(hw) = raw_val.get("hardware") {
+                            let mut p: HardwareConnectParams =
+                                serde_yaml::from_value(hw.clone()).unwrap_or_default();
+                            if p.servos.is_none() {
+                                if let Some(servos_val) =
+                                    hw.get("servos").or_else(|| raw_val.get("servos"))
+                                {
+                                    p.servos = serde_yaml::from_value(servos_val.clone()).ok();
+                                }
+                            }
+                            p
+                        } else {
+                            serde_yaml::from_value(raw_val.clone()).map_err(|e| {
+                                format!(
+                                    "Failed to parse jig profile file '{}': {}",
+                                    candidate_path.display(),
+                                    e
+                                )
+                            })?
+                        };
                     if let Some(ref nested_file) = params.file {
-                        let profile_dir = candidate_path.parent().unwrap_or(std::path::Path::new("."));
+                        let profile_dir =
+                            candidate_path.parent().unwrap_or(std::path::Path::new("."));
                         let nested_path = profile_dir.join(nested_file);
-                        let nested_content = std::fs::read_to_string(&nested_path)
-                            .map_err(|e| format!("Failed to read nested jig file '{}': {}", nested_path.display(), e))?;
-                        let nested_params: HardwareConnectParams = serde_yaml::from_str(&nested_content)
-                            .map_err(|e| format!("Failed to parse nested jig file '{}': {}", nested_path.display(), e))?;
+                        let nested_content =
+                            std::fs::read_to_string(&nested_path).map_err(|e| {
+                                format!(
+                                    "Failed to read nested jig file '{}': {}",
+                                    nested_path.display(),
+                                    e
+                                )
+                            })?;
+                        let nested_raw: serde_yaml::Value = serde_yaml::from_str(&nested_content)
+                            .map_err(|e| {
+                            format!(
+                                "Failed to parse nested jig file '{}': {}",
+                                nested_path.display(),
+                                e
+                            )
+                        })?;
+                        let nested_params: HardwareConnectParams =
+                            if let Some(hw) = nested_raw.get("hardware") {
+                                let mut p: HardwareConnectParams =
+                                    serde_yaml::from_value(hw.clone()).unwrap_or_default();
+                                if p.servos.is_none() {
+                                    if let Some(servos_val) =
+                                        hw.get("servos").or_else(|| nested_raw.get("servos"))
+                                    {
+                                        p.servos = serde_yaml::from_value(servos_val.clone()).ok();
+                                    }
+                                }
+                                if p.buttons.is_none() {
+                                    if let Some(btns_val) =
+                                        hw.get("buttons").or_else(|| nested_raw.get("buttons"))
+                                    {
+                                        p.buttons = serde_yaml::from_value(btns_val.clone()).ok();
+                                    }
+                                }
+                                if p.relays.is_none() {
+                                    if let Some(relays_val) =
+                                        hw.get("relays").or_else(|| nested_raw.get("relays"))
+                                    {
+                                        p.relays = serde_yaml::from_value(relays_val.clone()).ok();
+                                    }
+                                }
+                                p
+                            } else {
+                                serde_yaml::from_value(nested_raw).map_err(|e| {
+                                    format!(
+                                        "Failed to parse nested jig file '{}': {}",
+                                        nested_path.display(),
+                                        e
+                                    )
+                                })?
+                            };
                         params = nested_params;
                     }
                     Ok(params)
                 } else {
                     Ok(HardwareConnectParams {
                         port: path_or_port.clone(),
-                        baudrate: None,
-                        node_id: None,
-                        wire_format: None,
                         auto_power_off: Some(true),
-                        timeout_ms: None,
-                        file: None,
-                        servos: None,
+                        ..Default::default()
                     })
                 }
             }
@@ -153,10 +235,57 @@ impl JigConfig {
                     } else {
                         std::path::PathBuf::from(file_path)
                     };
-                    let content = std::fs::read_to_string(&candidate_path)
-                        .map_err(|e| format!("Failed to read jig file '{}': {}", candidate_path.display(), e))?;
-                    let mut loaded: HardwareConnectParams = serde_yaml::from_str(&content)
-                        .map_err(|e| format!("Failed to parse jig file '{}': {}", candidate_path.display(), e))?;
+                    let content = std::fs::read_to_string(&candidate_path).map_err(|e| {
+                        format!(
+                            "Failed to read jig file '{}': {}",
+                            candidate_path.display(),
+                            e
+                        )
+                    })?;
+                    let raw_val: serde_yaml::Value =
+                        serde_yaml::from_str(&content).map_err(|e| {
+                            format!(
+                                "Failed to parse jig file '{}': {}",
+                                candidate_path.display(),
+                                e
+                            )
+                        })?;
+                    let mut loaded: HardwareConnectParams = if let Some(hw) =
+                        raw_val.get("hardware")
+                    {
+                        let mut p_loaded: HardwareConnectParams =
+                            serde_yaml::from_value(hw.clone()).unwrap_or_default();
+                        if p_loaded.servos.is_none() {
+                            if let Some(servos_val) =
+                                hw.get("servos").or_else(|| raw_val.get("servos"))
+                            {
+                                p_loaded.servos = serde_yaml::from_value(servos_val.clone()).ok();
+                            }
+                        }
+                        if p_loaded.buttons.is_none() {
+                            if let Some(btns_val) =
+                                hw.get("buttons").or_else(|| raw_val.get("buttons"))
+                            {
+                                p_loaded.buttons = serde_yaml::from_value(btns_val.clone()).ok();
+                            }
+                        }
+                        if p_loaded.relays.is_none() {
+                            if let Some(relays_val) =
+                                hw.get("relays").or_else(|| raw_val.get("relays"))
+                            {
+                                p_loaded.relays = serde_yaml::from_value(relays_val.clone()).ok();
+                            }
+                        }
+                        p_loaded
+                    } else {
+                        serde_yaml::from_value(raw_val.clone()).map_err(|e| {
+                            format!(
+                                "Failed to parse jig file '{}': {}",
+                                candidate_path.display(),
+                                e
+                            )
+                        })?
+                    };
                     if !p.port.is_empty() {
                         loaded.port = p.port.clone();
                     }
@@ -190,13 +319,8 @@ impl JigConfig {
         self.resolve(None).unwrap_or_else(|_| match self {
             JigConfig::PortOrProfile(port) => HardwareConnectParams {
                 port: port.clone(),
-                baudrate: None,
-                node_id: None,
-                wire_format: None,
                 auto_power_off: Some(true),
-                timeout_ms: None,
-                file: None,
-                servos: None,
+                ..Default::default()
             },
             JigConfig::Struct(p) => p.clone(),
         })
@@ -853,6 +977,7 @@ pub enum TestCommand {
 
     // Hardware Automation Commands (Standardized hw* Commands)
     HwConnect(HardwareConnectParams),
+    HwPing(HardwarePingParams),
     HwDisconnect,
     HwClick(ServoClickParams),
     HwRepeatClick(ServoRepeatParams),
@@ -939,11 +1064,83 @@ pub struct SetWindowSizeParams {
     pub height: u32,
 }
 
+pub fn parse_channel_str(s: &str) -> u8 {
+    let trimmed = s.trim();
+    if let Ok(num) = trimmed.parse::<u8>() {
+        return num;
+    }
+    match trimmed.to_uppercase().as_str() {
+        "NC1" | "BUTTON1" | "SWITCH 1.1" | "SWITCH1.1" | "1.1" => 5,
+        "NC2" | "BUTTON2" | "SWITCH 1.2" | "SWITCH1.2" | "1.2" => 6,
+        "NC3" | "BUTTON3" | "SWITCH 1.3" | "SWITCH1.3" | "1.3" => 7,
+        "KNX" => 1,
+        "24V" | "POWER24V" => 2,
+        "220V_L" | "220V-L" | "220VL" | "L" => 3,
+        "220V_N" | "220V-N" | "220VN" | "N" => 4,
+        _ => {
+            let digits: String = trimmed.chars().filter(|c| c.is_ascii_digit()).collect();
+            digits.parse::<u8>().unwrap_or(1)
+        }
+    }
+}
+
+pub fn deserialize_channel<'de, D>(deserializer: D) -> Result<u8, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ChannelOrString {
+        Num(u64),
+        Str(String),
+    }
+
+    match ChannelOrString::deserialize(deserializer)? {
+        ChannelOrString::Num(n) => Ok(n as u8),
+        ChannelOrString::Str(s) => Ok(parse_channel_str(&s)),
+    }
+}
+
 fn default_channel_one() -> u8 {
     1
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+pub fn parse_relay_channels(s: &str) -> Vec<u8> {
+    let trimmed = s.trim();
+    match trimmed.to_uppercase().as_str() {
+        "MAINPOWER" | "220V" | "POWER220V" | "MAINS" | "220" => vec![3, 4],
+        "220V_L" | "220V-L" | "220VL" | "L" => vec![3],
+        "220V_N" | "220V-N" | "220VN" | "N" => vec![4],
+        "KNX" => vec![1],
+        "24V" | "POWER24V" => vec![2],
+        "ALL" => vec![1, 2, 3, 4],
+        _ => {
+            if let Ok(num) = trimmed.parse::<u8>() {
+                vec![num]
+            } else {
+                let digits: String = trimmed.chars().filter(|c| c.is_ascii_digit()).collect();
+                if let Ok(num) = digits.parse::<u8>() {
+                    vec![num]
+                } else {
+                    vec![1]
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct HardwarePingParams {
+    #[serde(default)]
+    pub port: Option<String>,
+    #[serde(default)]
+    pub baudrate: Option<u32>,
+    #[serde(default, alias = "node_id", alias = "nodeId", alias = "node")]
+    pub node_id: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct HardwareConnectParams {
     #[serde(default)]
@@ -952,7 +1149,13 @@ pub struct HardwareConnectParams {
     pub baudrate: Option<u32>,
     #[serde(default, alias = "node_id", alias = "nodeId", alias = "node")]
     pub node_id: Option<u8>,
-    #[serde(default, alias = "wire_format", alias = "wireFormat", alias = "framing", alias = "format")]
+    #[serde(
+        default,
+        alias = "wire_format",
+        alias = "wireFormat",
+        alias = "framing",
+        alias = "format"
+    )]
     pub wire_format: Option<String>,
     #[serde(default)]
     pub auto_power_off: Option<bool>,
@@ -960,42 +1163,264 @@ pub struct HardwareConnectParams {
     pub timeout_ms: Option<u64>,
     #[serde(default)]
     pub file: Option<String>,
+    #[serde(
+        default,
+        alias = "force_config",
+        alias = "forceConfig",
+        alias = "force"
+    )]
+    pub force_config: Option<bool>,
     #[serde(default)]
     pub servos: Option<Vec<ServoConfigParams>>,
+    #[serde(default)]
+    pub buttons: Option<HashMap<String, crate::hardware::ButtonChannelMapping>>,
+    #[serde(default)]
+    pub relays: Option<HashMap<String, Vec<u8>>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServoClickParams {
     #[serde(default = "default_channel_one")]
     pub channel: u8,
+    #[serde(default, alias = "button", alias = "btn")]
+    pub button: Option<String>,
     #[serde(default, alias = "hold_ms", alias = "holdMs")]
     pub hold_ms: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl<'de> Deserialize<'de> for ServoClickParams {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct RawStruct {
+            #[serde(
+                default = "default_channel_one",
+                deserialize_with = "deserialize_channel"
+            )]
+            channel: u8,
+            #[serde(default, alias = "button", alias = "btn")]
+            button: Option<String>,
+            #[serde(default, alias = "hold_ms", alias = "holdMs")]
+            hold_ms: Option<u64>,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Helper {
+            Num(u64),
+            Str(String),
+            Obj(RawStruct),
+        }
+
+        match Helper::deserialize(deserializer)? {
+            Helper::Num(n) => Ok(ServoClickParams {
+                channel: n as u8,
+                button: None,
+                hold_ms: None,
+            }),
+            Helper::Str(s) => Ok(ServoClickParams {
+                channel: parse_channel_str(&s),
+                button: Some(s),
+                hold_ms: None,
+            }),
+            Helper::Obj(raw) => Ok(ServoClickParams {
+                channel: raw.channel,
+                button: raw.button,
+                hold_ms: raw.hold_ms,
+            }),
+        }
+    }
+}
+
+impl ServoClickParams {
+    pub fn resolved_channel(&self) -> u8 {
+        if let Some(ref btn) = self.button {
+            parse_channel_str(btn)
+        } else {
+            self.channel
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServoActionParams {
     #[serde(default = "default_channel_one")]
     pub channel: u8,
+    #[serde(default, alias = "button", alias = "btn")]
+    pub button: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for ServoActionParams {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct RawStruct {
+            #[serde(
+                default = "default_channel_one",
+                deserialize_with = "deserialize_channel"
+            )]
+            channel: u8,
+            #[serde(default, alias = "button", alias = "btn")]
+            button: Option<String>,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Helper {
+            Num(u64),
+            Str(String),
+            Obj(RawStruct),
+        }
+
+        match Helper::deserialize(deserializer)? {
+            Helper::Num(n) => Ok(ServoActionParams {
+                channel: n as u8,
+                button: None,
+            }),
+            Helper::Str(s) => Ok(ServoActionParams {
+                channel: parse_channel_str(&s),
+                button: Some(s),
+            }),
+            Helper::Obj(raw) => Ok(ServoActionParams {
+                channel: raw.channel,
+                button: raw.button,
+            }),
+        }
+    }
+}
+
+impl ServoActionParams {
+    pub fn resolved_channel(&self) -> u8 {
+        if let Some(ref btn) = self.button {
+            parse_channel_str(btn)
+        } else {
+            self.channel
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServoRotateParams {
-    #[serde(default = "default_channel_one")]
+    #[serde(
+        default = "default_channel_one",
+        deserialize_with = "deserialize_channel"
+    )]
     pub channel: u8,
+    #[serde(default, alias = "button", alias = "btn")]
+    pub button: Option<String>,
     pub angle: i32,
     #[serde(default)]
     pub speed: Option<u32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl ServoRotateParams {
+    pub fn resolved_channel(&self) -> u8 {
+        if let Some(ref btn) = self.button {
+            parse_channel_str(btn)
+        } else {
+            self.channel
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RelaySetParams {
     #[serde(default = "default_channel_one")]
     pub channel: u8,
+    #[serde(
+        default,
+        alias = "button",
+        alias = "relay",
+        alias = "name",
+        alias = "group"
+    )]
+    pub button: Option<String>,
+    #[serde(default, alias = "channels")]
+    pub channels: Option<Vec<u8>>,
+    #[serde(default)]
     pub state: String,
+}
+
+impl<'de> Deserialize<'de> for RelaySetParams {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct RawStruct {
+            #[serde(
+                default = "default_channel_one",
+                deserialize_with = "deserialize_channel"
+            )]
+            channel: u8,
+            #[serde(
+                default,
+                alias = "button",
+                alias = "relay",
+                alias = "name",
+                alias = "group"
+            )]
+            button: Option<String>,
+            #[serde(default, alias = "channels")]
+            channels: Option<Vec<u8>>,
+            #[serde(default)]
+            state: Option<String>,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Helper {
+            Num(u64),
+            Str(String),
+            Obj(RawStruct),
+        }
+
+        match Helper::deserialize(deserializer)? {
+            Helper::Num(n) => Ok(RelaySetParams {
+                channel: n as u8,
+                button: None,
+                channels: None,
+                state: "on".to_string(),
+            }),
+            Helper::Str(s) => Ok(RelaySetParams {
+                channel: parse_channel_str(&s),
+                button: Some(s),
+                channels: None,
+                state: "on".to_string(),
+            }),
+            Helper::Obj(raw) => Ok(RelaySetParams {
+                channel: raw.channel,
+                button: raw.button,
+                channels: raw.channels,
+                state: raw.state.unwrap_or_else(|| "on".to_string()),
+            }),
+        }
+    }
+}
+
+impl RelaySetParams {
+    pub fn resolved_channels(&self) -> Vec<u8> {
+        if let Some(ref list) = self.channels {
+            if !list.is_empty() {
+                return list.clone();
+            }
+        }
+        if let Some(ref btn) = self.button {
+            return parse_relay_channels(btn);
+        }
+        vec![self.channel]
+    }
 }
 
 fn deserialize_opt_string_or_vec<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
@@ -1020,31 +1445,79 @@ where
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SeeColorParams {
-    #[serde(default = "default_channel_one")]
+    #[serde(
+        default = "default_channel_one",
+        deserialize_with = "deserialize_channel"
+    )]
     pub channel: u8,
-    #[serde(default, deserialize_with = "deserialize_opt_string_or_vec")]
-    pub expected: Option<Vec<String>>,
+    #[serde(default, alias = "button", alias = "btn")]
+    pub button: Option<String>,
     #[serde(default)]
+    pub color: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_opt_string_or_vec",
+        alias = "expect"
+    )]
+    pub expected: Option<Vec<String>>,
+    #[serde(default, alias = "timeout_ms", alias = "timeoutMs")]
     pub timeout_ms: Option<u64>,
+}
+
+impl SeeColorParams {
+    pub fn resolved_channel(&self) -> u8 {
+        if let Some(ref btn) = self.button {
+            parse_channel_str(btn)
+        } else {
+            self.channel
+        }
+    }
+
+    pub fn resolved_expected(&self) -> Vec<String> {
+        if let Some(ref list) = self.expected {
+            if !list.is_empty() {
+                return list.clone();
+            }
+        }
+        if let Some(ref col) = self.color {
+            return vec![col.clone()];
+        }
+        Vec::new()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SeeBlinkParams {
-    #[serde(default = "default_channel_one")]
+    #[serde(
+        default = "default_channel_one",
+        deserialize_with = "deserialize_channel"
+    )]
     pub channel: u8,
+    #[serde(default, alias = "button", alias = "btn")]
+    pub button: Option<String>,
     #[serde(default)]
     pub color: Option<String>,
     #[serde(default)]
     pub count: Option<usize>,
-    #[serde(default)]
+    #[serde(default, alias = "timeout_ms", alias = "timeoutMs")]
     pub timeout_ms: Option<u64>,
-    #[serde(default)]
+    #[serde(default, alias = "min_pulse_ms", alias = "minPulseMs")]
     pub min_pulse_ms: Option<u64>,
-    #[serde(default)]
+    #[serde(default, alias = "max_pulse_ms", alias = "maxPulseMs")]
     pub max_pulse_ms: Option<u64>,
-    #[serde(default)]
+    #[serde(default, alias = "max_gap_ms", alias = "maxGapMs")]
     pub max_gap_ms: Option<u64>,
+}
+
+impl SeeBlinkParams {
+    pub fn resolved_channel(&self) -> u8 {
+        if let Some(ref btn) = self.button {
+            parse_channel_str(btn)
+        } else {
+            self.channel
+        }
+    }
 }
 
 fn default_repeat_count() -> u32 {
@@ -1054,67 +1527,218 @@ fn default_repeat_count() -> u32 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServoRepeatParams {
-    #[serde(default = "default_channel_one")]
+    #[serde(
+        default = "default_channel_one",
+        deserialize_with = "deserialize_channel"
+    )]
     pub channel: u8,
+    #[serde(default, alias = "button", alias = "btn")]
+    pub button: Option<String>,
     #[serde(default = "default_repeat_count")]
     pub count: u32,
-    #[serde(default)]
+    #[serde(default, alias = "press_ms", alias = "pressMs")]
     pub press_ms: Option<u64>,
-    #[serde(default)]
+    #[serde(default, alias = "release_ms", alias = "releaseMs")]
     pub release_ms: Option<u64>,
+}
+
+impl ServoRepeatParams {
+    pub fn resolved_channel(&self) -> u8 {
+        if let Some(ref btn) = self.button {
+            parse_channel_str(btn)
+        } else {
+            self.channel
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PowerCycleParams {
-    #[serde(default = "default_channel_one")]
+    #[serde(
+        default = "default_channel_one",
+        deserialize_with = "deserialize_channel"
+    )]
     pub channel: u8,
-    #[serde(default)]
+    #[serde(
+        default,
+        alias = "button",
+        alias = "relay",
+        alias = "name",
+        alias = "group"
+    )]
+    pub button: Option<String>,
+    #[serde(default, alias = "channels")]
+    pub channels: Option<Vec<u8>>,
+    #[serde(default, alias = "off_ms", alias = "offMs")]
     pub off_ms: Option<u64>,
+}
+
+impl PowerCycleParams {
+    pub fn resolved_channels(&self) -> Vec<u8> {
+        if let Some(ref list) = self.channels {
+            if !list.is_empty() {
+                return list.clone();
+            }
+        }
+        if let Some(ref btn) = self.button {
+            return parse_relay_channels(btn);
+        }
+        vec![self.channel]
+    }
+
+    pub fn resolved_channel(&self) -> u8 {
+        if let Some(ref btn) = self.button {
+            parse_channel_str(btn)
+        } else {
+            self.channel
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServoConfigParams {
-    #[serde(default = "default_channel_one")]
+    #[serde(
+        default = "default_channel_one",
+        deserialize_with = "deserialize_channel"
+    )]
     pub channel: u8,
-    #[serde(default)]
+    #[serde(default, alias = "button", alias = "btn")]
+    pub button: Option<String>,
+    #[serde(default, alias = "press_angle", alias = "pressAngle")]
     pub press_angle: Option<u8>,
-    #[serde(default)]
+    #[serde(default, alias = "release_angle", alias = "releaseAngle")]
     pub release_angle: Option<u8>,
-    #[serde(default)]
+    #[serde(default, alias = "press_duration_ms", alias = "pressDurationMs")]
     pub press_duration_ms: Option<u16>,
-    #[serde(default)]
+    #[serde(default, alias = "release_duration_ms", alias = "releaseDurationMs")]
     pub release_duration_ms: Option<u16>,
-    #[serde(default)]
+    #[serde(default, alias = "hold_duration_ms", alias = "holdDurationMs")]
     pub hold_duration_ms: Option<u16>,
+    #[serde(
+        default,
+        alias = "force_config",
+        alias = "forceConfig",
+        alias = "force"
+    )]
+    pub force: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl ServoConfigParams {
+    pub fn resolved_channel(&self) -> u8 {
+        if let Some(ref btn) = self.button {
+            parse_channel_str(btn)
+        } else {
+            self.channel
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServoStartRepeatParams {
     #[serde(default = "default_channel_one")]
     pub channel: u8,
-    #[serde(default)]
+    #[serde(default, alias = "button", alias = "btn")]
+    pub button: Option<String>,
+    #[serde(default, alias = "period_ms", alias = "periodMs")]
     pub period_ms: Option<u64>,
+}
+
+impl<'de> Deserialize<'de> for ServoStartRepeatParams {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct RawStruct {
+            #[serde(
+                default = "default_channel_one",
+                deserialize_with = "deserialize_channel"
+            )]
+            channel: u8,
+            #[serde(default, alias = "button", alias = "btn")]
+            button: Option<String>,
+            #[serde(default, alias = "period_ms", alias = "periodMs")]
+            period_ms: Option<u64>,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Helper {
+            Num(u64),
+            Str(String),
+            Obj(RawStruct),
+        }
+
+        match Helper::deserialize(deserializer)? {
+            Helper::Num(n) => Ok(ServoStartRepeatParams {
+                channel: n as u8,
+                button: None,
+                period_ms: None,
+            }),
+            Helper::Str(s) => Ok(ServoStartRepeatParams {
+                channel: parse_channel_str(&s),
+                button: Some(s),
+                period_ms: None,
+            }),
+            Helper::Obj(raw) => Ok(ServoStartRepeatParams {
+                channel: raw.channel,
+                button: raw.button,
+                period_ms: raw.period_ms,
+            }),
+        }
+    }
+}
+
+impl ServoStartRepeatParams {
+    pub fn resolved_channel(&self) -> u8 {
+        if let Some(ref btn) = self.button {
+            parse_channel_str(btn)
+        } else {
+            self.channel
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SensorLightParams {
-    #[serde(default = "default_channel_one")]
+    #[serde(
+        default = "default_channel_one",
+        deserialize_with = "deserialize_channel"
+    )]
     pub channel: u8,
+    #[serde(default, alias = "button", alias = "btn", alias = "sensor")]
+    pub button: Option<String>,
     #[serde(default)]
     pub state: Option<String>,
     #[serde(default)]
     pub enabled: Option<bool>,
 }
 
+impl SensorLightParams {
+    pub fn resolved_channel(&self) -> u8 {
+        if let Some(ref btn) = self.button {
+            parse_channel_str(btn)
+        } else {
+            self.channel
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BrightnessThresholdsParams {
-    #[serde(default = "default_channel_one")]
+    #[serde(
+        default = "default_channel_one",
+        deserialize_with = "deserialize_channel"
+    )]
     pub channel: u8,
+    #[serde(default, alias = "button", alias = "btn", alias = "sensor")]
+    pub button: Option<String>,
     pub off_below_percent: u8,
     pub on_above_percent: u8,
     #[serde(default)]
@@ -1125,11 +1749,26 @@ pub struct BrightnessThresholdsParams {
     pub sequence_end_gap_ms: Option<u16>,
 }
 
+impl BrightnessThresholdsParams {
+    pub fn resolved_channel(&self) -> u8 {
+        if let Some(ref btn) = self.button {
+            parse_channel_str(btn)
+        } else {
+            self.channel
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WaitForBrightnessParams {
-    #[serde(default = "default_channel_one")]
+    #[serde(
+        default = "default_channel_one",
+        deserialize_with = "deserialize_channel"
+    )]
     pub channel: u8,
+    #[serde(default, alias = "button", alias = "btn", alias = "sensor")]
+    pub button: Option<String>,
     #[serde(default)]
     pub min_percent: Option<u8>,
     #[serde(default)]
@@ -1138,41 +1777,111 @@ pub struct WaitForBrightnessParams {
     pub timeout_ms: Option<u64>,
 }
 
+impl WaitForBrightnessParams {
+    pub fn resolved_channel(&self) -> u8 {
+        if let Some(ref btn) = self.button {
+            parse_channel_str(btn)
+        } else {
+            self.channel
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WaitForCctParams {
-    #[serde(default = "default_channel_one")]
+    #[serde(
+        default = "default_channel_one",
+        deserialize_with = "deserialize_channel"
+    )]
     pub channel: u8,
+    #[serde(default, alias = "button", alias = "btn", alias = "sensor")]
+    pub button: Option<String>,
     pub min_kelvin: u16,
     pub max_kelvin: u16,
     #[serde(default)]
     pub timeout_ms: Option<u64>,
 }
 
+impl WaitForCctParams {
+    pub fn resolved_channel(&self) -> u8 {
+        if let Some(ref btn) = self.button {
+            parse_channel_str(btn)
+        } else {
+            self.channel
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CalibrateColorParams {
-    #[serde(default = "default_channel_one")]
+    #[serde(
+        default = "default_channel_one",
+        deserialize_with = "deserialize_channel"
+    )]
     pub channel: u8,
+    #[serde(default, alias = "button", alias = "btn", alias = "sensor")]
+    pub button: Option<String>,
     pub color: String,
+}
+
+impl CalibrateColorParams {
+    pub fn resolved_channel(&self) -> u8 {
+        if let Some(ref btn) = self.button {
+            parse_channel_str(btn)
+        } else {
+            self.channel
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CalibrateBrightnessParams {
-    #[serde(default = "default_channel_one")]
+    #[serde(
+        default = "default_channel_one",
+        deserialize_with = "deserialize_channel"
+    )]
     pub channel: u8,
+    #[serde(default, alias = "button", alias = "btn", alias = "sensor")]
+    pub button: Option<String>,
     pub mode: String,
     #[serde(default)]
     pub color: Option<String>,
 }
 
+impl CalibrateBrightnessParams {
+    pub fn resolved_channel(&self) -> u8 {
+        if let Some(ref btn) = self.button {
+            parse_channel_str(btn)
+        } else {
+            self.channel
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddCctPointParams {
-    #[serde(default = "default_channel_one")]
+    #[serde(
+        default = "default_channel_one",
+        deserialize_with = "deserialize_channel"
+    )]
     pub channel: u8,
+    #[serde(default, alias = "button", alias = "btn", alias = "sensor")]
+    pub button: Option<String>,
     pub known_kelvin: u16,
+}
+
+impl AddCctPointParams {
+    pub fn resolved_channel(&self) -> u8 {
+        if let Some(ref btn) = self.button {
+            parse_channel_str(btn)
+        } else {
+            self.channel
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2629,35 +3338,221 @@ impl TestCommand {
             }
 
             TestCommand::HwConnect(p) => format!("hwConnect(port: \"{}\")", p.port),
+            TestCommand::HwPing(p) => format!("hwPing(nodeId: {:?})", p.node_id),
             TestCommand::HwDisconnect => "hwDisconnect".to_string(),
-            TestCommand::HwClick(p) => format!("hwClick(channel: {})", p.channel),
-            TestCommand::HwRepeatClick(p) => format!("hwRepeatClick(channel: {}, count: {})", p.channel, p.count),
-            TestCommand::HwPress(p) => format!("hwPress(channel: {})", p.channel),
-            TestCommand::HwRelease(p) => format!("hwRelease(channel: {})", p.channel),
-            TestCommand::HwRotate(p) => format!("hwRotate(channel: {}, angle: {})", p.channel, p.angle),
-            TestCommand::HwReadServo(p) => format!("hwReadServo(channel: {})", p.channel),
-            TestCommand::HwReadRelay(p) => format!("hwReadRelay(channel: {})", p.channel),
-            TestCommand::HwReadColor(p) => format!("hwReadColor(channel: {})", p.channel),
-            TestCommand::HwReadSensorLight(p) => format!("hwReadSensorLight(channel: {})", p.as_ref().map(|x| x.channel).unwrap_or(1)),
-            TestCommand::HwPowerOn(p) => format!("hwPowerOn(channel: {})", p.channel),
-            TestCommand::HwPowerOff(p) => format!("hwPowerOff(channel: {})", p.channel),
+            TestCommand::HwClick(p) => {
+                if let Some(ref btn) = p.button {
+                    if btn.trim().parse::<u8>().is_err() {
+                        format!("hwClick({} [ch {}])", btn.trim(), p.resolved_channel())
+                    } else {
+                        format!("hwClick(channel: {})", p.resolved_channel())
+                    }
+                } else {
+                    format!("hwClick(channel: {})", p.resolved_channel())
+                }
+            }
+            TestCommand::HwRepeatClick(p) => {
+                let count_str = format!(", count: {}", p.count);
+                if let Some(ref btn) = p.button {
+                    if btn.trim().parse::<u8>().is_err() {
+                        format!(
+                            "hwRepeatClick({} [ch {}]{})",
+                            btn.trim(),
+                            p.resolved_channel(),
+                            count_str
+                        )
+                    } else {
+                        format!(
+                            "hwRepeatClick(channel: {}{})",
+                            p.resolved_channel(),
+                            count_str
+                        )
+                    }
+                } else {
+                    format!(
+                        "hwRepeatClick(channel: {}{})",
+                        p.resolved_channel(),
+                        count_str
+                    )
+                }
+            }
+            TestCommand::HwPress(p) => {
+                if let Some(ref btn) = p.button {
+                    if btn.trim().parse::<u8>().is_err() {
+                        format!("hwPress({} [ch {}])", btn.trim(), p.resolved_channel())
+                    } else {
+                        format!("hwPress(channel: {})", p.resolved_channel())
+                    }
+                } else {
+                    format!("hwPress(channel: {})", p.resolved_channel())
+                }
+            }
+            TestCommand::HwRelease(p) => {
+                if let Some(ref btn) = p.button {
+                    if btn.trim().parse::<u8>().is_err() {
+                        format!("hwRelease({} [ch {}])", btn.trim(), p.resolved_channel())
+                    } else {
+                        format!("hwRelease(channel: {})", p.resolved_channel())
+                    }
+                } else {
+                    format!("hwRelease(channel: {})", p.resolved_channel())
+                }
+            }
+            TestCommand::HwRotate(p) => format!(
+                "hwRotate(channel: {}, angle: {})",
+                p.resolved_channel(),
+                p.angle
+            ),
+            TestCommand::HwReadServo(p) => {
+                format!("hwReadServo(channel: {})", p.resolved_channel())
+            }
+            TestCommand::HwReadRelay(p) => {
+                format!("hwReadRelay(channel: {})", p.resolved_channel())
+            }
+            TestCommand::HwReadColor(p) => {
+                format!("hwReadColor(channel: {})", p.resolved_channel())
+            }
+            TestCommand::HwReadSensorLight(p) => format!(
+                "hwReadSensorLight(channel: {})",
+                p.as_ref().map(|x| x.resolved_channel()).unwrap_or(1)
+            ),
+            TestCommand::HwPowerOn(p) => {
+                let chs = p.resolved_channels();
+                if let Some(ref name) = p.button {
+                    if name.trim().parse::<u8>().is_err() {
+                        format!("hwPowerOn({} [ch {:?}])", name.trim(), chs)
+                    } else {
+                        format!("hwPowerOn(channels: {:?})", chs)
+                    }
+                } else {
+                    format!("hwPowerOn(channels: {:?})", chs)
+                }
+            }
+            TestCommand::HwPowerOff(p) => {
+                let chs = p.resolved_channels();
+                if let Some(ref name) = p.button {
+                    if name.trim().parse::<u8>().is_err() {
+                        format!("hwPowerOff({} [ch {:?}])", name.trim(), chs)
+                    } else {
+                        format!("hwPowerOff(channels: {:?})", chs)
+                    }
+                } else {
+                    format!("hwPowerOff(channels: {:?})", chs)
+                }
+            }
             TestCommand::HwPowerOffAll => "hwPowerOffAll".to_string(),
-            TestCommand::HwPowerCycle(p) => format!("hwPowerCycle(channel: {})", p.channel),
-            TestCommand::HwSeeLed(p) => format!("hwSeeLed(channel: {})", p.channel),
-            TestCommand::HwSeeLedBlink(p) => format!("hwSeeLedBlink(channel: {})", p.channel),
-            TestCommand::HwSeeLedOff(p) => format!("hwSeeLedOff(channel: {})", p.channel),
+            TestCommand::HwPowerCycle(p) => {
+                let chs = p.resolved_channels();
+                if let Some(ref btn) = p.button {
+                    if btn.trim().parse::<u8>().is_err() {
+                        format!("hwPowerCycle({} [ch {:?}])", btn.trim(), chs)
+                    } else {
+                        format!("hwPowerCycle(channels: {:?})", chs)
+                    }
+                } else {
+                    format!("hwPowerCycle(channels: {:?})", chs)
+                }
+            }
+            TestCommand::HwSeeLed(p) => {
+                if let Some(ref btn) = p.button {
+                    if btn.trim().parse::<u8>().is_err() {
+                        format!("hwSeeLed({} [ch {}])", btn.trim(), p.resolved_channel())
+                    } else {
+                        format!("hwSeeLed(channel: {})", p.resolved_channel())
+                    }
+                } else {
+                    format!("hwSeeLed(channel: {})", p.resolved_channel())
+                }
+            }
+            TestCommand::HwSeeLedBlink(p) => {
+                if let Some(ref btn) = p.button {
+                    if btn.trim().parse::<u8>().is_err() {
+                        format!(
+                            "hwSeeLedBlink({} [ch {}])",
+                            btn.trim(),
+                            p.resolved_channel()
+                        )
+                    } else {
+                        format!("hwSeeLedBlink(channel: {})", p.resolved_channel())
+                    }
+                } else {
+                    format!("hwSeeLedBlink(channel: {})", p.resolved_channel())
+                }
+            }
+            TestCommand::HwSeeLedOff(p) => {
+                if let Some(ref btn) = p.button {
+                    if btn.trim().parse::<u8>().is_err() {
+                        format!("hwSeeLedOff({} [ch {}])", btn.trim(), p.resolved_channel())
+                    } else {
+                        format!("hwSeeLedOff(channel: {})", p.resolved_channel())
+                    }
+                } else {
+                    format!("hwSeeLedOff(channel: {})", p.resolved_channel())
+                }
+            }
 
-            TestCommand::HwConfigureServo(p) => format!("hwConfigureServo(channel: {})", p.channel),
+            TestCommand::HwConfigureServo(p) => {
+                format!("hwConfigureServo(channel: {})", p.resolved_channel())
+            }
             TestCommand::HwReleaseAll => "hwReleaseAll".to_string(),
-            TestCommand::HwStartRepeatClick(p) => format!("hwStartRepeatClick(channel: {})", p.channel),
-            TestCommand::HwStopRepeatClick(p) => format!("hwStopRepeatClick(channel: {})", p.channel),
-            TestCommand::HwSensorLight(p) => format!("hwSensorLight(channel: {})", p.channel),
-            TestCommand::HwSetBrightnessThresholds(p) => format!("hwSetBrightnessThresholds(channel: {})", p.channel),
-            TestCommand::HwWaitForBrightness(p) => format!("hwWaitForBrightness(channel: {})", p.channel),
-            TestCommand::HwWaitForCct(p) => format!("hwWaitForCct(channel: {})", p.channel),
-            TestCommand::HwCalibrateColor(p) => format!("hwCalibrateColor(channel: {}, color: \"{}\")", p.channel, p.color),
-            TestCommand::HwCalibrateBrightness(p) => format!("hwCalibrateBrightness(channel: {}, mode: \"{}\")", p.channel, p.mode),
-            TestCommand::HwAddCctPoint(p) => format!("hwAddCctPoint(channel: {}, knownKelvin: {})", p.channel, p.known_kelvin),
+            TestCommand::HwStartRepeatClick(p) => {
+                if let Some(ref btn) = p.button {
+                    if btn.trim().parse::<u8>().is_err() {
+                        format!(
+                            "hwStartRepeatClick({} [ch {}])",
+                            btn.trim(),
+                            p.resolved_channel()
+                        )
+                    } else {
+                        format!("hwStartRepeatClick(channel: {})", p.resolved_channel())
+                    }
+                } else {
+                    format!("hwStartRepeatClick(channel: {})", p.resolved_channel())
+                }
+            }
+            TestCommand::HwStopRepeatClick(p) => {
+                if let Some(ref btn) = p.button {
+                    if btn.trim().parse::<u8>().is_err() {
+                        format!(
+                            "hwStopRepeatClick({} [ch {}])",
+                            btn.trim(),
+                            p.resolved_channel()
+                        )
+                    } else {
+                        format!("hwStopRepeatClick(channel: {})", p.resolved_channel())
+                    }
+                } else {
+                    format!("hwStopRepeatClick(channel: {})", p.resolved_channel())
+                }
+            }
+            TestCommand::HwSensorLight(p) => {
+                format!("hwSensorLight(channel: {})", p.resolved_channel())
+            }
+            TestCommand::HwSetBrightnessThresholds(p) => format!(
+                "hwSetBrightnessThresholds(channel: {})",
+                p.resolved_channel()
+            ),
+            TestCommand::HwWaitForBrightness(p) => {
+                format!("hwWaitForBrightness(channel: {})", p.resolved_channel())
+            }
+            TestCommand::HwWaitForCct(p) => {
+                format!("hwWaitForCct(channel: {})", p.resolved_channel())
+            }
+            TestCommand::HwCalibrateColor(p) => format!(
+                "hwCalibrateColor(channel: {}, color: \"{}\")",
+                p.resolved_channel(),
+                p.color
+            ),
+            TestCommand::HwCalibrateBrightness(p) => format!(
+                "hwCalibrateBrightness(channel: {}, mode: \"{}\")",
+                p.resolved_channel(),
+                p.mode
+            ),
+            TestCommand::HwAddCctPoint(p) => format!(
+                "hwAddCctPoint(channel: {}, knownKelvin: {})",
+                p.resolved_channel(),
+                p.known_kelvin
+            ),
             TestCommand::HwSaveCalibration => "hwSaveCalibration".to_string(),
             TestCommand::HwLoadCalibration => "hwLoadCalibration".to_string(),
             TestCommand::HwResetCalibration => "hwResetCalibration".to_string(),

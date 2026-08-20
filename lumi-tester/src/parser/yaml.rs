@@ -49,6 +49,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
                 cameras: None,
                 window_size: None,
                 jig: None,
+                skip: None,
             }
         };
         // Parse commands
@@ -75,6 +76,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
             cameras: None,
             window_size: None,
             jig: None,
+            skip: None,
         });
     }
 
@@ -110,6 +112,7 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
             cameras: None,
             window_size: None,
             jig: None,
+            skip: None,
         };
 
         if let Some(val) = map.get(&serde_yaml::Value::String("data".to_string())) {
@@ -249,6 +252,8 @@ fn parse_header(header: &str, base_path: &Path) -> Result<TestFlow> {
         window_size: Option<crate::parser::types::WindowSizeConfig>,
         #[serde(default)]
         jig: Option<crate::parser::types::JigConfig>,
+        #[serde(default, alias = "disabled", alias = "manual", alias = "ignore")]
+        skip: Option<bool>,
     }
 
     let parsed: Header = serde_yaml::from_str(header).context("Failed to parse YAML header")?;
@@ -316,6 +321,7 @@ fn parse_header(header: &str, base_path: &Path) -> Result<TestFlow> {
         cameras: parsed.cameras,
         window_size: parsed.window_size,
         jig: parsed.jig,
+        skip: parsed.skip,
     })
 }
 
@@ -1190,18 +1196,41 @@ fn parse_command_with_params(
             let p: crate::parser::types::HardwareConnectParams = if params.is_string() {
                 crate::parser::types::HardwareConnectParams {
                     port: params.as_str().unwrap().to_string(),
-                    baudrate: None,
-                    node_id: None,
-                    wire_format: None,
                     auto_power_off: Some(true),
-                    timeout_ms: None,
-                    file: None,
-                    servos: None,
+                    ..Default::default()
                 }
             } else {
                 serde_yaml::from_value(params.clone())?
             };
             TestCommand::HwConnect(p)
+        }
+        "hwPing" => {
+            let p: crate::parser::types::HardwarePingParams = if params.is_number() {
+                crate::parser::types::HardwarePingParams {
+                    port: None,
+                    baudrate: None,
+                    node_id: params.as_u64().map(|n| n as u8),
+                }
+            } else if let Some(s) = params.as_str() {
+                if s.chars().all(|c| c.is_ascii_digit()) {
+                    crate::parser::types::HardwarePingParams {
+                        port: None,
+                        baudrate: None,
+                        node_id: s.parse::<u8>().ok(),
+                    }
+                } else {
+                    crate::parser::types::HardwarePingParams {
+                        port: Some(s.to_string()),
+                        baudrate: None,
+                        node_id: None,
+                    }
+                }
+            } else if params.is_null() {
+                crate::parser::types::HardwarePingParams::default()
+            } else {
+                serde_yaml::from_value(params.clone()).unwrap_or_default()
+            };
+            TestCommand::HwPing(p)
         }
         "hwDisconnect" => TestCommand::HwDisconnect,
 
@@ -1209,12 +1238,20 @@ fn parse_command_with_params(
             let p: crate::parser::types::ServoClickParams = if params.is_number() {
                 crate::parser::types::ServoClickParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
+                    button: None,
+                    hold_ms: None,
+                }
+            } else if let Some(s) = params.as_str() {
+                crate::parser::types::ServoClickParams {
+                    channel: crate::parser::types::parse_channel_str(s),
+                    button: Some(s.to_string()),
                     hold_ms: None,
                 }
             } else {
                 serde_yaml::from_value(params.clone()).unwrap_or(
                     crate::parser::types::ServoClickParams {
                         channel: 1,
+                        button: None,
                         hold_ms: None,
                     },
                 )
@@ -1225,10 +1262,16 @@ fn parse_command_with_params(
             let p: crate::parser::types::ServoActionParams = if params.is_number() {
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
+                    button: None,
+                }
+            } else if let Some(s) = params.as_str() {
+                crate::parser::types::ServoActionParams {
+                    channel: crate::parser::types::parse_channel_str(s),
+                    button: Some(s.to_string()),
                 }
             } else {
                 serde_yaml::from_value(params.clone())
-                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
+                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None })
             };
             TestCommand::HwPress(p)
         }
@@ -1236,10 +1279,16 @@ fn parse_command_with_params(
             let p: crate::parser::types::ServoActionParams = if params.is_number() {
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
+                    button: None,
+                }
+            } else if let Some(s) = params.as_str() {
+                crate::parser::types::ServoActionParams {
+                    channel: crate::parser::types::parse_channel_str(s),
+                    button: Some(s.to_string()),
                 }
             } else {
                 serde_yaml::from_value(params.clone())
-                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
+                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None })
             };
             TestCommand::HwRelease(p)
         }
@@ -1252,10 +1301,16 @@ fn parse_command_with_params(
             let p: crate::parser::types::ServoActionParams = if params.is_number() {
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
+                    button: None,
+                }
+            } else if let Some(s) = params.as_str() {
+                crate::parser::types::ServoActionParams {
+                    channel: crate::parser::types::parse_channel_str(s),
+                    button: Some(s.to_string()),
                 }
             } else {
                 serde_yaml::from_value(params.clone())
-                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
+                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None })
             };
             TestCommand::HwReadServo(p)
         }
@@ -1263,10 +1318,16 @@ fn parse_command_with_params(
             let p: crate::parser::types::ServoActionParams = if params.is_number() {
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
+                    button: None,
+                }
+            } else if let Some(s) = params.as_str() {
+                crate::parser::types::ServoActionParams {
+                    channel: crate::parser::types::parse_channel_str(s),
+                    button: Some(s.to_string()),
                 }
             } else {
                 serde_yaml::from_value(params.clone())
-                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
+                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None })
             };
             TestCommand::HwReadRelay(p)
         }
@@ -1274,10 +1335,16 @@ fn parse_command_with_params(
             let p: crate::parser::types::ServoActionParams = if params.is_number() {
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
+                    button: None,
+                }
+            } else if let Some(s) = params.as_str() {
+                crate::parser::types::ServoActionParams {
+                    channel: crate::parser::types::parse_channel_str(s),
+                    button: Some(s.to_string()),
                 }
             } else {
                 serde_yaml::from_value(params.clone())
-                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1 })
+                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None })
             };
             TestCommand::HwReadColor(p)
         }
@@ -1285,6 +1352,12 @@ fn parse_command_with_params(
             let p: Option<crate::parser::types::ServoActionParams> = if params.is_number() {
                 Some(crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
+                    button: None,
+                })
+            } else if let Some(s) = params.as_str() {
+                Some(crate::parser::types::ServoActionParams {
+                    channel: crate::parser::types::parse_channel_str(s),
+                    button: Some(s.to_string()),
                 })
             } else if params.is_null() {
                 None
@@ -1298,6 +1371,15 @@ fn parse_command_with_params(
             let p: crate::parser::types::RelaySetParams = if params.is_number() {
                 crate::parser::types::RelaySetParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
+                    button: None,
+                    channels: None,
+                    state: "on".to_string(),
+                }
+            } else if let Some(s) = params.as_str() {
+                crate::parser::types::RelaySetParams {
+                    channel: crate::parser::types::parse_channel_str(s),
+                    button: Some(s.to_string()),
+                    channels: None,
                     state: "on".to_string(),
                 }
             } else {
@@ -1312,6 +1394,15 @@ fn parse_command_with_params(
             let p: crate::parser::types::RelaySetParams = if params.is_number() {
                 crate::parser::types::RelaySetParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
+                    button: None,
+                    channels: None,
+                    state: "off".to_string(),
+                }
+            } else if let Some(s) = params.as_str() {
+                crate::parser::types::RelaySetParams {
+                    channel: crate::parser::types::parse_channel_str(s),
+                    button: Some(s.to_string()),
+                    channels: None,
                     state: "off".to_string(),
                 }
             } else {
@@ -1328,11 +1419,22 @@ fn parse_command_with_params(
             let p: crate::parser::types::PowerCycleParams = if params.is_number() {
                 crate::parser::types::PowerCycleParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
+                    button: None,
+                    channels: None,
+                    off_ms: None,
+                }
+            } else if let Some(s) = params.as_str() {
+                crate::parser::types::PowerCycleParams {
+                    channel: crate::parser::types::parse_channel_str(s),
+                    button: Some(s.to_string()),
+                    channels: None,
                     off_ms: None,
                 }
             } else if params.is_null() {
                 crate::parser::types::PowerCycleParams {
                     channel: 1,
+                    button: None,
+                    channels: None,
                     off_ms: None,
                 }
             } else {
@@ -1342,11 +1444,31 @@ fn parse_command_with_params(
         }
 
         "hwSeeLed" => {
-            let p: crate::parser::types::SeeColorParams = if params.is_string() {
-                crate::parser::types::SeeColorParams {
-                    channel: 1,
-                    expected: Some(vec![params.as_str().unwrap().to_string()]),
-                    timeout_ms: None,
+            let p: crate::parser::types::SeeColorParams = if let Some(s) = params.as_str() {
+                if let Some((btn, col)) = s.split_once(',') {
+                    crate::parser::types::SeeColorParams {
+                        channel: crate::parser::types::parse_channel_str(btn),
+                        button: Some(btn.trim().to_string()),
+                        color: Some(col.trim().to_string()),
+                        expected: Some(vec![col.trim().to_string()]),
+                        timeout_ms: None,
+                    }
+                } else if ["NC1", "NC2", "NC3", "BUTTON1", "BUTTON2", "BUTTON3"].contains(&s.trim().to_uppercase().as_str()) {
+                    crate::parser::types::SeeColorParams {
+                        channel: crate::parser::types::parse_channel_str(s),
+                        button: Some(s.trim().to_string()),
+                        color: None,
+                        expected: None,
+                        timeout_ms: None,
+                    }
+                } else {
+                    crate::parser::types::SeeColorParams {
+                        channel: 1,
+                        button: None,
+                        color: Some(s.to_string()),
+                        expected: Some(vec![s.to_string()]),
+                        timeout_ms: None,
+                    }
                 }
             } else {
                 serde_yaml::from_value(params.clone())?
@@ -1357,6 +1479,7 @@ fn parse_command_with_params(
             let p: crate::parser::types::SeeBlinkParams = if params.is_number() {
                 crate::parser::types::SeeBlinkParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
+                    button: None,
                     color: None,
                     count: None,
                     timeout_ms: None,
@@ -1364,19 +1487,34 @@ fn parse_command_with_params(
                     max_pulse_ms: None,
                     max_gap_ms: None,
                 }
-            } else if params.is_string() {
-                crate::parser::types::SeeBlinkParams {
-                    channel: 1,
-                    color: Some(params.as_str().unwrap().to_string()),
-                    count: None,
-                    timeout_ms: None,
-                    min_pulse_ms: None,
-                    max_pulse_ms: None,
-                    max_gap_ms: None,
+            } else if let Some(s) = params.as_str() {
+                if let Some((btn, col)) = s.split_once(',') {
+                    crate::parser::types::SeeBlinkParams {
+                        channel: crate::parser::types::parse_channel_str(btn),
+                        button: Some(btn.trim().to_string()),
+                        color: Some(col.trim().to_string()),
+                        count: None,
+                        timeout_ms: None,
+                        min_pulse_ms: None,
+                        max_pulse_ms: None,
+                        max_gap_ms: None,
+                    }
+                } else {
+                    crate::parser::types::SeeBlinkParams {
+                        channel: 1,
+                        button: None,
+                        color: Some(s.to_string()),
+                        count: None,
+                        timeout_ms: None,
+                        min_pulse_ms: None,
+                        max_pulse_ms: None,
+                        max_gap_ms: None,
+                    }
                 }
             } else if params.is_null() {
                 crate::parser::types::SeeBlinkParams {
                     channel: 1,
+                    button: None,
                     color: None,
                     count: None,
                     timeout_ms: None,
@@ -1394,6 +1532,7 @@ fn parse_command_with_params(
             let p: crate::parser::types::SeeBlinkParams = if params.is_number() {
                 crate::parser::types::SeeBlinkParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
+                    button: None,
                     color: None,
                     count: None,
                     timeout_ms: None,
@@ -1404,6 +1543,7 @@ fn parse_command_with_params(
             } else if params.is_null() {
                 crate::parser::types::SeeBlinkParams {
                     channel: 1,
+                    button: None,
                     color: None,
                     count: None,
                     timeout_ms: None,
@@ -1421,6 +1561,7 @@ fn parse_command_with_params(
             let p: crate::parser::types::ServoRepeatParams = if params.is_number() {
                 crate::parser::types::ServoRepeatParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
+                    button: None,
                     count: 2,
                     press_ms: None,
                     release_ms: None,
@@ -1443,6 +1584,13 @@ fn parse_command_with_params(
             let p: crate::parser::types::ServoStartRepeatParams = if params.is_number() {
                 crate::parser::types::ServoStartRepeatParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
+                    button: None,
+                    period_ms: None,
+                }
+            } else if let Some(s) = params.as_str() {
+                crate::parser::types::ServoStartRepeatParams {
+                    channel: crate::parser::types::parse_channel_str(s),
+                    button: Some(s.to_string()),
                     period_ms: None,
                 }
             } else {
@@ -1455,9 +1603,15 @@ fn parse_command_with_params(
             let p: crate::parser::types::ServoActionParams = if params.is_number() {
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
+                    button: None,
+                }
+            } else if let Some(s) = params.as_str() {
+                crate::parser::types::ServoActionParams {
+                    channel: crate::parser::types::parse_channel_str(s),
+                    button: Some(s.to_string()),
                 }
             } else if params.is_null() {
-                crate::parser::types::ServoActionParams { channel: 1 }
+                crate::parser::types::ServoActionParams { channel: 1, button: None }
             } else {
                 serde_yaml::from_value(params.clone())?
             };
@@ -1468,12 +1622,14 @@ fn parse_command_with_params(
             let p: crate::parser::types::SensorLightParams = if params.is_bool() {
                 crate::parser::types::SensorLightParams {
                     channel: 1,
+                    button: None,
                     state: None,
                     enabled: params.as_bool(),
                 }
             } else if params.is_string() {
                 crate::parser::types::SensorLightParams {
                     channel: 1,
+                    button: None,
                     state: Some(params.as_str().unwrap().to_string()),
                     enabled: None,
                 }
@@ -1929,6 +2085,44 @@ jig:
         assert_eq!(servos[0].release_angle, Some(15));
         assert_eq!(servos[1].channel, 2);
         assert_eq!(servos[1].press_angle, Some(70));
+    }
+
+    #[test]
+    fn test_jig_buttons_and_relays_profile_parsing() {
+        let yaml = r#"
+platform: android
+jig:
+  port: "COM5"
+  buttons:
+    NC1:
+      servo: 5
+      sensor: 5
+    NC3:
+      servo: 7
+      sensor: 6
+  relays:
+    mainPower: [3, 4]
+    220V: [3, 4]
+---
+- hwClick: "NC3"
+- hwReadColor: "NC3"
+"#;
+        let flow = parse_yaml_content(yaml, Path::new("jig_btn_test.yaml")).unwrap();
+        let jig = flow.jig.unwrap();
+        let params = jig.resolve(None).unwrap();
+        let buttons = params.buttons.unwrap();
+        assert_eq!(buttons.get("NC3").unwrap().servo, Some(7));
+        assert_eq!(buttons.get("NC3").unwrap().sensor, Some(6));
+        let relays = params.relays.unwrap();
+        assert_eq!(relays.get("220V").unwrap(), &vec![3, 4]);
+
+        let mut hw_config = crate::hardware::HardwareConfig::default();
+        hw_config.button_mappings = buttons;
+        hw_config.relay_mappings = relays;
+        let ctrl = crate::hardware::HardwareController::new(Some(hw_config));
+        assert_eq!(ctrl.resolve_servo_channel("NC3"), 7);
+        assert_eq!(ctrl.resolve_sensor_channel("NC3"), 6);
+        assert_eq!(ctrl.resolve_relay_channels("220V"), vec![3, 4]);
     }
 
     #[test]

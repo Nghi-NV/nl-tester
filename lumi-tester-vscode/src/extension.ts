@@ -66,6 +66,15 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
 
+  // Register Hover provider for custom Jig relay/button tooltips
+  const { LumiJigHoverProvider } = require('./jigHoverProvider');
+  context.subscriptions.push(
+    vscode.languages.registerHoverProvider(
+      { language: 'yaml', scheme: 'file' },
+      new LumiJigHoverProvider()
+    )
+  );
+
   // Register CodeLens provider for play buttons
   const codeLensProvider = new LumiCodeLensProvider();
   context.subscriptions.push(

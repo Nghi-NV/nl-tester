@@ -201,11 +201,38 @@
               "items": {
                 "$ref": "#/$defs/servoConfig"
               }
+            },
+            "buttons": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/buttonConfig"
+              }
+            },
+            "relays": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              }
             }
           },
           "additionalProperties": true
         }
       ]
+    },
+    "buttonConfig": {
+      "type": "object",
+      "properties": {
+        "servo": {
+          "type": "integer"
+        },
+        "sensor": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": true
     },
     "servoConfig": {
       "type": "object",
@@ -331,6 +358,7 @@
         "hwConnect",
         "hwDiagnostics",
         "hwDisconnect",
+        "hwPing",
         "hwEraseCalibration",
         "hwLoadCalibration",
         "hwPowerCycle",

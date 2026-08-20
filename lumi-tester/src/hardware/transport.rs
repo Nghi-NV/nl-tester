@@ -8,7 +8,7 @@ use crate::hardware::protocol::ResponseLine;
 
 pub struct SerialTransport {
     port: Option<Box<dyn serialport::SerialPort>>,
-    port_name: Option<String>,
+    pub port_name: Option<String>,
     pub node_id: Option<u8>,
     pub wire_format: Option<String>,
     log_file: Option<File>,
@@ -37,7 +37,7 @@ impl SerialTransport {
             .with_context(|| format!("Failed to open serial port '{}'", port_name))?;
 
         // Allow USB-Serial / MCU DTR line to stabilize and clear startup noise
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(150));
         let _ = port.clear(serialport::ClearBuffer::All);
 
         self.port = Some(port);
@@ -121,73 +121,102 @@ impl SerialTransport {
             format!("{}\n", trimmed)
         };
 
-        self.log_event("TX", wire_cmd.trim());
+        const MAX_ATTEMPTS: usize = 2;
+        let mut last_error: Option<anyhow::Error> = None;
 
-        let port = self
-            .port
-            .as_mut()
-            .ok_or_else(|| anyhow!("Serial port is not connected"))?;
-
-        // Clear stale unread bytes from RX queue before sending new command
-        let _ = port.clear(serialport::ClearBuffer::Input);
-
-        // Write command
-        port.write_all(wire_cmd.as_bytes())
-            .with_context(|| "Failed to write command to serial port")?;
-        port.flush()?;
-
-        let start = Instant::now();
-        let timeout_duration = Duration::from_secs_f64(timeout_s);
-        let mut buffer = Vec::new();
-
-        loop {
-            if start.elapsed() > timeout_duration {
-                let port = self.port.as_mut().unwrap();
-                let _ = port.flush();
-                self.log_event("TIMEOUT", &format!("Timeout waiting for command: {}", cmd.trim()));
-                anyhow::bail!(
-                    "Firmware command timeout ({:.1}s) on port '{}' for command: '{}'",
-                    timeout_s,
-                    self.port_name.as_deref().unwrap_or("unknown"),
-                    cmd.trim()
-                );
+        for attempt in 0..MAX_ATTEMPTS {
+            if attempt > 0 {
+                std::thread::sleep(Duration::from_millis(50));
             }
 
-            let mut byte_buf = [0u8; 1];
-            let port_ref = self.port.as_mut().unwrap();
-            match port_ref.read(&mut byte_buf) {
-                Ok(1) => {
-                    let b = byte_buf[0];
-                    if b == b'\n' {
-                        let line_str = String::from_utf8_lossy(&buffer).trim().to_string();
-                        buffer.clear();
+            self.log_event("TX", wire_cmd.trim());
 
-                        if !line_str.is_empty() {
-                            self.log_event("RX", &line_str);
-                            if let Ok(resp) = ResponseLine::parse(&line_str) {
-                                if resp.kind == "error" {
-                                    let code = resp.get_str("code").unwrap_or("UNKNOWN");
-                                    let msg = resp.get_str("message").unwrap_or(&line_str);
-                                    anyhow::bail!("Firmware error [{}]: {}", code, msg);
-                                }
-                                if matcher(&resp) {
-                                    return Ok(resp);
-                                }
-                            }
-                        }
-                    } else if b != b'\r' {
-                        buffer.push(b);
+            let port = self
+                .port
+                .as_mut()
+                .ok_or_else(|| anyhow!("Serial port is not connected"))?;
+
+            // Clear stale unread bytes from RX queue before sending new command
+            let _ = port.clear(serialport::ClearBuffer::Input);
+
+            // Write command
+            port.write_all(wire_cmd.as_bytes())
+                .with_context(|| "Failed to write command to serial port")?;
+            port.flush()?;
+
+            let start = Instant::now();
+            let timeout_duration = Duration::from_secs_f64(timeout_s);
+            let mut buffer = Vec::new();
+            let mut retry_needed = false;
+
+            while !retry_needed {
+                if start.elapsed() > timeout_duration {
+                    let port = self.port.as_mut().unwrap();
+                    let _ = port.flush();
+                    self.log_event("TIMEOUT", &format!("Timeout waiting for command: {}", cmd.trim()));
+                    if attempt + 1 < MAX_ATTEMPTS {
+                        retry_needed = true;
+                        last_error = Some(anyhow!(
+                            "Firmware command timeout ({:.1}s) on port '{}' for command: '{}'",
+                            timeout_s,
+                            self.port_name.as_deref().unwrap_or("unknown"),
+                            cmd.trim()
+                        ));
+                        break;
+                    } else {
+                        anyhow::bail!(
+                            "Firmware command timeout ({:.1}s) on port '{}' for command: '{}'",
+                            timeout_s,
+                            self.port_name.as_deref().unwrap_or("unknown"),
+                            cmd.trim()
+                        );
                     }
                 }
-                Ok(_) => {}
-                Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-                Err(e) => {
-                    self.log_event("RX_ERROR", &e.to_string());
-                    anyhow::bail!("Serial read error: {}", e);
+
+                let mut byte_buf = [0u8; 1];
+                let port_ref = self.port.as_mut().unwrap();
+                match port_ref.read(&mut byte_buf) {
+                    Ok(1) => {
+                        let b = byte_buf[0];
+                        if b == b'\n' {
+                            let line_str = String::from_utf8_lossy(&buffer).trim().to_string();
+                            buffer.clear();
+
+                            if !line_str.is_empty() {
+                                self.log_event("RX", &line_str);
+                                if let Ok(resp) = ResponseLine::parse(&line_str) {
+                                    if resp.kind == "error" {
+                                        let code = resp.get_str("code").unwrap_or("UNKNOWN");
+                                        let msg = resp.get_str("message").unwrap_or(&line_str);
+                                        // If transient invalid command or noise on first attempt, retry once
+                                        if attempt + 1 < MAX_ATTEMPTS && code == "INVALID_COMMAND" {
+                                            retry_needed = true;
+                                            last_error = Some(anyhow!("Firmware error [{}]: {}", code, msg));
+                                            break;
+                                        }
+                                        anyhow::bail!("Firmware error [{}]: {}", code, msg);
+                                    }
+                                    if matcher(&resp) {
+                                        return Ok(resp);
+                                    }
+                                }
+                            }
+                        } else if b != b'\r' {
+                            buffer.push(b);
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(e) => {
+                        self.log_event("RX_ERROR", &e.to_string());
+                        anyhow::bail!("Serial read error: {}", e);
+                    }
                 }
             }
         }
+
+        Err(last_error.unwrap_or_else(|| anyhow!("Command failed after retries: {}", cmd.trim())))
     }
 }

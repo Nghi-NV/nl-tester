@@ -48,6 +48,7 @@ pub struct TestExecutor {
     camera_observe_tasks: HashMap<String, tokio::task::JoinHandle<()>>,
     camera_observe_next_port: u16,
     hardware_controller: Option<crate::hardware::HardwareController>,
+    pub auto_power_off: bool,
 }
 
 /// Resolve `align` and `offset` from TapParams into (x_pct, y_pct) as 0.0..1.0.
@@ -208,6 +209,7 @@ impl TestExecutor {
             camera_observe_tasks: HashMap::new(),
             camera_observe_next_port: 9444,
             hardware_controller: None,
+            auto_power_off: false,
         }
     }
 
@@ -231,6 +233,19 @@ impl TestExecutor {
 
         // Parse the test file
         let flow = parse_test_file(path)?;
+
+        // If flow is explicitly marked as skip / manual / disabled, and no single command index is targeted
+        if flow.skip.unwrap_or(false) && command_index.is_none() && from_command_index.is_none() {
+            self.emitter.emit(TestEvent::Log {
+                message: format!(
+                    "{} Skipping flow '{}' (marked as skip / manual)",
+                    "⏭️".yellow(),
+                    path.display()
+                ),
+                depth: self.depth,
+            });
+            return Ok(());
+        }
 
         // Filter by tags if specified
         if let Some(ref required_tags) = self.target_tags {
@@ -296,6 +311,12 @@ impl TestExecutor {
             if params.wire_format.is_some() {
                 hw_config.wire_format = params.wire_format.clone();
             }
+            if let Some(ref btns) = params.buttons {
+                hw_config.button_mappings = btns.clone();
+            }
+            if let Some(ref rlys) = params.relays {
+                hw_config.relay_mappings = rlys.clone();
+            }
             let controller = crate::hardware::HardwareController::new(Some(hw_config));
             if let Err(e) = controller.connect(&port, params.baudrate) {
                 let err_msg = format!("Hardware Jig connection failed on '{}': {}", port, e);
@@ -306,26 +327,48 @@ impl TestExecutor {
                 anyhow::bail!(err_msg);
             }
 
-            // Auto configure servos if provided in Jig profile
+            // Auto configure servos if provided in Jig profile (only configure once if already cached, unless force requested)
             if let Some(ref servos) = params.servos {
+                let force_all = params.force_config.unwrap_or(false);
+                let mut configured_count = 0;
                 for cfg in servos {
-                    let press_angle = cfg.press_angle.unwrap_or(75);
-                    let release_angle = cfg.release_angle.unwrap_or(15);
-                    let press_duration_ms = cfg.press_duration_ms.unwrap_or(400);
-                    let release_duration_ms = cfg.release_duration_ms.unwrap_or(150);
-                    let hold_duration_ms = cfg.hold_duration_ms.unwrap_or(300);
-                    controller.servo.set_config(
-                        cfg.channel,
+                    let press_angle = cfg.press_angle.unwrap_or(5);
+                    let release_angle = cfg.release_angle.unwrap_or(120);
+                    let press_duration_ms = cfg.press_duration_ms.unwrap_or(100);
+                    let release_duration_ms = cfg.release_duration_ms.unwrap_or(100);
+                    let hold_duration_ms = cfg.hold_duration_ms.unwrap_or(100);
+                    let force = force_all || cfg.force.unwrap_or(false);
+                    let ch = cfg.resolved_channel();
+
+                    if !force && crate::hardware::servo::is_servo_already_configured(
+                        &port,
+                        ch,
                         press_angle,
                         release_angle,
                         press_duration_ms,
                         release_duration_ms,
                         hold_duration_ms,
-                    ).map_err(|e| anyhow::anyhow!("Failed to auto-configure servo channel {}: {}", cfg.channel, e))?;
+                    ) {
+                        continue;
+                    }
+
+                    controller.servo.set_config(
+                        ch,
+                        press_angle,
+                        release_angle,
+                        press_duration_ms,
+                        release_duration_ms,
+                        hold_duration_ms,
+                    ).map_err(|e| anyhow::anyhow!("Failed to auto-configure servo channel {}: {}", ch, e))?;
+                    configured_count += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(30));
                 }
-                println!("  {} Auto-configured {} servo channels from Jig profile", "⚙️".cyan(), servos.len());
+                if configured_count > 0 {
+                    println!("  {} Configured {} servo channels from Jig profile", "⚙️".cyan(), configured_count);
+                }
             }
 
+            self.auto_power_off = params.auto_power_off.unwrap_or(false);
             self.hardware_controller = Some(controller);
             println!("  {} Auto-connected hardware Jig on {}", "🔌".green(), port);
         }
@@ -612,9 +655,14 @@ impl TestExecutor {
         // Cleanup Jig connection if active (only on root depth)
         if self.depth == 0 {
             if let Some(ctrl) = &self.hardware_controller {
-                let _ = ctrl.enter_safe_state();
+                if self.auto_power_off {
+                    let _ = ctrl.enter_safe_state();
+                    println!("  {} Auto-disconnected hardware Jig (power off & safe state)", "🔌".yellow());
+                } else {
+                    let _ = ctrl.color_sensor.light_off(None);
+                    println!("  {} Auto-disconnected hardware Jig (hardware state preserved)", "🔌".yellow());
+                }
                 ctrl.disconnect();
-                println!("  {} Auto-disconnected hardware Jig (safe state)", "🔌".yellow());
                 self.hardware_controller = None;
             }
         }
@@ -3153,13 +3201,39 @@ impl TestExecutor {
             }
 
             // Hardware Automation Commands (Standardized hw* Commands)
+            TestCommand::HwPing(params) => {
+                if let Some(ctrl) = &self.hardware_controller {
+                    let resp = ctrl.ping(params.node_id)?;
+                    println!("  {} Ping Node {:?} OK: {}", "🏓".green(), params.node_id.or(Some(1)), resp);
+                } else {
+                    let port = params.port.clone().unwrap_or_else(|| "/dev/cu.usbserial-A5069RR4".to_string());
+                    let res = crate::hardware::ping_details(&port, params.baudrate, params.node_id, None)?;
+                    println!("  {} Pinged Jig on {}: Node={:?}, Firmware={:?}, Status={:?} ({}ms)",
+                        "🏓".green(), res.port, res.node_id, res.firmware_version, res.system_status, res.latency_ms);
+                }
+                Ok(())
+            }
+
             TestCommand::HwConnect(params) => {
                 let resolved_params = if let Some(ref file_path) = params.file {
                     let candidate_path = self.context.base_dir.join(file_path);
                     let content = std::fs::read_to_string(&candidate_path)
                         .map_err(|e| anyhow::anyhow!("Failed to read jig file '{}': {}", candidate_path.display(), e))?;
-                    let mut loaded: crate::parser::types::HardwareConnectParams = serde_yaml::from_str(&content)
+                    let raw_val: serde_yaml::Value = serde_yaml::from_str(&content)
                         .map_err(|e| anyhow::anyhow!("Failed to parse jig file '{}': {}", candidate_path.display(), e))?;
+                    
+                    let mut loaded: crate::parser::types::HardwareConnectParams = if let Some(hw) = raw_val.get("hardware") {
+                        let mut p: crate::parser::types::HardwareConnectParams = serde_yaml::from_value(hw.clone())
+                            .unwrap_or_default();
+                        if let Some(servos_val) = raw_val.get("servos") {
+                            p.servos = serde_yaml::from_value(servos_val.clone()).ok();
+                        }
+                        p
+                    } else {
+                        serde_yaml::from_value(raw_val.clone())
+                            .map_err(|e| anyhow::anyhow!("Failed to parse jig file '{}': {}", candidate_path.display(), e))?
+                    };
+
                     if !params.port.is_empty() {
                         loaded.port = params.port.clone();
                     }
@@ -3186,24 +3260,46 @@ impl TestExecutor {
                 controller.connect(&port, resolved_params.baudrate)?;
 
                 if let Some(ref servos) = resolved_params.servos {
+                    let force_all = resolved_params.force_config.unwrap_or(false);
+                    let mut configured_count = 0;
                     for cfg in servos {
-                        let press_angle = cfg.press_angle.unwrap_or(75);
-                        let release_angle = cfg.release_angle.unwrap_or(15);
-                        let press_duration_ms = cfg.press_duration_ms.unwrap_or(400);
-                        let release_duration_ms = cfg.release_duration_ms.unwrap_or(150);
-                        let hold_duration_ms = cfg.hold_duration_ms.unwrap_or(300);
+                        let press_angle = cfg.press_angle.unwrap_or(5);
+                        let release_angle = cfg.release_angle.unwrap_or(120);
+                        let press_duration_ms = cfg.press_duration_ms.unwrap_or(100);
+                        let release_duration_ms = cfg.release_duration_ms.unwrap_or(100);
+                        let hold_duration_ms = cfg.hold_duration_ms.unwrap_or(100);
+                        let force = force_all || cfg.force.unwrap_or(false);
+                        let ch = cfg.resolved_channel();
+
+                        if !force && crate::hardware::servo::is_servo_already_configured(
+                            &port,
+                            ch,
+                            press_angle,
+                            release_angle,
+                            press_duration_ms,
+                            release_duration_ms,
+                            hold_duration_ms,
+                        ) {
+                            continue;
+                        }
+
                         controller.servo.set_config(
-                            cfg.channel,
+                            ch,
                             press_angle,
                             release_angle,
                             press_duration_ms,
                             release_duration_ms,
                             hold_duration_ms,
                         )?;
+                        configured_count += 1;
+                        std::thread::sleep(std::time::Duration::from_millis(30));
                     }
-                    println!("  {} Configured {} servo channels from Jig profile", "⚙️".cyan(), servos.len());
+                    if configured_count > 0 {
+                        println!("  {} Configured {} servo channels from Jig profile", "⚙️".cyan(), configured_count);
+                    }
                 }
 
+                self.auto_power_off = resolved_params.auto_power_off.unwrap_or(false);
                 self.hardware_controller = Some(controller);
                 println!("  {} Connected hardware Jig on {}", "🔌".green(), port);
                 Ok(())
@@ -3222,8 +3318,10 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let res = ctrl.servo.click(params.channel, params.hold_ms)?;
-                println!("  {} Click button ch {}: completed={}", "⚙️".green(), params.channel, res.completed);
+                let ch = params.button.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(params.button.as_deref(), ch);
+                let res = ctrl.servo.click(ch, params.hold_ms)?;
+                println!("  {} Click button {}: completed={}", "⚙️".green(), label, res.completed);
                 Ok(())
             }
 
@@ -3231,8 +3329,10 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let res = ctrl.servo.press(params.channel)?;
-                println!("  {} Pressed button ch {}: completed={}", "⚙️".green(), params.channel, res.completed);
+                let ch = params.button.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(params.button.as_deref(), ch);
+                let res = ctrl.servo.press(ch)?;
+                println!("  {} Pressed button {}: completed={}", "⚙️".green(), label, res.completed);
                 Ok(())
             }
 
@@ -3240,8 +3340,10 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let res = ctrl.servo.release(params.channel)?;
-                println!("  {} Released button ch {}: completed={}", "⚙️".green(), params.channel, res.completed);
+                let ch = params.button.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(params.button.as_deref(), ch);
+                let res = ctrl.servo.release(ch)?;
+                println!("  {} Released button {}: completed={}", "⚙️".green(), label, res.completed);
                 Ok(())
             }
 
@@ -3249,9 +3351,11 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
+                let ch = params.button.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(params.button.as_deref(), ch);
                 let speed = params.speed.unwrap_or(50);
-                let res = ctrl.servo.rotate(params.channel, params.angle, speed)?;
-                println!("  {} Rotated servo ch {} to {}° (speed={}): completed={}", "⚙️".green(), params.channel, params.angle, speed, res.completed);
+                let res = ctrl.servo.rotate(ch, params.angle, speed)?;
+                println!("  {} Rotated servo {} to {}° (speed={}): completed={}", "⚙️".green(), label, params.angle, speed, res.completed);
                 Ok(())
             }
 
@@ -3259,8 +3363,10 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let state_str = ctrl.servo.get_state(params.channel)?;
-                println!("  {} Servo ch {} state: {}", "⚙️".blue(), params.channel, state_str);
+                let ch = params.button.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(params.button.as_deref(), ch);
+                let state_str = ctrl.servo.get_state(ch)?;
+                println!("  {} Servo {} state: {}", "⚙️".blue(), label, state_str);
                 Ok(())
             }
 
@@ -3268,8 +3374,10 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let state = ctrl.relay.get_state(params.channel)?;
-                println!("  {} Relay ch {} state: {}", "⚡".blue(), params.channel, state.as_str().to_uppercase());
+                let ch = params.resolved_channel();
+                let label = format_hw_label(params.button.as_deref(), ch);
+                let state = ctrl.relay.get_state(ch)?;
+                println!("  {} Relay {} state: {}", "⚡".green(), label, state.as_str());
                 Ok(())
             }
 
@@ -3277,11 +3385,13 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let reading = ctrl.color_sensor.read_color(params.channel)?;
+                let ch = params.button.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(params.button.as_deref(), ch);
+                let reading = ctrl.color_sensor.read_color(ch)?;
                 println!(
-                    "  {} Color sensor ch {}: Color={} (Conf={:?}, RGBC=[R:{} G:{} B:{} C:{}])",
+                    "  {} Color sensor {}: Color={} (Conf={:?}, RGBC=[R:{} G:{} B:{} C:{}])",
                     "🎨".green(),
-                    params.channel,
+                    label,
                     reading.color.as_str(),
                     reading.confidence,
                     reading.sample.red,
@@ -3296,9 +3406,10 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.as_ref().map(|p| p.channel).unwrap_or(1);
+                let ch = params.as_ref().and_then(|p| p.button.as_deref()).map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.as_ref().map(|p| p.resolved_channel()).unwrap_or(1));
+                let label = format_hw_label(params.as_ref().and_then(|p| p.button.as_deref()), ch);
                 let enabled = ctrl.color_sensor.get_light_state(Some(ch))?;
-                println!("  {} Color sensor ch {} LED (PB15): {}", "💡".blue(), ch, if enabled { "ON" } else { "OFF" });
+                println!("  {} Color sensor {} LED (PB15): {}", "💡".blue(), label, if enabled { "ON" } else { "OFF" });
                 Ok(())
             }
 
@@ -3306,8 +3417,12 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let res = ctrl.relay.set_state(params.channel, crate::hardware::RelayState::On)?;
-                println!("  {} Turn ON ch {}: completed={}", "⚡".green(), params.channel, res.completed);
+                let channels = params.button.as_deref().map(|b| ctrl.resolve_relay_channels(b)).unwrap_or_else(|| params.resolved_channels());
+                let label = format_hw_channels_label(params.button.as_deref(), &channels);
+                for ch in &channels {
+                    let _ = ctrl.relay.set_state(*ch, crate::hardware::RelayState::On)?;
+                }
+                println!("  {} Turn ON relay {}: completed=true", "⚡".green(), label);
                 Ok(())
             }
 
@@ -3315,8 +3430,12 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let res = ctrl.relay.set_state(params.channel, crate::hardware::RelayState::Off)?;
-                println!("  {} Turn OFF ch {}: completed={}", "⚡".yellow(), params.channel, res.completed);
+                let channels = params.button.as_deref().map(|b| ctrl.resolve_relay_channels(b)).unwrap_or_else(|| params.resolved_channels());
+                let label = format_hw_channels_label(params.button.as_deref(), &channels);
+                for ch in &channels {
+                    let _ = ctrl.relay.set_state(*ch, crate::hardware::RelayState::Off)?;
+                }
+                println!("  {} Turn OFF relay {}: completed=true", "⚡".yellow(), label);
                 Ok(())
             }
 
@@ -3329,16 +3448,40 @@ impl TestExecutor {
                 Ok(())
             }
 
+            TestCommand::HwPowerCycle(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
+                })?;
+                let channels = params.button.as_deref().map(|b| ctrl.resolve_relay_channels(b)).unwrap_or_else(|| params.resolved_channels());
+                let label = format_hw_channels_label(params.button.as_deref(), &channels);
+                let off_ms = params.off_ms.unwrap_or(2000);
+                for ch in &channels {
+                    ctrl.relay.set_state(*ch, crate::hardware::RelayState::Off)?;
+                }
+                println!("  {} Power Cycle: Turn OFF relay {}", "⚡".yellow(), label);
+                std::thread::sleep(std::time::Duration::from_millis(off_ms));
+                for ch in &channels {
+                    ctrl.relay.set_state(*ch, crate::hardware::RelayState::On)?;
+                }
+                println!("  {} Power Cycle: Turn ON relay {}", "⚡".green(), label);
+                Ok(())
+            }
+
             TestCommand::HwSeeLed(params) => {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
+                let ch = params.button.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(params.button.as_deref(), ch);
                 let timeout_s = params.timeout_ms.unwrap_or(5000) as f64 / 1000.0;
-                let exp_colors: Option<Vec<crate::hardware::Color>> = params.expected.as_ref().map(|list| {
-                    list.iter().map(|s| crate::hardware::Color::from_str(&self.context.substitute_vars(s))).collect()
-                });
-                let reading = ctrl.color_sensor.wait_for_color(params.channel, exp_colors.as_deref(), timeout_s)?;
-                println!("  {} Matched LED color ch {}: {}", "🎨".green(), params.channel, reading.color.as_str());
+                let exp_list = params.resolved_expected();
+                let exp_colors: Option<Vec<crate::hardware::Color>> = if !exp_list.is_empty() {
+                    Some(exp_list.iter().map(|s| crate::hardware::Color::from_str(&self.context.substitute_vars(s))).collect())
+                } else {
+                    None
+                };
+                let reading = ctrl.color_sensor.wait_for_color(ch, exp_colors.as_deref(), timeout_s)?;
+                println!("  {} Matched LED color {}: {}", "🎨".green(), label, reading.color.as_str());
                 Ok(())
             }
 
@@ -3346,9 +3489,11 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
+                let ch = params.button.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(params.button.as_deref(), ch);
                 let timeout_s = params.timeout_ms.unwrap_or(5000) as f64 / 1000.0;
                 let blink_res = ctrl.color_sensor.wait_for_blinks(
-                    params.channel,
+                    ch,
                     params.color.as_deref(),
                     params.count,
                     None,
@@ -3357,9 +3502,9 @@ impl TestExecutor {
                     timeout_s,
                 )?;
                 println!(
-                    "  {} Detected LED blink ch {}: count={}, color={:?}, durations={:?}",
+                    "  {} Detected LED blink {}: count={}, color={:?}, durations={:?}",
                     "💡".green(),
-                    params.channel,
+                    label,
                     blink_res.blink_count,
                     blink_res.color.map(|c| c.as_str()),
                     blink_res.durations_ms
@@ -3371,23 +3516,12 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
+                let ch = params.button.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(params.button.as_deref(), ch);
                 let press_ms = params.press_ms.unwrap_or(200);
                 let release_ms = params.release_ms.unwrap_or(200);
-                let res = ctrl.servo.repeat(params.channel, params.count, press_ms, release_ms)?;
-                println!("  {} Repeat click ch {} (x{}): completed={}", "⚙️".green(), params.channel, params.count, res.completed);
-                Ok(())
-            }
-
-            TestCommand::HwPowerCycle(params) => {
-                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
-                    anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
-                })?;
-                let off_ms = params.off_ms.unwrap_or(1000);
-                println!("  {} Power cycling ch {} (off for {}ms)...", "🔄".yellow(), params.channel, off_ms);
-                ctrl.relay.set_state(params.channel, crate::hardware::RelayState::Off)?;
-                tokio::time::sleep(std::time::Duration::from_millis(off_ms)).await;
-                let res = ctrl.relay.set_state(params.channel, crate::hardware::RelayState::On)?;
-                println!("  {} Power cycle ch {} completed: {}", "⚡".green(), params.channel, res.completed);
+                let res = ctrl.servo.repeat(ch, params.count, press_ms, release_ms)?;
+                println!("  {} Repeat click {} (x{}): completed={}", "⚙️".green(), label, params.count, res.completed);
                 Ok(())
             }
 
@@ -3395,10 +3529,12 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
+                let ch = params.button.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(params.button.as_deref(), ch);
                 let timeout_s = params.timeout_ms.unwrap_or(5000) as f64 / 1000.0;
                 let exp_colors = vec![crate::hardware::Color::Off, crate::hardware::Color::Unknown];
-                let reading = ctrl.color_sensor.wait_for_color(params.channel, Some(&exp_colors), timeout_s)?;
-                println!("  {} LED is OFF ch {}: {}", "🌑".green(), params.channel, reading.color.as_str());
+                let reading = ctrl.color_sensor.wait_for_color(ch, Some(&exp_colors), timeout_s)?;
+                println!("  {} LED is OFF {}: {}", "🌑".green(), label, reading.color.as_str());
                 Ok(())
             }
 
@@ -3406,20 +3542,38 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
+                let port = ctrl.port();
                 let press_angle = params.press_angle.unwrap_or(15);
                 let release_angle = params.release_angle.unwrap_or(72);
                 let press_ms = params.press_duration_ms.unwrap_or(400);
                 let release_ms = params.release_duration_ms.unwrap_or(150);
                 let hold_ms = params.hold_duration_ms.unwrap_or(300);
+                let force = params.force.unwrap_or(false);
+                let ch = params.resolved_channel();
+                let label = format_hw_label(params.button.as_deref(), ch);
+
+                if !force && crate::hardware::servo::is_servo_already_configured(
+                    &port,
+                    ch,
+                    press_angle,
+                    release_angle,
+                    press_ms,
+                    release_ms,
+                    hold_ms,
+                ) {
+                    println!("  {} Servo {} already configured (cached, skipped)", "⚙️".cyan(), label);
+                    return Ok(());
+                }
+
                 ctrl.servo.set_config(
-                    params.channel,
+                    ch,
                     press_angle,
                     release_angle,
                     press_ms,
                     release_ms,
                     hold_ms,
                 )?;
-                println!("  {} Configured servo ch {}", "⚙️".green(), params.channel);
+                println!("  {} Configured servo {}", "⚙️".green(), label);
                 Ok(())
             }
 
@@ -3436,9 +3590,11 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
+                let ch = params.resolved_channel();
+                let label = format_hw_label(params.button.as_deref(), ch);
                 let period_ms = params.period_ms.unwrap_or(1500);
-                ctrl.servo.start_repeat(params.channel, period_ms)?;
-                println!("  {} Started continuous click repeat ch {}", "⚙️".green(), params.channel);
+                ctrl.servo.start_repeat(ch, period_ms)?;
+                println!("  {} Started continuous click repeat {}", "⚙️".green(), label);
                 Ok(())
             }
 
@@ -3446,8 +3602,10 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                ctrl.servo.stop_repeat(params.channel)?;
-                println!("  {} Stopped continuous click repeat ch {}", "⚙️".yellow(), params.channel);
+                let ch = params.resolved_channel();
+                let label = format_hw_label(params.button.as_deref(), ch);
+                ctrl.servo.stop_repeat(ch)?;
+                println!("  {} Stopped continuous click repeat {}", "⚙️".yellow(), label);
                 Ok(())
             }
 
@@ -3455,15 +3613,16 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
+                let ch = params.button.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
                 let on = params.enabled.unwrap_or_else(|| {
                     params.state.as_deref().unwrap_or("on").to_lowercase() == "on"
                 });
                 if on {
-                    ctrl.color_sensor.light_on(Some(params.channel))?;
+                    ctrl.color_sensor.light_on(Some(ch))?;
                 } else {
-                    ctrl.color_sensor.light_off(Some(params.channel))?;
+                    ctrl.color_sensor.light_off(Some(ch))?;
                 }
-                println!("  {} Sensor light ch {} set to {}", "💡".green(), params.channel, if on { "ON" } else { "OFF" });
+                println!("  {} Sensor light ch {} set to {}", "💡".green(), ch, if on { "ON" } else { "OFF" });
                 Ok(())
             }
 
@@ -3471,18 +3630,19 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
+                let ch = params.resolved_channel();
                 let min_pulse = params.min_pulse_ms.unwrap_or(50);
                 let max_pulse = params.max_pulse_ms.unwrap_or(1000);
                 let end_gap = params.sequence_end_gap_ms.unwrap_or(500);
                 ctrl.color_sensor.set_thresholds(
-                    params.channel,
+                    ch,
                     params.off_below_percent,
                     params.on_above_percent,
                     min_pulse,
                     max_pulse,
                     end_gap,
                 )?;
-                println!("  {} Brightness thresholds set ch {}", "⚙️".green(), params.channel);
+                println!("  {} Brightness thresholds set ch {}", "⚙️".green(), ch);
                 Ok(())
             }
 
@@ -3490,8 +3650,9 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let reading = ctrl.color_sensor.read_color(params.channel)?;
-                println!("  {} Brightness check ch {}: sample={:?}", "💡".green(), params.channel, reading.sample);
+                let ch = params.resolved_channel();
+                let reading = ctrl.color_sensor.read_color(ch)?;
+                println!("  {} Brightness check ch {}: sample={:?}", "💡".green(), ch, reading.sample);
                 Ok(())
             }
 
@@ -3499,8 +3660,9 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let reading = ctrl.color_sensor.read_color(params.channel)?;
-                println!("  {} CCT check ch {}: sample={:?}", "💡".green(), params.channel, reading.sample);
+                let ch = params.resolved_channel();
+                let reading = ctrl.color_sensor.read_color(ch)?;
+                println!("  {} CCT check ch {}: sample={:?}", "💡".green(), ch, reading.sample);
                 Ok(())
             }
 
@@ -3508,8 +3670,9 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                ctrl.calibration.calibrate_color(params.channel, &params.color)?;
-                println!("  {} Calibrated color {} ch {}", "🎯".green(), params.color, params.channel);
+                let ch = params.resolved_channel();
+                ctrl.calibration.calibrate_color(ch, &params.color)?;
+                println!("  {} Calibrated color {} ch {}", "🎯".green(), params.color, ch);
                 Ok(())
             }
 
@@ -3517,8 +3680,9 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                ctrl.calibration.calibrate_brightness(params.channel, &params.mode, params.color.as_deref())?;
-                println!("  {} Calibrated brightness mode {} ch {}", "🎯".green(), params.mode, params.channel);
+                let ch = params.resolved_channel();
+                ctrl.calibration.calibrate_brightness(ch, &params.mode, params.color.as_deref())?;
+                println!("  {} Calibrated brightness mode {} ch {}", "🎯".green(), params.mode, ch);
                 Ok(())
             }
 
@@ -3526,17 +3690,14 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                ctrl.calibration.add_cct_point(params.channel, params.known_kelvin)?;
-                println!("  {} Added CCT point {}K ch {}", "🎯".green(), params.known_kelvin, params.channel);
+                let ch = params.resolved_channel();
+                ctrl.calibration.add_cct_point(ch, params.known_kelvin)?;
+                println!("  {} Added CCT point {}K ch {}", "🎯".green(), params.known_kelvin, ch);
                 Ok(())
             }
 
             TestCommand::HwSaveCalibration => {
-                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
-                    anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
-                })?;
-                ctrl.calibration.action("save")?;
-                println!("  {} Saved calibration to Flash", "💾".green());
+                println!("  {} Calibration is auto-saved by firmware on each step", "💾".green());
                 Ok(())
             }
 
@@ -5224,6 +5385,40 @@ impl TestExecutor {
             return !self.driver.is_visible(&selector).await.unwrap_or(false);
         }
         true
+    }
+}
+
+fn format_hw_label(name: Option<&str>, ch: u8) -> String {
+    if let Some(n) = name {
+        let trimmed = n.trim();
+        if trimmed.parse::<u8>().is_ok() {
+            format!("ch {}", ch)
+        } else {
+            format!("{} (ch {})", trimmed, ch)
+        }
+    } else {
+        format!("ch {}", ch)
+    }
+}
+
+fn format_hw_channels_label(name: Option<&str>, channels: &[u8]) -> String {
+    if let Some(n) = name {
+        let trimmed = n.trim();
+        if trimmed.parse::<u8>().is_ok() {
+            if channels.len() == 1 {
+                format!("ch {}", channels[0])
+            } else {
+                format!("ch {:?}", channels)
+            }
+        } else if channels.len() == 1 {
+            format!("{} (ch {})", trimmed, channels[0])
+        } else {
+            format!("{} (ch {:?})", trimmed, channels)
+        }
+    } else if channels.len() == 1 {
+        format!("ch {}", channels[0])
+    } else {
+        format!("ch {:?}", channels)
     }
 }
 

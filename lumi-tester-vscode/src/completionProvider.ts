@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { LUMI_COMMANDS, CommandParam, SELECTOR_PARAMS } from './schema/commands';
+import { resolveJigProfileFromDocument } from './jigProfileResolver';
 
 // Header fields that appear before ---
 interface HeaderField {
@@ -31,6 +32,8 @@ const HEADER_FIELDS: HeaderField[] = [
   { name: 'device', description: 'Target device ID', type: 'string', snippet: 'device: "$1"' },
   { name: 'jig', description: 'Hardware Jig serial port configuration (e.g. COM5, struct, or profile file)', type: 'object', snippet: 'jig: "${1:COM5}"' },
   { name: 'jig (profile)', description: 'Hardware Jig reusable profile file (e.g. profiles/jig_switch_sample.yaml)', type: 'string', snippet: 'jig: "${1:profiles/jig_switch_sample.yaml}"' },
+  { name: 'skip', description: 'Skip this flow when running in bulk / whole directory', type: 'boolean', snippet: 'skip: ${1|true,false|}' },
+  { name: 'manual', description: 'Mark flow as manual-only (skipped when running whole directory)', type: 'boolean', snippet: 'manual: ${1|true,false|}' },
 ];
 
 const SELECTOR_PROPERTIES = [
@@ -76,11 +79,49 @@ export class LumiCompletionProvider implements vscode.CompletionItemProvider {
       return undefined;
     }
 
-    // 1. Check if user is typing an indented property/parameter
+    // 0. Check if user is typing a hardware command value (short syntax)
+    const relayCmdMatch = linePrefix.match(/^\s*-\s*(hwPowerOn|hwPowerOff|hwPowerCycle|hwReadRelay):\s*"?([^"\r\n]*)$/);
+    if (relayCmdMatch) {
+      return this.getRelayCompletions(document);
+    }
+
+    const buttonCmdMatch = linePrefix.match(/^\s*-\s*(hwClick|hwPress|hwRelease|hwRepeatClick|hwStartRepeatClick|hwStopRepeatClick|hwReadServo|hwConfigureServo):\s*"?([^"\r\n]*)$/);
+    if (buttonCmdMatch) {
+      return this.getButtonCompletions(document);
+    }
+
+    const sensorCmdMatch = linePrefix.match(/^\s*-\s*(hwSeeLed|hwSeeLedBlink|hwSeeLedOff|hwReadColor|hwReadSensorLight|hwSensorLight|hwCalibrateColor|hwCalibrateBrightness|hwSetBrightnessThresholds|hwWaitForBrightness|hwWaitForCct|hwAddCctPoint):\s*"?([^"\r\n]*)$/);
+    if (sensorCmdMatch) {
+      return this.getSensorCompletions(document);
+    }
+
+    // 1. Check if user is typing an indented property/parameter value
     const currentIndent = lineText.match(/^(\s*)/)?.[1].length ?? 0;
     if (currentIndent > 0) {
       const path = this.resolveYamlPath(document, position.line, currentIndent);
       if (path.length > 0) {
+        // Check if typing a specific parameter value for hardware commands
+        const propMatch = linePrefix.match(/^\s*([A-Za-z0-9_\-]+):\s*"?([^"\r\n]*)$/);
+        if (propMatch) {
+          const propName = propMatch[1];
+          const rootCmd = path[0];
+          if (rootCmd === 'hwPowerOn' || rootCmd === 'hwPowerOff' || rootCmd === 'hwPowerCycle' || rootCmd === 'hwReadRelay') {
+            if (propName === 'channel' || propName === 'channels' || propName === 'relay' || propName === 'relays' || propName === 'name') {
+              return this.getRelayCompletions(document);
+            }
+          }
+          if (rootCmd === 'hwClick' || rootCmd === 'hwPress' || rootCmd === 'hwRelease' || rootCmd === 'hwRepeatClick' || rootCmd === 'hwStartRepeatClick' || rootCmd === 'hwStopRepeatClick' || rootCmd === 'hwReadServo' || rootCmd === 'hwConfigureServo' || rootCmd === 'hwRotate') {
+            if (propName === 'button' || propName === 'channel' || propName === 'btn') {
+              return this.getButtonCompletions(document);
+            }
+          }
+          if (rootCmd === 'hwSeeLed' || rootCmd === 'hwSeeLedBlink' || rootCmd === 'hwSeeLedOff' || rootCmd === 'hwReadColor' || rootCmd === 'hwReadSensorLight' || rootCmd === 'hwSensorLight' || rootCmd === 'hwCalibrateColor' || rootCmd === 'hwCalibrateBrightness' || rootCmd === 'hwSetBrightnessThresholds' || rootCmd === 'hwWaitForBrightness' || rootCmd === 'hwWaitForCct' || rootCmd === 'hwAddCctPoint') {
+            if (propName === 'button' || propName === 'channel' || propName === 'sensor' || propName === 'btn') {
+              return this.getSensorCompletions(document);
+            }
+          }
+        }
+
         const completions = this.getNestedParamCompletions(path);
         if (completions.length > 0) {
           return completions;
@@ -240,5 +281,102 @@ export class LumiCompletionProvider implements vscode.CompletionItemProvider {
       item.kind = cmd.hasParams ? vscode.CompletionItemKind.Method : vscode.CompletionItemKind.Keyword;
       return item;
     });
+  }
+
+  private getRelayCompletions(document: vscode.TextDocument): vscode.CompletionItem[] {
+    const profile = resolveJigProfileFromDocument(document);
+    const items: vscode.CompletionItem[] = [];
+
+    if (profile && profile.relays.size > 0) {
+      for (const [name, cfg] of profile.relays.entries()) {
+        const item = new vscode.CompletionItem(`"${name}"`, vscode.CompletionItemKind.EnumMember);
+        const chStr = cfg.channels.join(', ');
+        item.detail = `⚡ Relay: [${chStr}] (${name})`;
+        item.documentation = new vscode.MarkdownString(
+          `**Relay Alias: \`${name}\`**\n\n- Channels: \`[${chStr}]\`${profile.sourceFile ? `\n- Defined in: \`${profile.sourceFile}\`` : ''}`
+        );
+        item.insertText = `"${name}"`;
+        item.sortText = `0_${name}`;
+        items.push(item);
+      }
+    }
+
+    // Also suggest common numeric relay channels
+    for (let ch = 1; ch <= 8; ch++) {
+      const item = new vscode.CompletionItem(`${ch}`, vscode.CompletionItemKind.Value);
+      item.detail = `Relay Channel ${ch}`;
+      item.insertText = `${ch}`;
+      item.sortText = `1_${ch}`;
+      items.push(item);
+    }
+
+    return items;
+  }
+
+  private getButtonCompletions(document: vscode.TextDocument): vscode.CompletionItem[] {
+    const profile = resolveJigProfileFromDocument(document);
+    const items: vscode.CompletionItem[] = [];
+
+    if (profile && profile.buttons.size > 0) {
+      for (const [name, cfg] of profile.buttons.entries()) {
+        const item = new vscode.CompletionItem(`"${name}"`, vscode.CompletionItemKind.EnumMember);
+        const parts: string[] = [];
+        if (cfg.servo !== undefined) {
+          parts.push(`Servo Ch ${cfg.servo}`);
+        }
+        if (cfg.sensor !== undefined) {
+          parts.push(`Sensor Ch ${cfg.sensor}`);
+        }
+        const detailStr = parts.length > 0 ? parts.join(', ') : `Ch ${cfg.channel ?? '?'}`;
+        item.detail = `🎛️ Button: ${name} (${detailStr})`;
+        item.documentation = new vscode.MarkdownString(
+          `**Button Alias: \`${name}\`**\n\n- Servo Channel: \`${cfg.servo ?? cfg.channel ?? 'N/A'}\`\n- Color Sensor Channel: \`${cfg.sensor ?? cfg.channel ?? 'N/A'}\`${profile.sourceFile ? `\n- Defined in: \`${profile.sourceFile}\`` : ''}`
+        );
+        item.insertText = `"${name}"`;
+        item.sortText = `0_${name}`;
+        items.push(item);
+      }
+    }
+
+    // Also suggest numeric servo channels
+    for (let ch = 1; ch <= 8; ch++) {
+      const item = new vscode.CompletionItem(`${ch}`, vscode.CompletionItemKind.Value);
+      item.detail = `Servo Channel ${ch}`;
+      item.insertText = `${ch}`;
+      item.sortText = `1_${ch}`;
+      items.push(item);
+    }
+
+    return items;
+  }
+
+  private getSensorCompletions(document: vscode.TextDocument): vscode.CompletionItem[] {
+    const profile = resolveJigProfileFromDocument(document);
+    const items: vscode.CompletionItem[] = [];
+
+    if (profile && profile.buttons.size > 0) {
+      for (const [name, cfg] of profile.buttons.entries()) {
+        const item = new vscode.CompletionItem(`"${name}"`, vscode.CompletionItemKind.EnumMember);
+        const sensorCh = cfg.sensor ?? cfg.channel ?? cfg.servo;
+        item.detail = `🎨 Sensor: ${name} (Ch ${sensorCh ?? '?'})`;
+        item.documentation = new vscode.MarkdownString(
+          `**Color Sensor Alias: \`${name}\`**\n\n- Sensor Channel: \`${sensorCh ?? 'N/A'}\`${profile.sourceFile ? `\n- Defined in: \`${profile.sourceFile}\`` : ''}`
+        );
+        item.insertText = `"${name}"`;
+        item.sortText = `0_${name}`;
+        items.push(item);
+      }
+    }
+
+    // Also suggest numeric sensor channels
+    for (let ch = 1; ch <= 8; ch++) {
+      const item = new vscode.CompletionItem(`${ch}`, vscode.CompletionItemKind.Value);
+      item.detail = `Sensor Channel ${ch}`;
+      item.insertText = `${ch}`;
+      item.sortText = `1_${ch}`;
+      items.push(item);
+    }
+
+    return items;
   }
 }

@@ -26,6 +26,13 @@ impl Default for ServoChannelConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ButtonChannelMapping {
+    pub servo: Option<u8>,
+    pub sensor: Option<u8>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HardwareConfig {
     pub baudrate: u32,
@@ -37,6 +44,8 @@ pub struct HardwareConfig {
     pub servo_channels: HashMap<u8, ServoChannelConfig>,
     pub relay_channels: Vec<u8>,
     pub color_sensor_channels: Vec<u8>,
+    pub button_mappings: HashMap<String, ButtonChannelMapping>,
+    pub relay_mappings: HashMap<String, Vec<u8>>,
 }
 
 impl Default for HardwareConfig {
@@ -51,6 +60,8 @@ impl Default for HardwareConfig {
             servo_channels: HashMap::new(),
             relay_channels: vec![1, 2, 3, 4],
             color_sensor_channels: vec![1],
+            button_mappings: HashMap::new(),
+            relay_mappings: HashMap::new(),
         }
     }
 }

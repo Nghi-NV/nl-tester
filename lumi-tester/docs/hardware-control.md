@@ -48,7 +48,7 @@ jig:
 ```
 
 ### c. Cấu hình Jig & Servo Profile Dùng chung (Shared Reusable Profile)
-Để không phải lặp lại cấu hình cổng COM và các thông số `hwConfigureServo` trong từng file test, bạn có thể tạo một file profile chuẩn dùng chung tại [`profiles/jig_config.yaml`](file:///Users/nghinguyen/Desktop/MyOpenSource/nl-tester/profiles/jig_config.yaml):
+Để không phải lặp lại cấu hình cổng COM, thông số `servos`, cùng bảng ánh xạ nút bấm `buttons` và rơ-le `relays` trong từng file test, bạn có thể tạo một file profile chuẩn dùng chung tại [`profiles/jig_config.yaml`](file:///Users/nghinguyen/Desktop/MyOpenSource/nl-tester/profiles/jig_config.yaml):
 
 ```yaml
 # profiles/jig_config.yaml
@@ -56,32 +56,56 @@ port: "${JIG_PORT:-COM5}"
 baudrate: 115200
 nodeId: 1                          # Địa chỉ Node RS485 (Mặc định: 1)
 wireFormat: "@{node} {command}\n"  # Mẫu định dạng khung truyền giao tiếp MCU
-autoPowerOff: true                 # Tự động ngắt toàn bộ rơ-le khi test xong
+autoPowerOff: false                # Giữ nguồn bật sau khi test (hoặc true nếu muốn tự động ngắt relay)
 timeoutMs: 4000
+
+# 🎛️ Bảng ánh xạ Nút bấm thân thiện (Tách biệt độc lập Kênh Servo gạt và Kênh Cảm biến màu quang học)
+buttons:
+  NC1:
+    servo: 5
+    sensor: 5
+  NC2:
+    servo: 6
+    sensor: 7
+  NC3:
+    servo: 7
+    sensor: 6
+
+# ⚡ Bảng ánh xạ Rơ-le nguồn (Hỗ trợ gọi bật/tắt nhóm nhiều kênh cùng lúc)
+relays:
+  mainPower: [3, 4]
+  220V: [3, 4]
+
+# ⚙️ Cấu hình góc gạt và thời gian cho từng Servo
 servos:
-  - channel: 1
+  - channel: 5
     pressAngle: 75
     releaseAngle: 0
-    pressDurationMs: 300
-    releaseDurationMs: 300
-    holdDurationMs: 200
-  - channel: 2
+  - channel: 6
     pressAngle: 80
     releaseAngle: 0
-    pressDurationMs: 300
-    releaseDurationMs: 300
-    holdDurationMs: 200
+  - channel: 7
+    pressAngle: 75
+    releaseAngle: 0
 ```
 
-Trong tất cả các file test kịch bản, chỉ cần trỏ tới file profile:
+Trong tất cả các file test kịch bản, chỉ cần trỏ tới file profile và gọi tên nút thân thiện trực tiếp:
 ```yaml
 platform: android
 appId: com.lumi.lifenext
 jig: "profiles/jig_config.yaml"
 ---
-- hwPowerOn: 1
-- hwClick: 1        # Servo đã tự động được nạp đúng góc gạt từ profile
-- hwSeeLed: "GREEN"
+- hwPing: 1
+- hwPowerOn: "220V"          # Bật đồng thời rơ-le 3 & 4
+- hwReadColor: "NC3"         # Tự động đọc cảm biến kênh 6
+- hwSeeLed:
+    button: "NC3"            # Tự động đọc cảm biến kênh 6
+    color: "BLUE"
+- hwClick: "NC3"             # Tự động gạt servo kênh 7
+- wait: 500
+- hwSeeLed:
+    button: "NC3"
+    color: "RED"
 ```
 
 ### d. Công cụ CLI & VSCode Phát hiện Cổng COM & Ping Jig Nhanh (1-Click & CLI Tools)

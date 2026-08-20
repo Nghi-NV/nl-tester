@@ -59,8 +59,14 @@ impl HardwareController {
         if self.config.wire_format.is_some() {
             transport.wire_format = self.config.wire_format.clone();
         }
-        transport.connect(port, baud)
-            .map_err(|e| anyhow::anyhow!("Failed to connect to hardware Jig on '{}' (baudrate: {}): {}", port, baud, e))?;
+        transport.connect(port, baud).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to connect to hardware Jig on '{}' (baudrate: {}): {}",
+                port,
+                baud,
+                e
+            )
+        })?;
 
         // Send ping handshake with configured node_id (defaults to node 1 for RS485)
         let ping_resp = transport.request(
@@ -76,8 +82,30 @@ impl HardwareController {
         Ok(())
     }
 
+    pub fn ping(&self, node_id: Option<u8>) -> Result<String> {
+        let mut transport = self.transport.lock().unwrap();
+        let cmd = protocol::cmd_ping(node_id);
+        let resp = transport.request(
+            &cmd,
+            |line| {
+                line.kind == "system"
+                    || line.kind == "ok"
+                    || line.kind == "version"
+                    || line.kind == "info"
+            },
+            2.5,
+        )?;
+        Ok(resp.raw)
+    }
+
     pub fn enter_safe_state(&self) -> Result<()> {
-        let _ = self.relay.all_off();
+        self.enter_safe_state_with_power(true)
+    }
+
+    pub fn enter_safe_state_with_power(&self, power_off_relays: bool) -> Result<()> {
+        if power_off_relays {
+            let _ = self.relay.all_off();
+        }
         let _ = self.servo.release_all();
         let _ = self.color_sensor.light_off(None);
         Ok(())
@@ -91,6 +119,50 @@ impl HardwareController {
             3.0,
         )?;
         Ok(resp.raw)
+    }
+
+    pub fn port(&self) -> String {
+        let transport = self.transport.lock().unwrap();
+        transport.port_name.clone().unwrap_or_default()
+    }
+
+    pub fn disconnect(&self) {
+        let mut transport = self.transport.lock().unwrap();
+        transport.disconnect();
+    }
+
+    pub fn resolve_servo_channel(&self, btn: &str) -> u8 {
+        let trimmed = btn.trim();
+        for (k, v) in &self.config.button_mappings {
+            if k.eq_ignore_ascii_case(trimmed) {
+                if let Some(servo_ch) = v.servo {
+                    return servo_ch;
+                }
+            }
+        }
+        crate::parser::types::parse_channel_str(trimmed)
+    }
+
+    pub fn resolve_sensor_channel(&self, btn: &str) -> u8 {
+        let trimmed = btn.trim();
+        for (k, v) in &self.config.button_mappings {
+            if k.eq_ignore_ascii_case(trimmed) {
+                if let Some(sensor_ch) = v.sensor {
+                    return sensor_ch;
+                }
+            }
+        }
+        crate::parser::types::parse_channel_str(trimmed)
+    }
+
+    pub fn resolve_relay_channels(&self, name: &str) -> Vec<u8> {
+        let trimmed = name.trim();
+        for (k, v) in &self.config.relay_mappings {
+            if k.eq_ignore_ascii_case(trimmed) {
+                return v.clone();
+            }
+        }
+        crate::parser::types::parse_relay_channels(trimmed)
     }
 }
 
@@ -161,9 +233,15 @@ pub fn list_serial_ports() -> Vec<JigPortInfo> {
                     Some(info.vid),
                     Some(info.pid),
                 ),
-                serialport::SerialPortType::PciPort => ("PCI".to_string(), None, None, None, None, None),
-                serialport::SerialPortType::BluetoothPort => ("Bluetooth".to_string(), None, None, None, None, None),
-                serialport::SerialPortType::Unknown => ("Unknown".to_string(), None, None, None, None, None),
+                serialport::SerialPortType::PciPort => {
+                    ("PCI".to_string(), None, None, None, None, None)
+                }
+                serialport::SerialPortType::BluetoothPort => {
+                    ("Bluetooth".to_string(), None, None, None, None, None)
+                }
+                serialport::SerialPortType::Unknown => {
+                    ("Unknown".to_string(), None, None, None, None, None)
+                }
             };
             results.push(JigPortInfo {
                 port_name: p.port_name,
@@ -180,7 +258,12 @@ pub fn list_serial_ports() -> Vec<JigPortInfo> {
 }
 
 /// Thử kết nối nhanh và Ping thiết bị Jig phần cứng, trả về thông tin chi tiết
-pub fn ping_details(port: &str, baudrate: Option<u32>, node_id: Option<u8>, wire_format: Option<String>) -> Result<JigPingResult> {
+pub fn ping_details(
+    port: &str,
+    baudrate: Option<u32>,
+    node_id: Option<u8>,
+    wire_format: Option<String>,
+) -> Result<JigPingResult> {
     let baud = baudrate.unwrap_or(115200);
     let ping_node = node_id.or(Some(1));
     let start = std::time::Instant::now();
@@ -197,14 +280,22 @@ pub fn ping_details(port: &str, baudrate: Option<u32>, node_id: Option<u8>, wire
     transport.connect(port, baud)?;
     let resp = transport.request(
         "ping\n",
-        |line| line.kind == "system" || line.kind == "ok" || line.kind == "version" || line.kind == "info",
+        |line| {
+            line.kind == "system"
+                || line.kind == "ok"
+                || line.kind == "version"
+                || line.kind == "info"
+        },
         2.5,
     )?;
     let latency_ms = start.elapsed().as_millis() as u64;
 
     let detected_node_id = resp.get_u32("node_id").map(|n| n as u8).or_else(|| {
         if resp.raw.starts_with('@') {
-            resp.raw[1..].split_whitespace().next().and_then(|s| s.parse::<u8>().ok())
+            resp.raw[1..]
+                .split_whitespace()
+                .next()
+                .and_then(|s| s.parse::<u8>().ok())
         } else {
             ping_node
         }

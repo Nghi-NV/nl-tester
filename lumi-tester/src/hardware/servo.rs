@@ -183,7 +183,8 @@ impl ServoControl for ServoService {
     ) -> Result<ActionResult> {
         let start = Instant::now();
         let mut transport = self.transport.lock().unwrap();
-        let resp = transport.request(
+        let port_name = transport.port_name.clone().unwrap_or_default();
+        let _resp = transport.request(
             &crate::hardware::protocol::cmd_servo_config(
                 channel,
                 press_angle,
@@ -195,6 +196,16 @@ impl ServoControl for ServoService {
             |line| line.kind == "servo" || line.kind == "ok",
             3.0,
         )?;
+
+        record_servo_configured(
+            &port_name,
+            channel,
+            press_angle,
+            release_angle,
+            press_ms,
+            release_ms,
+            hold_ms,
+        );
 
         Ok(ActionResult {
             action: "servo.set_config".to_string(),
@@ -215,6 +226,76 @@ impl ServoControl for ServoService {
         let state = resp.get_str("state").unwrap_or("UNKNOWN");
         let angle = resp.get_str("angle").unwrap_or("--");
         Ok(format!("{} @ {}°", state, angle))
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct CachedServoConfig {
+    pub press_angle: u8,
+    pub release_angle: u8,
+    pub press_ms: u16,
+    pub release_ms: u16,
+    pub hold_ms: u16,
+}
+
+fn get_servo_cache_path() -> std::path::PathBuf {
+    std::env::temp_dir().join(".lumi_servo_config_cache.json")
+}
+
+pub fn is_servo_already_configured(
+    port: &str,
+    channel: u8,
+    press_angle: u8,
+    release_angle: u8,
+    press_ms: u16,
+    release_ms: u16,
+    hold_ms: u16,
+) -> bool {
+    let cache_path = get_servo_cache_path();
+    if let Ok(content) = std::fs::read_to_string(&cache_path) {
+        if let Ok(map) = serde_json::from_str::<std::collections::HashMap<String, CachedServoConfig>>(&content) {
+            let key = format!("{}:{}", port, channel);
+            if let Some(cached) = map.get(&key) {
+                return cached.press_angle == press_angle
+                    && cached.release_angle == release_angle
+                    && cached.press_ms == press_ms
+                    && cached.release_ms == release_ms
+                    && cached.hold_ms == hold_ms;
+            }
+        }
+    }
+    false
+}
+
+pub fn record_servo_configured(
+    port: &str,
+    channel: u8,
+    press_angle: u8,
+    release_angle: u8,
+    press_ms: u16,
+    release_ms: u16,
+    hold_ms: u16,
+) {
+    let cache_path = get_servo_cache_path();
+    let mut map: std::collections::HashMap<String, CachedServoConfig> = std::fs::read_to_string(&cache_path)
+        .ok()
+        .and_then(|c| serde_json::from_str(&c).ok())
+        .unwrap_or_default();
+
+    let key = format!("{}:{}", port, channel);
+    map.insert(
+        key,
+        CachedServoConfig {
+            press_angle,
+            release_angle,
+            press_ms,
+            release_ms,
+            hold_ms,
+        },
+    );
+
+    if let Ok(serialized) = serde_json::to_string(&map) {
+        let _ = std::fs::write(&cache_path, serialized);
     }
 }
 

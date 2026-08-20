@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.19] / [extension-v0.1.31] - 2026-08-20
+
+### 🚀 Highlights & Features
+
+#### 1. Dynamic Hardware Jig Button & Relay Mapping (`buttons:`, `relays:`)
+- **Semantic Button Names in Flows**: Test authors can now use friendly button names (`NC1`, `NC2`, `NC3`, `mainPower`, `220V`) directly in test YAML flows instead of memorizing physical pin numbers.
+- **Decoupled Servo & Sensor Channels**:
+  - Each named button (e.g. `NC3`) in `jig_profile.yaml` can independently define its physical `servo:` channel and optical `sensor:` channel.
+  - Servo commands (`hwClick`, `hwPress`, `hwRelease`, `hwRotate`, `hwRepeatClick`) automatically resolve to the configured servo channel.
+  - Optical sensor commands (`hwReadColor`, `hwSeeLed`, `hwSeeLedBlink`, `hwSeeLedOff`, `hwSensorLight`, `hwReadSensorLight`) automatically resolve to the configured sensor channel.
+- **Relay Group Mapping**: Support mapping friendly labels (e.g. `220V`) to multi-relay arrays (`[3, 4]`) for concurrent multi-channel power operations (`hwPowerOn`, `hwPowerOff`, `hwPowerCycle`).
+
+#### 2. Enhanced Color Sensor Diagnostics & Red Hue Boundary
+- **Detailed Timeout Diagnostics**: When `hwSeeLed` or `wait_for_color` times out, output now explicitly includes the expected color, the actual detected color, and raw RGBC sample data (e.g. `Timeout (3.0s) waiting for expected color [BLUE] on channel 6 (current actual: RED, RGBC=[R:130 G:78 B:64 C:222])`).
+- **Hue Boundary Tuning**: Fine-tuned Red LED hue boundaries ($0..28^\circ$) in smart color classification for higher accuracy with warm LED emitters.
+- **Illumination Control**: Fixed PB15 sensor light LED synchronization (`hwSensorLight`).
+
+#### 3. VS Code Extension `v0.1.31`
+- **Jig Profile Auto-Completion & Hover Resolver**: Full hover inspection and auto-completion for semantic button names (`NC1`, `NC2`, `NC3`) and relay groups (`220V`) defined in referenced Jig profile YAMLs.
+- **Built & Packaged**: `lumi-tester-0.1.31.vsix`.
+
+---
+
 ## [v0.1.18] / [extension-v0.1.28] - 2026-08-19
 
 ### 🚀 Highlights & Features
