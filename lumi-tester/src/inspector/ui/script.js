@@ -1,4 +1,4 @@
-// State
+// State Management
 let showBoxes = true;
 let cachedElements = [];
 let currentSelectors = [];
@@ -11,9 +11,9 @@ let selectedAppTarget = null;
 let scaleX = 1;
 let scaleY = 1;
 let zoomLevel = 1.0;
-let hoveredElement = null;
+let lastSelectedBounds = null;
 
-// Init
+// Initialization
 window.addEventListener('DOMContentLoaded', () => {
   capture();
   loadPackages();
@@ -28,7 +28,7 @@ window.addEventListener('DOMContentLoaded', () => {
     inspectAt(Math.round(x), Math.round(y), (e.clientX - rect.left) / zoomLevel, (e.clientY - rect.top) / zoomLevel);
   });
 
-  // Mouse move for hover tooltip & element preview
+  // Mouse move for hover tooltip
   overlay.addEventListener('mousemove', (e) => {
     const rect = overlay.getBoundingClientRect();
     const x = (e.clientX - rect.left) / scaleX / zoomLevel;
@@ -56,13 +56,14 @@ window.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('resize', syncOverlaySize);
 });
 
-// UI Feedback Toast
+// Toast Feedback Notification
 function showToast(msg) {
   const t = document.getElementById('toast');
+  const msgEl = document.getElementById('toastMsg');
   if (!t) return;
-  t.textContent = msg;
+  if (msgEl) msgEl.textContent = msg;
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2000);
+  setTimeout(() => t.classList.remove('show'), 2200);
 }
 
 function escapeHtml(s) {
@@ -80,15 +81,15 @@ function formatYamlHighlight(yamlText) {
   return escaped
     .split('\n')
     .map(line => {
-      // 1. Line starting with "- action:" e.g. "- tap:", "- see:", "- waitUntilVisible:"
+      // 1. Action command e.g. "- tap:", "- see:", "- waitUntilVisible:"
       let l = line.replace(/^(\s*-\s+)([\w]+)(:)/, '$1<span class="yaml-cmd">$2</span>$3');
       // 2. Map keys e.g. "    id:", "    text:", "    type:", "    above:", "    below:", "    align:", "    offset:", "    point:", "    index:"
       l = l.replace(/^(\s*)([\w]+)(:)/, '$1<span class="yaml-key">$2</span>$3');
       // 3. String values in quotes e.g. &quot;...&quot;
       l = l.replace(/(:\s*)(&quot;.*?&quot;)/g, '$1<span class="yaml-str">$2</span>');
-      // 4. Number values e.g. 19
+      // 4. Numbers e.g. 19
       l = l.replace(/(:\s*)(\b\d+\b)/g, '$1<span class="yaml-num">$2</span>');
-      // 5. Enum / boolean keywords e.g. right, left, top, bottom, center, true, false
+      // 5. Enum keywords e.g. right, left, top, bottom, center, true, false
       l = l.replace(/(:\s*)\b(true|false|right|left|top|bottom|center)\b/g, '$1<span class="yaml-enum">$2</span>');
       return l;
     })
@@ -97,11 +98,12 @@ function formatYamlHighlight(yamlText) {
 
 function toggleBoxes() {
   showBoxes = !showBoxes;
-  document.getElementById('boxToggle').classList.toggle('on', showBoxes);
-  drawOverlay();
+  const toggle = document.getElementById('boxToggle');
+  if (toggle) toggle.classList.toggle('on', showBoxes);
+  drawOverlay(lastSelectedBounds);
 }
 
-// Zoom & Pan Controls
+// Zoom & Viewport Controls
 function updateZoom() {
   const wrapper = document.getElementById('screenWrapper');
   const text = document.getElementById('zoomLevelText');
@@ -145,7 +147,6 @@ function handleCanvasHover(x, y, clientX, clientY) {
     return;
   }
 
-  // Find smallest element at (x, y)
   let best = null;
   let minArea = Infinity;
 
@@ -174,11 +175,11 @@ function showHoverTooltip(el, clientX, clientY) {
   if (!tooltip) return;
 
   const shortClass = el.class ? el.class.split('.').pop() : 'View';
-  const label = el.text ? `"${el.text.slice(0, 20)}"` : (el.resource_id ? `#${el.resource_id.split('/').pop()}` : '');
+  const label = el.text ? `"${el.text.slice(0, 18)}"` : (el.resource_id ? `#${el.resource_id.split('/').pop()}` : '');
   const w = el.bounds ? el.bounds.right - el.bounds.left : 0;
   const h = el.bounds ? el.bounds.bottom - el.bounds.top : 0;
 
-  tooltip.textContent = `${shortClass} ${label} (${w}×${h})`;
+  tooltip.innerHTML = `<strong>${escapeHtml(shortClass)}</strong> ${escapeHtml(label)} <span style="opacity:0.6;font-size:9.5px">${w}×${h}px</span>`;
   tooltip.style.display = 'block';
   tooltip.style.left = `${clientX - document.getElementById('canvasContainer').getBoundingClientRect().left}px`;
   tooltip.style.top = `${clientY - document.getElementById('canvasContainer').getBoundingClientRect().top}px`;
@@ -191,9 +192,10 @@ function hideHoverTooltip() {
 
 // Capture Logic
 async function capture() {
-  const btn = document.querySelector('.btn-icon');
+  const btn = document.querySelector('.btn-refresh');
+  const statusText = document.getElementById('statusText');
   if (btn) btn.disabled = true;
-  document.getElementById('status').textContent = 'Capturing screen...';
+  if (statusText) statusText.textContent = 'Capturing device screen & hierarchy...';
 
   try {
     const r = await fetch(`/api/screenshot?skip_hierarchy=false`);
@@ -218,18 +220,18 @@ async function capture() {
     }
 
     syncOverlaySize();
-    document.getElementById('status').textContent = `Ready • ${d.width} × ${d.height} px`;
+    if (statusText) statusText.textContent = `Connected • ${d.width} × ${d.height} px`;
 
   } catch (e) {
     console.error(e);
-    document.getElementById('status').textContent = 'Capture failed';
-    showToast('Capture failed');
+    if (statusText) statusText.textContent = 'Screen capture failed';
+    showToast('Screen capture failed');
   } finally {
     if (btn) btn.disabled = false;
   }
 }
 
-// Canvas & Overlay Alignment Fix
+// Canvas & Overlay Alignment
 function syncOverlaySize() {
   const canvas = document.getElementById('overlay');
   const img = document.getElementById('screen');
@@ -268,7 +270,7 @@ function syncOverlaySize() {
   scaleX = renderWidth / naturalWidth;
   scaleY = renderHeight / naturalHeight;
 
-  drawOverlay();
+  drawOverlay(lastSelectedBounds);
 }
 
 function drawOverlay(highlightBounds = null) {
@@ -277,50 +279,54 @@ function drawOverlay(highlightBounds = null) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  // Draw light subtle boundaries for all elements if toggled on
   if (showBoxes && cachedElements.length) {
-    ctx.strokeStyle = 'rgba(88, 166, 255, 0.35)';
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.25)';
     ctx.lineWidth = 1;
 
     cachedElements.forEach(el => {
       if (el.bounds) {
-        const x = el.bounds.left * scaleX;
-        const y = el.bounds.top * scaleY;
-        const w = (el.bounds.right - el.bounds.left) * scaleX;
-        const h = (el.bounds.bottom - el.bounds.top) * scaleY;
-        ctx.strokeRect(x, y, w, h);
+        const x = Math.round(el.bounds.left * scaleX);
+        const y = Math.round(el.bounds.top * scaleY);
+        const w = Math.round((el.bounds.right - el.bounds.left) * scaleX);
+        const h = Math.round((el.bounds.bottom - el.bounds.top) * scaleY);
+        ctx.strokeRect(x + 0.5, y + 0.5, w, h);
       }
     });
   }
 
-  // Highlight specific selected element with glowing bounding box
+  // Draw active selected element with high-precision glowing box
   if (highlightBounds) {
-    const x = highlightBounds.left * scaleX;
-    const y = highlightBounds.top * scaleY;
-    const w = (highlightBounds.right - highlightBounds.left) * scaleX;
-    const h = (highlightBounds.bottom - highlightBounds.top) * scaleY;
+    const x = Math.round(highlightBounds.left * scaleX);
+    const y = Math.round(highlightBounds.top * scaleY);
+    const w = Math.round((highlightBounds.right - highlightBounds.left) * scaleX);
+    const h = Math.round((highlightBounds.bottom - highlightBounds.top) * scaleY);
 
-    ctx.strokeStyle = 'var(--accent, #58a6ff)';
+    // Glowing fill
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.18)';
+    ctx.fillRect(x, y, w, h);
+
+    // Sharp glowing border
+    ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
-
-    ctx.fillStyle = 'rgba(88, 166, 255, 0.18)';
-    ctx.fillRect(x, y, w, h);
   }
 }
 
-// Interaction: Inspect element at coordinate
+// Inspect element at coordinates
 async function inspectAt(x, y, clickX, clickY) {
   hideHoverTooltip();
-  drawOverlay();
 
-  // Visual tap indicator dot
-  const ctx = document.getElementById('overlay').getContext('2d');
-  ctx.fillStyle = 'rgba(255, 215, 0, 0.8)';
+  // Visual tap indicator ring on canvas
+  const canvas = document.getElementById('overlay');
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'rgba(56, 189, 248, 0.9)';
   ctx.beginPath();
-  ctx.arc(clickX * scaleX, clickY * scaleY, 7, 0, 2 * Math.PI);
+  ctx.arc(clickX * scaleX, clickY * scaleY, 6, 0, 2 * Math.PI);
   ctx.fill();
 
-  document.getElementById('status').textContent = `Inspecting (${x}, ${y})...`;
+  const statusText = document.getElementById('statusText');
+  if (statusText) statusText.textContent = `Analyzing element at (${x}, ${y})...`;
 
   try {
     const res = await fetch(`/api/element-at?x=${Math.round(x)}&y=${Math.round(y)}`);
@@ -330,16 +336,34 @@ async function inspectAt(x, y, clickX, clickY) {
       currentSelectors = data.selectors || [];
       currentAttributes = data.attributes || {};
       currentHierarchy = data.hierarchy || [];
+      lastSelectedBounds = data.bounds;
 
-      // Highlight element bounds on canvas
+      drawOverlay(data.bounds);
+
+      // Hero Header Meta
+      const shortClass = data.element_class ? data.element_class.split('.').pop() : 'View';
+      const badge = document.getElementById('selectionBadge');
+      badge.textContent = shortClass;
+      badge.classList.add('selected');
+
+      const metaEl = document.getElementById('elementMeta');
+      metaEl.style.display = 'flex';
+      document.getElementById('metaClass').textContent = shortClass;
+
       if (data.bounds) {
-        drawOverlay(data.bounds);
+        const w = data.bounds.right - data.bounds.left;
+        const h = data.bounds.bottom - data.bounds.top;
+        document.getElementById('metaDim').textContent = `${w} × ${h} px`;
       }
 
-      const shortClass = data.element_class ? data.element_class.split('.').pop() : 'Element';
-      const badge = document.getElementById('selectionBadge');
-      badge.textContent = `${shortClass} (${data.bounds ? (data.bounds.right - data.bounds.left) + '×' + (data.bounds.bottom - data.bounds.top) : ''})`;
-      badge.style.background = 'var(--green)';
+      const resMeta = document.getElementById('metaRes');
+      if (data.attributes && data.attributes['resource-id']) {
+        const shortId = data.attributes['resource-id'].split('/').pop();
+        resMeta.textContent = `#${shortId}`;
+        resMeta.style.display = 'inline-block';
+      } else {
+        resMeta.style.display = 'none';
+      }
 
       renderAppInfo(data.app_id);
       renderCommands(data.supported_commands);
@@ -347,46 +371,49 @@ async function inspectAt(x, y, clickX, clickY) {
       renderSelectors();
       renderAttributes(currentAttributes);
 
-      // Show action & tab bars
+      // Show sections
       document.getElementById('breadcrumbBar').style.display = currentHierarchy.length > 0 ? 'flex' : 'none';
-      document.getElementById('actionBar').style.display = 'flex';
+      document.getElementById('actionBar').style.display = 'block';
       document.getElementById('tabBar').style.display = 'flex';
       document.getElementById('emptyState').style.display = 'none';
 
-      document.getElementById('status').textContent = `Selected ${shortClass} at (${x}, ${y})`;
+      if (statusText) statusText.textContent = `Selected ${shortClass} at (${x}, ${y})`;
     } else {
       currentSelectors = data.selectors || [];
       currentAttributes = {};
       currentHierarchy = [];
+      lastSelectedBounds = null;
 
-      document.getElementById('selectionBadge').textContent = 'No Selection';
-      document.getElementById('selectionBadge').style.background = 'var(--muted)';
+      const badge = document.getElementById('selectionBadge');
+      badge.textContent = 'No Selection';
+      badge.classList.remove('selected');
       clearDetails();
-      document.getElementById('status').textContent = `No element at (${x}, ${y})`;
+      if (statusText) statusText.textContent = `No element found at (${x}, ${y})`;
     }
   } catch (e) {
     console.error(e);
     showToast('Inspection failed');
-    document.getElementById('status').textContent = 'Inspection failed';
+    if (statusText) statusText.textContent = 'Inspection failed';
   }
 }
 
 function clearDetails() {
   document.getElementById('appInfo').textContent = '';
+  document.getElementById('elementMeta').style.display = 'none';
   document.getElementById('commandsSection').style.display = 'none';
   document.getElementById('breadcrumbBar').style.display = 'none';
   document.getElementById('actionBar').style.display = 'none';
   document.getElementById('tabBar').style.display = 'none';
   document.getElementById('selectorsList').innerHTML = '';
-  document.getElementById('attributesTableBody').innerHTML = '';
-  document.getElementById('emptyState').style.display = 'block';
+  document.getElementById('attributesGrid').innerHTML = '';
+  document.getElementById('emptyState').style.display = 'flex';
   drawOverlay();
 }
 
 function renderAppInfo(appId) {
   const el = document.getElementById('appInfo');
   if (appId) {
-    el.textContent = `appId: ${appId}`;
+    el.textContent = appId;
   } else {
     el.textContent = '';
   }
@@ -409,19 +436,18 @@ function renderCommands(commands) {
 
 function toggleSection(listId, arrowId) {
   const list = document.getElementById(listId);
-  const arrow = document.getElementById(arrowId);
-  const header = arrow.parentElement;
+  const trigger = document.getElementById(arrowId).closest('.accordion-trigger');
 
   if (list.style.display === 'none') {
-    list.style.display = 'block';
-    header.classList.add('expanded');
+    list.style.display = 'flex';
+    trigger.classList.add('expanded');
   } else {
     list.style.display = 'none';
-    header.classList.remove('expanded');
+    trigger.classList.remove('expanded');
   }
 }
 
-// Breadcrumbs Hierarchy Navigation
+// Breadcrumbs Trail
 function renderBreadcrumbs(hierarchy) {
   const container = document.getElementById('breadcrumbList');
   if (!container) return;
@@ -433,21 +459,26 @@ function renderBreadcrumbs(hierarchy) {
 
   container.innerHTML = hierarchy.map((node, index) => {
     let label = node.short_class;
+    let icon = '⊞';
+    if (index === 0) icon = '❖';
+    else if (index === hierarchy.length - 1) icon = '◈';
+
     if (node.resource_id) {
       const shortId = node.resource_id.split('/').pop();
       label += `#${shortId}`;
     } else if (node.text) {
-      label += ` "${node.text.slice(0, 15)}"`;
+      label += ` "${node.text.slice(0, 12)}"`;
     }
 
     const activeClass = node.is_target ? 'active' : '';
-    const sep = index < hierarchy.length - 1 ? '<span class="breadcrumb-sep">›</span>' : '';
+    const arrow = index < hierarchy.length - 1 ? '<span class="breadcrumb-arrow">›</span>' : '';
 
     return `
-      <div class="breadcrumb-item ${activeClass}" onclick="selectBreadcrumbNode(${index})" title="${escapeHtml(node.class_name)}">
+      <div class="breadcrumb-chip ${activeClass}" onclick="selectBreadcrumbNode(${index})" title="${escapeHtml(node.class_name)}">
+        <span style="opacity:0.6">${icon}</span>
         <span>${escapeHtml(label)}</span>
       </div>
-      ${sep}
+      ${arrow}
     `;
   }).join('');
 }
@@ -456,60 +487,37 @@ function selectBreadcrumbNode(index) {
   const node = currentHierarchy[index];
   if (!node) return;
 
-  // Calculate center of this ancestor node and inspect it
   const centerX = Math.round((node.bounds.left + node.bounds.right) / 2);
   const centerY = Math.round((node.bounds.top + node.bounds.bottom) / 2);
 
   inspectAt(centerX, centerY, centerX, centerY);
 }
 
-// Action Switcher Pills
+// Action Segmented Control
 function setActionType(action) {
   currentActionType = action;
 
-  // Update pill styles
-  document.querySelectorAll('.action-pill').forEach(btn => {
+  document.querySelectorAll('.action-segment').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.action === action);
   });
 
-  // Re-render selectors with new action type
   renderSelectors();
 }
 
 function transformYamlForAction(rawYaml, actionType) {
   if (!rawYaml) return '';
 
-  // If action is 'tap', keep original
-  if (actionType === 'tap') {
-    return rawYaml;
-  }
-
-  // Handle shorthand or map-based commands
-  if (actionType === 'see') {
-    return rawYaml.replace(/^- tap:/g, '- see:');
-  }
-
-  if (actionType === 'wait') {
-    return rawYaml.replace(/^- tap:/g, '- waitUntilVisible:');
-  }
-
-  if (actionType === 'longPress') {
-    return rawYaml.replace(/^- tap:/g, '- longPress:');
-  }
-
-  if (actionType === 'copyText') {
-    return rawYaml.replace(/^- tap:/g, '- copyTextFrom:');
-  }
-
-  if (actionType === 'inputText') {
-    // Tap field first, then input text
-    return `${rawYaml}\n- inputText: "example_text"`;
-  }
+  if (actionType === 'tap') return rawYaml;
+  if (actionType === 'see') return rawYaml.replace(/^- tap:/g, '- see:');
+  if (actionType === 'wait') return rawYaml.replace(/^- tap:/g, '- waitUntilVisible:');
+  if (actionType === 'longPress') return rawYaml.replace(/^- tap:/g, '- longPress:');
+  if (actionType === 'copyText') return rawYaml.replace(/^- tap:/g, '- copyTextFrom:');
+  if (actionType === 'inputText') return `${rawYaml}\n- inputText: "example_text"`;
 
   return rawYaml;
 }
 
-// Tab Switching (Selectors vs Attributes)
+// Tab Switching
 function switchTab(tab) {
   activeTab = tab;
 
@@ -520,7 +528,7 @@ function switchTab(tab) {
   document.getElementById('attributesView').style.display = tab === 'attributes' ? 'block' : 'none';
 }
 
-// Render Selectors Tab
+// Render Selectors Stack
 function renderSelectors() {
   const list = document.getElementById('selectorsList');
   const countBadge = document.getElementById('selectorsCountBadge');
@@ -529,7 +537,7 @@ function renderSelectors() {
   if (countBadge) countBadge.textContent = currentSelectors.length;
 
   if (!currentSelectors || currentSelectors.length === 0) {
-    list.innerHTML = '<div class="empty-state">No selectors available for this element.</div>';
+    list.innerHTML = '<div class="studio-empty-state"><div class="empty-title">No selectors found</div></div>';
     return;
   }
 
@@ -539,20 +547,49 @@ function renderSelectors() {
     const transformedYaml = transformYamlForAction(baseYaml, currentActionType);
     const displayValue = formatYamlHighlight(transformedYaml);
 
+    let typePillClass = '';
+    if (s.selector_type.includes('id')) typePillClass = 'id-type';
+    else if (s.selector_type.includes('relative')) typePillClass = 'relative-type';
+
     return `
       <div class="selector-card ${scoreClass}">
-        <div class="sel-header">
-          <span class="sel-type">${escapeHtml(s.selector_type)}</span>
-          <span class="sel-score">${s.score} pts</span>
+        <div class="sel-topbar">
+          <div class="sel-badge-group">
+            <span class="sel-type-pill ${typePillClass}">${escapeHtml(s.selector_type)}</span>
+          </div>
+          <div class="sel-score-meter">
+            <span class="score-dot"></span>
+            <span>${s.score} pts</span>
+          </div>
         </div>
-        <pre class="sel-value">${displayValue}</pre>
-        ${s.description ? `<div class="sel-desc">${escapeHtml(s.description)}</div>` : ''}
-        <div class="sel-actions">
-          <button class="btn btn-outline btn-sm" onclick="copyToClipboard(${i})">
-            <span>📋</span> Copy
+
+        <div class="code-preview-frame">
+          <div class="code-preview-top">
+            <div class="code-dots">
+              <span class="code-dot"></span>
+              <span class="code-dot"></span>
+              <span class="code-dot"></span>
+            </div>
+            <span class="code-lang-label">YAML</span>
+          </div>
+          <pre class="sel-value">${displayValue}</pre>
+        </div>
+
+        ${s.description ? `
+          <div class="sel-desc-row">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            <span>${escapeHtml(s.description)}</span>
+          </div>
+        ` : ''}
+
+        <div class="sel-btn-group">
+          <button class="btn-card-secondary" onclick="copyToClipboard(${i})">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            <span>Copy</span>
           </button>
-          <button class="btn btn-primary btn-sm" onclick="insertToEditor(${i})">
-            <span>↳</span> Insert
+          <button class="btn-card-primary" onclick="insertToEditor(${i})">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 10 20 15 15 20"></polyline><path d="M4 4v7a4 4 0 0 0 4 4h12"></path></svg>
+            <span>Insert to Flow</span>
           </button>
         </div>
       </div>
@@ -560,40 +597,45 @@ function renderSelectors() {
   }).join('');
 }
 
-// Render Attributes Tab
+// Render Attributes Grid
 function renderAttributes(attrs) {
-  const tbody = document.getElementById('attributesTableBody');
+  const grid = document.getElementById('attributesGrid');
   const countBadge = document.getElementById('attributesCountBadge');
-  if (!tbody) return;
+  if (!grid) return;
 
   const entries = Object.entries(attrs || {});
   if (countBadge) countBadge.textContent = entries.length;
 
   if (entries.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:16px;">No attributes available</td></tr>';
+    grid.innerHTML = '<div class="studio-empty-state"><div class="empty-title">No attributes available</div></div>';
     return;
   }
 
-  tbody.innerHTML = entries.map(([key, val]) => `
-    <tr class="attr-row" data-key="${escapeHtml(key.toLowerCase())}" data-val="${escapeHtml(val.toLowerCase())}">
-      <td class="attr-name">${escapeHtml(key)}</td>
-      <td class="attr-val">${escapeHtml(val)}</td>
-      <td>
-        <button class="attr-copy-btn" onclick="copyTextDirect('${escapeHtml(val)}')" title="Copy ${escapeHtml(key)}">📋</button>
-      </td>
-    </tr>
-  `).join('');
+  grid.innerHTML = entries.map(([key, val]) => {
+    const isBool = val === 'true' || val === 'false';
+    const boolClass = val === 'true' ? 'bool-true' : (val === 'false' ? 'bool-false' : '');
+
+    return `
+      <div class="attr-card-row" data-key="${escapeHtml(key.toLowerCase())}" data-val="${escapeHtml(val.toLowerCase())}">
+        <span class="attr-key">${escapeHtml(key)}</span>
+        <span class="attr-val ${boolClass}">${escapeHtml(val)}</span>
+        <button class="attr-copy-icon-btn" onclick="copyTextDirect('${escapeHtml(val)}')" title="Copy ${escapeHtml(key)}">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        </button>
+      </div>
+    `;
+  }).join('');
 }
 
 function filterAttributes() {
   const q = (document.getElementById('attrSearchInput').value || '').toLowerCase().trim();
-  const rows = document.querySelectorAll('.attr-row');
+  const rows = document.querySelectorAll('.attr-card-row');
 
   rows.forEach(row => {
     const key = row.dataset.key || '';
     const val = row.dataset.val || '';
     if (key.includes(q) || val.includes(q)) {
-      row.style.display = '';
+      row.style.display = 'flex';
     } else {
       row.style.display = 'none';
     }
@@ -606,10 +648,10 @@ function copyTextDirect(text) {
   if (window.parent && window.parent !== window) {
     window.parent.postMessage({ type: 'copySelector', value: text }, '*');
   }
-  showToast(`Copied: ${text.slice(0, 25)}...`);
+  showToast(`Copied: ${text.slice(0, 24)}...`);
 }
 
-// Copy to Clipboard (with selection support)
+// Copy with Selection support
 async function copyToClipboard(idx) {
   const selectedText = window.getSelection() ? window.getSelection().toString().trim() : '';
   const s = currentSelectors[idx];
@@ -656,7 +698,7 @@ async function copyToClipboard(idx) {
     }, '*');
   }
 
-  showToast(selectedText ? 'Copied Selection' : 'Copied to Clipboard');
+  showToast(selectedText ? 'Selection Copied' : 'YAML Copied to Clipboard');
 }
 
 // Global copy event listener: guarantees manual Cmd+C / Ctrl+C works in VS Code webview iframe
@@ -686,7 +728,7 @@ function insertToEditor(idx) {
     value: transformed,
     selector: s
   }, '*');
-  showToast('Inserted to VS Code');
+  showToast('Inserted to VS Code Flow');
 }
 
 // App Selection & Search
@@ -742,7 +784,7 @@ function filterApps() {
   });
 
   if (filtered.length === 0) {
-    dropdown.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:12px">No matching application found</div>';
+    dropdown.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:11.5px;text-align:center;">No matching window or package found</div>';
     dropdown.style.display = 'block';
     return;
   }
@@ -756,7 +798,7 @@ function filterApps() {
         <div class="app-item-info">
           <div class="app-name">
             <span>${escapeHtml(app.name)}</span>
-            ${app.isRunning ? '<span class="app-badge-running">Running</span>' : ''}
+            ${app.isRunning ? '<span class="app-badge-running">ACTIVE</span>' : ''}
           </div>
           <div class="app-detail">${escapeHtml(app.path || app.bundleId)}</div>
         </div>
@@ -770,6 +812,7 @@ async function selectApp(idx) {
   const input = document.getElementById('appSearchInput');
   const dropdown = document.getElementById('appDropdown');
   const clearBtn = document.getElementById('clearAppBtn');
+  const statusText = document.getElementById('statusText');
   const app = allApps[idx];
   if (!app) return;
 
@@ -779,8 +822,8 @@ async function selectApp(idx) {
   if (dropdown) dropdown.style.display = 'none';
   if (clearBtn) clearBtn.style.display = 'block';
 
-  showToast(`Selected: ${app.name}`);
-  document.getElementById('status').textContent = `Target: ${app.name} (capturing...)`;
+  showToast(`Attached: ${app.name}`);
+  if (statusText) statusText.textContent = `Target: ${app.name}`;
 
   try {
     await fetch('/api/target-app', {
@@ -798,13 +841,14 @@ async function clearAppSelection() {
   const input = document.getElementById('appSearchInput');
   const dropdown = document.getElementById('appDropdown');
   const clearBtn = document.getElementById('clearAppBtn');
+  const statusText = document.getElementById('statusText');
   selectedAppTarget = null;
   if (input) input.value = '';
   if (dropdown) dropdown.style.display = 'none';
   if (clearBtn) clearBtn.style.display = 'none';
 
   showToast('Full Screen Mode');
-  document.getElementById('status').textContent = 'Full Screen (capturing...)';
+  if (statusText) statusText.textContent = 'Full Screen';
 
   try {
     await fetch('/api/target-app', {

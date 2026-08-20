@@ -4,155 +4,231 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lumi Inspector</title>
+  <title>Lumi Studio Inspector</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 
 <body>
 
   <div class="app-container">
 
-    <!-- Screenshot Area (Left) -->
+    <!-- Screen Panel (Left) -->
     <div class="screen-panel" id="screenPanel">
-      <div class="toolbar">
+      
+      <!-- Studio Floating Header Toolbar -->
+      <div class="studio-topbar">
+        <div class="brand-badge">
+          <span class="brand-dot"></span>
+          <span class="brand-name">LUMI</span>
+          <span class="brand-sub">INSPECTOR</span>
+        </div>
+
         <div class="app-search-wrapper">
-          <input type="text" id="appSearchInput" class="app-search-input" placeholder="🔍 Search App / Window..." oninput="filterApps()" onfocus="showAppDropdown()" autocomplete="off">
-          <span id="clearAppBtn" class="clear-app-btn" onclick="clearAppSelection()" style="display:none" title="Clear selection (full screen)">✕</span>
+          <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="appSearchInput" class="app-search-input" placeholder="Search target window or package..." oninput="filterApps()" onfocus="showAppDropdown()" autocomplete="off">
+          <span id="clearAppBtn" class="clear-app-btn" onclick="clearAppSelection()" style="display:none" title="Clear selection (Full Screen)">✕</span>
           <div id="appDropdown" class="app-dropdown" style="display:none"></div>
         </div>
-        <div class="toggle-row">
-          <span class="toolbar-label">Bounds</span>
-          <div class="toggle on" id="boxToggle" onclick="toggleBoxes()" title="Toggle element bounding boxes"></div>
+
+        <div class="topbar-actions">
+          <div class="toggle-pill" onclick="toggleBoxes()" title="Toggle element bounding boxes">
+            <span class="toggle-pill-label">Bounds</span>
+            <div class="switch-control" id="boxToggle">
+              <div class="switch-thumb"></div>
+            </div>
+          </div>
+
+          <button class="btn-refresh" onclick="capture()" title="Capture Screenshot (R)">
+            <svg class="refresh-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+            </svg>
+            <span>Refresh</span>
+          </button>
         </div>
-        <button class="btn btn-sm btn-icon" onclick="capture()" title="Refresh Screenshot">
-          ↻ Refresh
-        </button>
       </div>
 
       <!-- Floating Zoom Controls -->
-      <div class="canvas-zoom-bar">
-        <button class="zoom-btn" onclick="zoomOut()" title="Zoom Out (Ctrl -)">−</button>
-        <span class="zoom-text" id="zoomLevelText" onclick="resetZoom()" title="Click to reset zoom (100%)">100%</span>
-        <button class="zoom-btn" onclick="zoomIn()" title="Zoom In (Ctrl +)">+</button>
-        <button class="zoom-btn fit-btn" onclick="fitToScreen()" title="Fit to Viewport">⛶ Fit</button>
+      <div class="canvas-zoom-dock">
+        <button class="zoom-dock-btn" onclick="zoomOut()" title="Zoom Out (Ctrl -)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+        <span class="zoom-dock-text" id="zoomLevelText" onclick="resetZoom()" title="Reset to 100%">100%</span>
+        <button class="zoom-dock-btn" onclick="zoomIn()" title="Zoom In (Ctrl +)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+        <div class="zoom-dock-divider"></div>
+        <button class="zoom-dock-btn fit-btn" onclick="fitToScreen()" title="Fit to Viewport">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+          <span>Fit</span>
+        </button>
       </div>
 
+      <!-- Canvas Viewport -->
       <div class="canvas-container" id="canvasContainer">
         <div class="placeholder" id="placeholder">
-          <div class="icon">📱</div>
-          <div>Waiting for device connection...</div>
+          <div class="placeholder-halo">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+              <line x1="12" y1="18" x2="12.01" y2="18"></line>
+            </svg>
+          </div>
+          <div class="placeholder-title">Waiting for device screen...</div>
+          <div class="placeholder-sub">Click Refresh or run your target app</div>
         </div>
-        <div id="screenWrapper">
-          <img id="screen" src="" style="display:none" alt="Device Screen">
+
+        <div id="screenWrapper" class="device-frame">
+          <img id="screen" src="" style="display:none" alt="Device Viewport">
           <canvas id="overlay"></canvas>
           <div id="hoverTooltip" class="hover-tooltip" style="display:none"></div>
         </div>
       </div>
-      <div class="status-bar" id="status">Ready</div>
+
+      <div class="studio-statusbar" id="status">
+        <span class="status-indicator"></span>
+        <span id="statusText">Ready</span>
+      </div>
     </div>
 
     <!-- Details Panel (Right) -->
     <div class="details-panel" id="detailsPanel">
-      <div class="details-header">
-        <div class="header-main">
-          <h2>Inspector</h2>
-          <div id="appInfo" class="app-info"></div>
+      
+      <!-- Hero Element Header -->
+      <div class="details-hero">
+        <div class="hero-top-row">
+          <div class="hero-title-group">
+            <span class="hero-label">Target Inspector</span>
+            <div class="hero-app-info" id="appInfo" title="Target App ID"></div>
+          </div>
+          <span class="hero-badge" id="selectionBadge">No Selection</span>
         </div>
-        <span class="badge" id="selectionBadge">No Selection</span>
+        <div class="hero-element-meta" id="elementMeta" style="display:none">
+          <span class="meta-tag meta-class" id="metaClass">View</span>
+          <span class="meta-tag meta-dim" id="metaDim">576 × 60 px</span>
+          <span class="meta-tag meta-res" id="metaRes" style="display:none"></span>
+        </div>
       </div>
 
-      <!-- Breadcrumb Hierarchy Trail -->
-      <div class="breadcrumb-bar" id="breadcrumbBar" style="display:none">
-        <div class="breadcrumb-header">
-          <span class="breadcrumb-icon">⑂</span>
-          <span class="breadcrumb-title">Hierarchy</span>
+      <!-- Hierarchy Breadcrumbs -->
+      <div class="hierarchy-section" id="breadcrumbBar" style="display:none">
+        <div class="section-title-row">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="18" cy="5" r="3"></circle>
+            <circle cx="6" cy="12" r="3"></circle>
+            <circle cx="18" cy="19" r="3"></circle>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+          </svg>
+          <span>View Hierarchy</span>
         </div>
-        <div class="breadcrumb-scroll" id="breadcrumbList">
+        <div class="breadcrumbs-track" id="breadcrumbList">
           <!-- Injected dynamically -->
         </div>
       </div>
 
-      <!-- Action Switcher Toolbar -->
-      <div class="action-bar" id="actionBar" style="display:none">
-        <div class="action-label">Action:</div>
-        <div class="action-pills">
-          <button class="action-pill active" data-action="tap" onclick="setActionType('tap')">👆 tap</button>
-          <button class="action-pill" data-action="see" onclick="setActionType('see')">👁️ see</button>
-          <button class="action-pill" data-action="wait" onclick="setActionType('wait')">⏳ wait</button>
-          <button class="action-pill" data-action="inputText" onclick="setActionType('inputText')">⌨️ input</button>
-          <button class="action-pill" data-action="copyText" onclick="setActionType('copyText')">📝 copy</button>
-          <button class="action-pill" data-action="longPress" onclick="setActionType('longPress')">🕒 press</button>
+      <!-- Action Segmented Control -->
+      <div class="action-section" id="actionBar" style="display:none">
+        <div class="action-segment-container">
+          <button class="action-segment active" data-action="tap" onclick="setActionType('tap')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v10m0 0l4-4m-4 4l-4-4M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"></path></svg>
+            <span>Tap</span>
+          </button>
+          <button class="action-segment" data-action="see" onclick="setActionType('see')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <span>Assert</span>
+          </button>
+          <button class="action-segment" data-action="wait" onclick="setActionType('wait')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <span>Wait</span>
+          </button>
+          <button class="action-segment" data-action="inputText" onclick="setActionType('inputText')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="6" y1="8" x2="6" y2="8"></line><line x1="10" y1="8" x2="10" y2="8"></line><line x1="14" y1="8" x2="14" y2="8"></line><line x1="18" y1="8" x2="18" y2="8"></line><line x1="8" y1="16" x2="16" y2="16"></line></svg>
+            <span>Input</span>
+          </button>
+          <button class="action-segment" data-action="copyText" onclick="setActionType('copyText')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            <span>Copy</span>
+          </button>
+          <button class="action-segment" data-action="longPress" onclick="setActionType('longPress')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10M18 20V4M6 20v-4"></path></svg>
+            <span>Press</span>
+          </button>
         </div>
       </div>
 
-      <!-- Inspector Tabs (Selectors vs Attributes) -->
-      <div class="tab-bar" id="tabBar" style="display:none">
-        <button class="tab-btn active" id="tabSelectorsBtn" onclick="switchTab('selectors')">
-          <span>✨ Suggested Selectors</span>
-          <span class="tab-badge" id="selectorsCountBadge">0</span>
+      <!-- Studio Tab Navigation -->
+      <div class="studio-tab-bar" id="tabBar" style="display:none">
+        <button class="studio-tab active" id="tabSelectorsBtn" onclick="switchTab('selectors')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+          <span>Ranked Selectors</span>
+          <span class="tab-pill-badge" id="selectorsCountBadge">0</span>
         </button>
-        <button class="tab-btn" id="tabAttributesBtn" onclick="switchTab('attributes')">
-          <span>📋 Attributes</span>
-          <span class="tab-badge" id="attributesCountBadge">0</span>
+        <button class="studio-tab" id="tabAttributesBtn" onclick="switchTab('attributes')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+          <span>Attributes</span>
+          <span class="tab-pill-badge" id="attributesCountBadge">0</span>
         </button>
       </div>
 
-      <!-- Details Content Area -->
+      <!-- Details Body -->
       <div class="details-content" id="detailsContent">
 
-        <!-- TAB 1: SELECTORS VIEW -->
+        <!-- VIEW 1: SELECTORS -->
         <div id="selectorsView">
-          <!-- Supported Commands (Collapsible) -->
-          <div class="section-collapsible" id="commandsSection" style="display:none">
-            <div class="section-header" onclick="toggleSection('commandsList', 'cmdArrow')">
-              <span class="arrow" id="cmdArrow">▶</span>
-              <span>Supported Commands</span>
+          <!-- Supported Commands Accordion -->
+          <div class="commands-accordion" id="commandsSection" style="display:none">
+            <div class="accordion-trigger" onclick="toggleSection('commandsList', 'cmdArrow')">
+              <svg class="chevron-icon" id="cmdArrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+              <span>Supported DSL Commands</span>
             </div>
-            <div class="section-body" id="commandsList" style="display:none">
-              <!-- Commands injected here -->
-            </div>
+            <div class="accordion-content" id="commandsList" style="display:none"></div>
           </div>
 
-          <!-- Selectors List Container -->
-          <div id="selectorsList"></div>
+          <!-- Cards Stack -->
+          <div id="selectorsList" class="selectors-stack"></div>
 
           <!-- Empty State -->
-          <div class="empty-state" id="emptyState">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"
-              style="margin-bottom: 12px; opacity: 0.5;">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <circle cx="8.5" cy="8.5" r="1.5"></circle>
-              <polyline points="21 15 16 10 5 21"></polyline>
-            </svg>
-            <div>Click on an element to inspect</div>
+          <div class="studio-empty-state" id="emptyState">
+            <div class="empty-state-art">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="22" y1="12" x2="18" y2="12"></line>
+                <line x1="6" y1="12" x2="2" y2="12"></line>
+                <line x1="12" y1="6" x2="12" y2="2"></line>
+                <line x1="12" y1="22" x2="12" y2="18"></line>
+              </svg>
+            </div>
+            <div class="empty-title">Select Any UI Element</div>
+            <div class="empty-desc">Click anywhere on the device screen on the left to inspect hierarchy, attributes, and generate resilient selectors.</div>
           </div>
         </div>
 
-        <!-- TAB 2: ATTRIBUTES VIEW -->
+        <!-- VIEW 2: ATTRIBUTES -->
         <div id="attributesView" style="display:none">
-          <div class="attr-search-wrapper">
-            <input type="text" id="attrSearchInput" class="attr-search-input" placeholder="Filter attributes..." oninput="filterAttributes()">
+          <div class="attr-filter-dock">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="text" id="attrSearchInput" class="attr-filter-input" placeholder="Filter XML attributes..." oninput="filterAttributes()">
           </div>
-          <div class="attributes-table-container">
-            <table class="attributes-table" id="attributesTable">
-              <thead>
-                <tr>
-                  <th>Attribute</th>
-                  <th>Value</th>
-                  <th style="width:36px"></th>
-                </tr>
-              </thead>
-              <tbody id="attributesTableBody">
-                <!-- Injected dynamically -->
-              </tbody>
-            </table>
+          
+          <div class="attributes-grid" id="attributesGrid">
+            <!-- Injected dynamically as cards -->
           </div>
         </div>
 
       </div>
     </div>
 
-    <!-- Toast Notification -->
-    <div id="toast" class="toast">Copied!</div>
+    <!-- Modern Floating Toast -->
+    <div id="toast" class="studio-toast">
+      <svg class="toast-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+      <span id="toastMsg">Copied to Clipboard</span>
+    </div>
   </div>
 
 </body>
