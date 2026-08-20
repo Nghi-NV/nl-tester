@@ -1158,15 +1158,15 @@ fn find_element_at(
     x: i32,
     y: i32,
 ) -> Option<uiautomator::UiElement> {
-    let mut best: Option<&uiautomator::UiElement> = None;
-    let mut best_priority = -1;
-    let mut best_area = i64::MAX;
+    let mut matching: Vec<(&uiautomator::UiElement, i64, i32)> = Vec::new();
 
     for el in elements {
         let bounds = &el.bounds;
         if x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom {
-            let area = (bounds.right - bounds.left) as i64 * (bounds.bottom - bounds.top) as i64;
-            if area <= 0 {
+            let width = bounds.right - bounds.left;
+            let height = bounds.bottom - bounds.top;
+            let area = width as i64 * height as i64;
+            if area <= 0 || width <= 0 || height <= 0 {
                 continue;
             }
 
@@ -1174,7 +1174,23 @@ fn find_element_at(
                 || el.resource_id == "android:id/decor_content_parent"
                 || el.resource_id == "android:id/navigationBarBackground"
                 || el.resource_id == "android:id/statusBarBackground"
-                || el.resource_id == "android:id/custom";
+                || el.resource_id == "android:id/custom"
+                || el.resource_id == "android:id/touch_outside";
+
+            let desc_lower = el.content_desc.trim().to_lowercase();
+            let text_lower = el.text.trim().to_lowercase();
+
+            // Detect modal scrims / backdrop dismiss barriers (e.g. Flutter "Dismiss", "Modal barrier", "Scrim")
+            let is_backdrop = desc_lower == "dismiss"
+                || desc_lower == "scrim"
+                || desc_lower == "backdrop"
+                || desc_lower == "modal barrier"
+                || desc_lower == "modal-barrier"
+                || desc_lower == "dialog-overlay"
+                || text_lower == "dismiss"
+                || text_lower == "scrim"
+                || text_lower == "backdrop"
+                || is_generic_system_id;
 
             let is_input = el.class == "Input"
                 || el.class == "TextField"
@@ -1196,40 +1212,80 @@ fn find_element_at(
 
             let has_semantic_id = !el.resource_id.trim().is_empty() && !is_generic_system_id;
             let has_text = !el.text.trim().is_empty()
-                || !el.content_desc.trim().is_empty()
+                || (!el.content_desc.trim().is_empty() && !is_backdrop)
                 || !el.hint.trim().is_empty()
                 || has_semantic_id;
 
-            let is_container = el.class == "Group"
+            let is_container = is_backdrop
+                || el.class == "Group"
                 || el.class == "Window"
                 || el.class == "WebArea"
                 || el.class == "ScrollArea"
                 || el.class == "ScrollView"
                 || el.class == "android.widget.FrameLayout"
                 || el.class.ends_with("Layout")
-                || el.class.ends_with("ViewGroup")
-                || is_generic_system_id;
+                || el.class.ends_with("ViewGroup");
 
-            let priority = match (is_input, is_control, has_text, is_container) {
-                (true, _, _, _) => 6,           // Highest priority: input fields
-                (_, true, true, false) => 5,    // Interactive controls with label / semantic id
-                (_, true, false, false) => 4,   // Interactive controls without label (e.g. slider, clickable view)
-                (_, false, true, false) => 3,   // Text labels, icons, headings
-                (_, false, false, false) => 2,  // Specific leaf elements
-                (_, _, true, true) => 1,        // Containers with label
-                (_, _, false, true) => 0,       // Pure containers (FrameLayout, Window, android:id/content)
+            // Base priority score
+            let priority = if is_backdrop {
+                0 // Backdrops have absolute lowest priority
+            } else if is_input {
+                6 // Text inputs
+            } else if is_control && has_text && !is_container {
+                5 // Interactive control with label / stable ID
+            } else if is_control && !is_container {
+                4 // Interactive control without direct label (e.g. Sliders, Canvas views)
+            } else if has_text && !is_container {
+                3 // Text labels, icons, titles
+            } else if !is_container {
+                2 // Leaf view / component
+            } else if has_text {
+                1 // Container with label
+            } else {
+                0 // Raw layout container
             };
 
-            // Choose higher priority, or if same priority, choose the more specific (smaller area) element
-            if priority > best_priority || (priority == best_priority && area < best_area) {
-                best_priority = priority;
-                best_area = area;
-                best = Some(el);
-            }
+            matching.push((el, area, priority));
         }
     }
 
-    best.cloned()
+    if matching.is_empty() {
+        return None;
+    }
+
+    // Sort strategy:
+    // 1. Non-backdrops come before backdrops.
+    // 2. Area is primary for hierarchy depth: If element A is much smaller than element B
+    //    (e.g., A.area <= B.area * 0.7), A is the inner / leaf element containing the touch point.
+    // 3. Among elements with comparable areas (within 1.4x of each other), higher priority wins.
+    matching.sort_by(|a, b| {
+        let (_el_a, area_a, prio_a) = a;
+        let (_el_b, area_b, prio_b) = b;
+
+        // If one is backdrop and other is not, non-backdrop strictly wins
+        let is_backdrop_a = *prio_a == 0;
+        let is_backdrop_b = *prio_b == 0;
+        if is_backdrop_a != is_backdrop_b {
+            return if is_backdrop_a {
+                std::cmp::Ordering::Greater
+            } else {
+                std::cmp::Ordering::Less
+            };
+        }
+
+        // Compare areas: If area difference is significant (> 1.4x), smaller area wins!
+        let ratio = (*area_a as f64) / (*area_b as f64);
+        if ratio < 0.7 {
+            std::cmp::Ordering::Less
+        } else if ratio > 1.4 {
+            std::cmp::Ordering::Greater
+        } else {
+            // Comparable area: higher priority wins, tie-breaker smaller area
+            prio_b.cmp(prio_a).then_with(|| area_a.cmp(area_b))
+        }
+    });
+
+    matching.first().map(|(el, _, _)| (*el).clone())
 }
 
 fn build_yaml_command(request: &AppendCommandRequest) -> String {
