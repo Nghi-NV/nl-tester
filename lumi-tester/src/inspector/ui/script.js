@@ -34,7 +34,32 @@ function showToast(msg) {
 
 function escapeHtml(s) {
   if (!s) return '';
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function formatYamlHighlight(yamlText) {
+  if (!yamlText) return '';
+  const escaped = escapeHtml(yamlText.trim());
+  return escaped
+    .split('\n')
+    .map(line => {
+      // 1. Line starting with "- action:" e.g. "- tap:"
+      let l = line.replace(/^(\s*-\s+)([\w]+)(:)/, '$1<span class="yaml-cmd">$2</span>$3');
+      // 2. Map keys e.g. "    id:", "    text:", "    type:", "    above:", "    below:", "    align:", "    offset:", "    point:", "    index:"
+      l = l.replace(/^(\s*)([\w]+)(:)/, '$1<span class="yaml-key">$2</span>$3');
+      // 3. String values in quotes e.g. &quot;...&quot;
+      l = l.replace(/(:\s*)(&quot;.*?&quot;)/g, '$1<span class="yaml-str">$2</span>');
+      // 4. Number values e.g. 19
+      l = l.replace(/(:\s*)(\b\d+\b)/g, '$1<span class="yaml-num">$2</span>');
+      // 5. Enum / boolean keywords e.g. right, left, top, bottom, center, true, false
+      l = l.replace(/(:\s*)\b(true|false|right|left|top|bottom|center)\b/g, '$1<span class="yaml-enum">$2</span>');
+      return l;
+    })
+    .join('\n');
 }
 
 function toggleBoxes() {
@@ -326,23 +351,8 @@ function renderDetails(selectors) {
 
   const cardsHtml = selectors.map((s, i) => {
     const scoreClass = s.is_stable ? 'stable' : 'unstable';
-    // Format value more nicely for "type" or "regex" or "point"
-    let displayValue = escapeHtml(s.value);
-
-    // Format syntax highlight prefix
-    if (s.selector_type === 'type') {
-      displayValue = `<span style="color:#79c0ff">type:</span> ${displayValue}`;
-    } else if (s.selector_type === 'text') {
-      displayValue = `<span style="color:#79c0ff">text:</span> ${displayValue}`;
-    } else if (s.selector_type === 'point') {
-      displayValue = `<span style="color:#79c0ff">point:</span> ${displayValue}`;
-    } else if (s.selector_type === 'id') {
-      displayValue = `<span style="color:#79c0ff">id:</span> ${displayValue}`;
-    } else if (s.selector_type === 'regex') {
-      displayValue = `<span style="color:#79c0ff">regex:</span> ${displayValue}`;
-    } else if (s.selector_type.startsWith('relative')) {
-      displayValue = `<span style="color:#79c0ff">${displayValue}</span>`;
-    }
+    const codeSnippet = s.yaml || s.value || '';
+    const displayValue = formatYamlHighlight(codeSnippet);
 
     return `
       <div class="selector-card ${scoreClass}">
@@ -350,7 +360,7 @@ function renderDetails(selectors) {
           <span class="sel-type">${s.selector_type}</span>
           <span class="sel-score">${s.score} pts</span>
         </div>
-        <div class="sel-value">${displayValue}</div>
+        <pre class="sel-value">${displayValue}</pre>
         ${s.description ? `<div class="sel-desc">${escapeHtml(s.description)}</div>` : ''}
         <div class="sel-actions">
           <button class="btn btn-outline btn-sm" onclick="copyToClipboard(${i})">Copy</button>
