@@ -11,31 +11,40 @@
 
   <div class="app-container">
 
-    <!-- Screenshot Area -->
-    <div class="screen-panel">
+    <!-- Screenshot Area (Left) -->
+    <div class="screen-panel" id="screenPanel">
       <div class="toolbar">
         <div class="app-search-wrapper">
-          <input type="text" id="appSearchInput" class="app-search-input" placeholder="🔍 Search App / Package..." oninput="filterApps()" onfocus="showAppDropdown()" autocomplete="off">
+          <input type="text" id="appSearchInput" class="app-search-input" placeholder="🔍 Search App / Window..." oninput="filterApps()" onfocus="showAppDropdown()" autocomplete="off">
           <span id="clearAppBtn" class="clear-app-btn" onclick="clearAppSelection()" style="display:none" title="Clear selection (full screen)">✕</span>
           <div id="appDropdown" class="app-dropdown" style="display:none"></div>
         </div>
         <div class="toggle-row">
           <span class="toolbar-label">Bounds</span>
-          <div class="toggle on" id="boxToggle" onclick="toggleBoxes()"></div>
+          <div class="toggle on" id="boxToggle" onclick="toggleBoxes()" title="Toggle element bounding boxes"></div>
         </div>
         <button class="btn btn-sm btn-icon" onclick="capture()" title="Refresh Screenshot">
           ↻ Refresh
         </button>
       </div>
 
+      <!-- Floating Zoom Controls -->
+      <div class="canvas-zoom-bar">
+        <button class="zoom-btn" onclick="zoomOut()" title="Zoom Out (Ctrl -)">−</button>
+        <span class="zoom-text" id="zoomLevelText" onclick="resetZoom()" title="Click to reset zoom (100%)">100%</span>
+        <button class="zoom-btn" onclick="zoomIn()" title="Zoom In (Ctrl +)">+</button>
+        <button class="zoom-btn fit-btn" onclick="fitToScreen()" title="Fit to Viewport">⛶ Fit</button>
+      </div>
+
       <div class="canvas-container" id="canvasContainer">
         <div class="placeholder" id="placeholder">
           <div class="icon">📱</div>
-          <div>Waiting for connection...</div>
+          <div>Waiting for device connection...</div>
         </div>
         <div id="screenWrapper">
-          <img id="screen" src="" style="display:none">
+          <img id="screen" src="" style="display:none" alt="Device Screen">
           <canvas id="overlay"></canvas>
+          <div id="hoverTooltip" class="hover-tooltip" style="display:none"></div>
         </div>
       </div>
       <div class="status-bar" id="status">Ready</div>
@@ -44,14 +53,54 @@
     <!-- Details Panel (Right) -->
     <div class="details-panel" id="detailsPanel">
       <div class="details-header">
-        <div>
+        <div class="header-main">
           <h2>Inspector</h2>
           <div id="appInfo" class="app-info"></div>
         </div>
         <span class="badge" id="selectionBadge">No Selection</span>
       </div>
-      <div class="details-content">
-        <div id="detailsContent">
+
+      <!-- Breadcrumb Hierarchy Trail -->
+      <div class="breadcrumb-bar" id="breadcrumbBar" style="display:none">
+        <div class="breadcrumb-header">
+          <span class="breadcrumb-icon">⑂</span>
+          <span class="breadcrumb-title">Hierarchy</span>
+        </div>
+        <div class="breadcrumb-scroll" id="breadcrumbList">
+          <!-- Injected dynamically -->
+        </div>
+      </div>
+
+      <!-- Action Switcher Toolbar -->
+      <div class="action-bar" id="actionBar" style="display:none">
+        <div class="action-label">Action:</div>
+        <div class="action-pills">
+          <button class="action-pill active" data-action="tap" onclick="setActionType('tap')">👆 tap</button>
+          <button class="action-pill" data-action="see" onclick="setActionType('see')">👁️ see</button>
+          <button class="action-pill" data-action="wait" onclick="setActionType('wait')">⏳ wait</button>
+          <button class="action-pill" data-action="inputText" onclick="setActionType('inputText')">⌨️ input</button>
+          <button class="action-pill" data-action="copyText" onclick="setActionType('copyText')">📝 copy</button>
+          <button class="action-pill" data-action="longPress" onclick="setActionType('longPress')">🕒 press</button>
+        </div>
+      </div>
+
+      <!-- Inspector Tabs (Selectors vs Attributes) -->
+      <div class="tab-bar" id="tabBar" style="display:none">
+        <button class="tab-btn active" id="tabSelectorsBtn" onclick="switchTab('selectors')">
+          <span>✨ Suggested Selectors</span>
+          <span class="tab-badge" id="selectorsCountBadge">0</span>
+        </button>
+        <button class="tab-btn" id="tabAttributesBtn" onclick="switchTab('attributes')">
+          <span>📋 Attributes</span>
+          <span class="tab-badge" id="attributesCountBadge">0</span>
+        </button>
+      </div>
+
+      <!-- Details Content Area -->
+      <div class="details-content" id="detailsContent">
+
+        <!-- TAB 1: SELECTORS VIEW -->
+        <div id="selectorsView">
           <!-- Supported Commands (Collapsible) -->
           <div class="section-collapsible" id="commandsSection" style="display:none">
             <div class="section-header" onclick="toggleSection('commandsList', 'cmdArrow')">
@@ -62,8 +111,12 @@
               <!-- Commands injected here -->
             </div>
           </div>
-          <!-- Selectors injected here -->
-          <div class="empty-state">
+
+          <!-- Selectors List Container -->
+          <div id="selectorsList"></div>
+
+          <!-- Empty State -->
+          <div class="empty-state" id="emptyState">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"
               style="margin-bottom: 12px; opacity: 0.5;">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -73,8 +126,31 @@
             <div>Click on an element to inspect</div>
           </div>
         </div>
+
+        <!-- TAB 2: ATTRIBUTES VIEW -->
+        <div id="attributesView" style="display:none">
+          <div class="attr-search-wrapper">
+            <input type="text" id="attrSearchInput" class="attr-search-input" placeholder="Filter attributes..." oninput="filterAttributes()">
+          </div>
+          <div class="attributes-table-container">
+            <table class="attributes-table" id="attributesTable">
+              <thead>
+                <tr>
+                  <th>Attribute</th>
+                  <th>Value</th>
+                  <th style="width:36px"></th>
+                </tr>
+              </thead>
+              <tbody id="attributesTableBody">
+                <!-- Injected dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
     </div>
+
     <!-- Toast Notification -->
     <div id="toast" class="toast">Copied!</div>
   </div>

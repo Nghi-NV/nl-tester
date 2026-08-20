@@ -41,6 +41,16 @@ pub struct ScreenshotResponse {
     pub height: u32,
 }
 
+#[derive(Serialize, Clone, Debug)]
+pub struct BreadcrumbNode {
+    pub class_name: String,
+    pub short_class: String,
+    pub resource_id: Option<String>,
+    pub text: Option<String>,
+    pub bounds: BoundsInfo,
+    pub is_target: bool,
+}
+
 /// Response for element at coordinates
 #[derive(Serialize)]
 pub struct ElementResponse {
@@ -51,6 +61,10 @@ pub struct ElementResponse {
     pub bounds: Option<BoundsInfo>,
     pub app_id: Option<String>,
     pub supported_commands: Vec<String>,
+    #[serde(default)]
+    pub hierarchy: Vec<BreadcrumbNode>,
+    #[serde(default)]
+    pub attributes: std::collections::HashMap<String, String>,
 }
 
 #[derive(Serialize)]
@@ -65,7 +79,7 @@ pub struct SelectorInfo {
     pub index: Option<usize>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug)]
 pub struct BoundsInfo {
     pub left: i32,
     pub top: i32,
@@ -277,15 +291,17 @@ async fn get_element_at(
                 let hierarchy = match screen_capture::get_hierarchy_macos(target_app.as_deref()).await {
                     Ok(h) => h,
                     Err(_) => {
-                        return Json(ElementResponse {
-                            found: false,
-                            selectors: vec![],
-                            element_class: None,
-                            element_text: None,
-                            bounds: None,
-                            app_id: None,
-                            supported_commands: vec![],
-                        });
+                            return Json(ElementResponse {
+                                found: false,
+                                selectors: vec![],
+                                element_class: None,
+                                element_text: None,
+                                bounds: None,
+                                app_id: None,
+                                supported_commands: vec![],
+                                hierarchy: vec![],
+                                attributes: std::collections::HashMap::new(),
+                            });
                     }
                 };
                 screen_capture::parse_macos_hierarchy_to_ui_elements(
@@ -305,21 +321,25 @@ async fn get_element_at(
                                 bounds: None,
                                 app_id: None,
                                 supported_commands: vec![],
+                                hierarchy: vec![],
+                                attributes: std::collections::HashMap::new(),
                             });
                         }
                     };
                 match uiautomator::parse_hierarchy(&hierarchy) {
                     Ok(e) => e,
                     Err(_) => {
-                        return Json(ElementResponse {
-                            found: false,
-                            selectors: vec![],
-                            element_class: None,
-                            element_text: None,
-                            bounds: None,
-                            app_id: None,
-                            supported_commands: vec![],
-                        });
+                            return Json(ElementResponse {
+                                found: false,
+                                selectors: vec![],
+                                element_class: None,
+                                element_text: None,
+                                bounds: None,
+                                app_id: None,
+                                supported_commands: vec![],
+                                hierarchy: vec![],
+                                attributes: std::collections::HashMap::new(),
+                            });
                     }
                 }
             }
@@ -332,7 +352,7 @@ async fn get_element_at(
 
     match element {
         Some(el) => {
-            let scorer = SelectorScorer::new(width, height, elements);
+            let scorer = SelectorScorer::new(width, height, elements.clone());
             let candidates = scorer.score_element(&el);
 
             // Use YamlGenerator to ensure format matches recorder
@@ -481,6 +501,62 @@ async fn get_element_at(
                 index: None,
             });
 
+            let enclosing = find_enclosing_elements_at(&elements, params.x, params.y);
+            let hierarchy: Vec<BreadcrumbNode> = enclosing
+                .into_iter()
+                .map(|node| {
+                    let short_class = node.class.split('.').last().unwrap_or(&node.class).to_string();
+                    let is_target = node.bounds.left == el.bounds.left
+                        && node.bounds.top == el.bounds.top
+                        && node.bounds.right == el.bounds.right
+                        && node.bounds.bottom == el.bounds.bottom
+                        && node.class == el.class;
+
+                    BreadcrumbNode {
+                        class_name: node.class.clone(),
+                        short_class,
+                        resource_id: if node.resource_id.is_empty() { None } else { Some(node.resource_id.clone()) },
+                        text: if node.text.is_empty() { None } else { Some(node.text.clone()) },
+                        bounds: BoundsInfo {
+                            left: node.bounds.left,
+                            top: node.bounds.top,
+                            right: node.bounds.right,
+                            bottom: node.bounds.bottom,
+                        },
+                        is_target,
+                    }
+                })
+                .collect();
+
+            let mut attributes = std::collections::HashMap::new();
+            attributes.insert("class".to_string(), el.class.clone());
+            if !el.resource_id.is_empty() {
+                attributes.insert("resource-id".to_string(), el.resource_id.clone());
+            }
+            if !el.text.is_empty() {
+                attributes.insert("text".to_string(), el.text.clone());
+            }
+            if !el.content_desc.is_empty() {
+                attributes.insert("content-desc".to_string(), el.content_desc.clone());
+            }
+            if !el.package.is_empty() {
+                attributes.insert("package".to_string(), el.package.clone());
+            }
+            attributes.insert("bounds".to_string(), format!("[{},{}][{},{}]", el.bounds.left, el.bounds.top, el.bounds.right, el.bounds.bottom));
+            attributes.insert("dimensions".to_string(), format!("{} × {} px", (el.bounds.right - el.bounds.left).max(0), (el.bounds.bottom - el.bounds.top).max(0)));
+            attributes.insert("clickable".to_string(), el.clickable.to_string());
+            attributes.insert("enabled".to_string(), el.enabled.to_string());
+            attributes.insert("focusable".to_string(), el.focusable.to_string());
+            attributes.insert("focused".to_string(), el.focused.to_string());
+            attributes.insert("scrollable".to_string(), el.scrollable.to_string());
+            attributes.insert("password".to_string(), el.password.to_string());
+            if !el.hint.is_empty() {
+                attributes.insert("hint".to_string(), el.hint.clone());
+            }
+            if !el.index.is_empty() {
+                attributes.insert("index".to_string(), el.index.clone());
+            }
+
             Json(ElementResponse {
                 found: true,
                 selectors,
@@ -520,6 +596,8 @@ async fn get_element_at(
                     }
                     cmds
                 },
+                hierarchy,
+                attributes,
             })
         }
         None => {
@@ -554,6 +632,8 @@ async fn get_element_at(
                 bounds: None,
                 app_id: None,
                 supported_commands: vec![],
+                hierarchy: vec![],
+                attributes: std::collections::HashMap::new(),
             })
         }
     }
@@ -1307,6 +1387,29 @@ fn find_element_at(
     });
 
     matching.first().map(|(el, _, _, _)| (*el).clone())
+}
+
+fn find_enclosing_elements_at<'a>(
+    elements: &'a [uiautomator::UiElement],
+    x: i32,
+    y: i32,
+) -> Vec<&'a uiautomator::UiElement> {
+    let mut matching: Vec<&'a uiautomator::UiElement> = elements
+        .iter()
+        .filter(|el| {
+            let b = &el.bounds;
+            x >= b.left && x <= b.right && y >= b.top && y <= b.bottom && (b.right > b.left) && (b.bottom > b.top)
+        })
+        .collect();
+
+    // Sort by area descending (outermost root first -> innermost leaf last)
+    matching.sort_by_key(|el| {
+        let w = (el.bounds.right - el.bounds.left) as i64;
+        let h = (el.bounds.bottom - el.bounds.top) as i64;
+        -(w * h)
+    });
+
+    matching
 }
 
 fn build_yaml_command(request: &AppendCommandRequest) -> String {
