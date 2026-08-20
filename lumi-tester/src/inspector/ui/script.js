@@ -102,6 +102,8 @@ function formatYamlHighlight(yamlText) {
       return l;
     })
     .join('\n');
+}
+
 // Zoom & Viewport Controls
 function updateZoom() {
   const wrapper = document.getElementById('screenWrapper');
