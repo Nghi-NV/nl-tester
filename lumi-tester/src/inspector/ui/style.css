@@ -90,15 +90,51 @@ body {
 
 .screen-panel {
   flex: 0 0 clamp(340px, 38vw, 500px);
-  min-width: 320px;
-  max-width: 520px;
+  min-width: 280px;
   height: 100vh;
   display: flex;
   flex-direction: column;
   background: var(--bg-canvas);
   position: relative;
   overflow: hidden;
+}
+
+/* Draggable Splitter Divider */
+.panel-resizer {
+  flex: 0 0 6px;
+  width: 6px;
+  height: 100vh;
+  background: rgba(240, 246, 252, 0.03);
+  position: relative;
+  cursor: col-resize;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  transition: background 0.18s ease;
+  border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
+}
+
+.panel-resizer:hover,
+.panel-resizer.is-dragging {
+  background: rgba(88, 166, 255, 0.25);
+}
+
+.resizer-handle {
+  width: 2px;
+  height: 32px;
+  background: rgba(240, 246, 252, 0.25);
+  border-radius: 99px;
+  transition: all 0.18s ease;
+}
+
+.panel-resizer:hover .resizer-handle,
+.panel-resizer.is-dragging .resizer-handle {
+  background: var(--accent);
+  height: 54px;
+  box-shadow: 0 0 8px var(--accent-glow);
 }
 
 /* Studio Header Toolbar */
@@ -1288,5 +1324,9 @@ body {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+  }
+
+  .panel-resizer {
+    display: none;
   }
 }

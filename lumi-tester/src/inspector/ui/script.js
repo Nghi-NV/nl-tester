@@ -830,7 +830,59 @@ function enableHorizontalWheelScroll(elem) {
   }, { passive: false });
 }
 
+function initPanelResizer() {
+  const resizer = document.getElementById('panelResizer');
+  const screenPanel = document.getElementById('screenPanel');
+  const appContainer = document.querySelector('.app-container');
+
+  if (!resizer || !screenPanel || !appContainer) return;
+
+  // Restore saved width
+  const savedWidth = localStorage.getItem('lumi_panel_width');
+  if (savedWidth && window.innerWidth > 540) {
+    const w = parseInt(savedWidth, 10);
+    if (w >= 240 && w <= window.innerWidth - 280) {
+      screenPanel.style.flex = `0 0 ${w}px`;
+    }
+  }
+
+  let isDragging = false;
+
+  resizer.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    resizer.classList.add('is-dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const containerRect = appContainer.getBoundingClientRect();
+    const minWidth = 240;
+    const maxWidth = containerRect.width - 280;
+    const newWidth = Math.max(minWidth, Math.min(maxWidth, e.clientX - containerRect.left));
+
+    screenPanel.style.flex = `0 0 ${newWidth}px`;
+    syncOverlaySize();
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      resizer.classList.remove('is-dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      const w = screenPanel.getBoundingClientRect().width;
+      localStorage.setItem('lumi_panel_width', Math.round(w).toString());
+      syncOverlaySize();
+    }
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  initPanelResizer();
+
   const breadcrumbList = document.getElementById('breadcrumbList');
   const actionContainer = document.querySelector('.action-segment-container');
   if (breadcrumbList) enableHorizontalWheelScroll(breadcrumbList);
