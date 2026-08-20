@@ -239,44 +239,45 @@ async function capture() {
   }
 }
 
-// Canvas & Overlay Alignment
+// Canvas & Overlay Alignment (Dual Aspect Ratio Fit: Height & Width)
 function syncOverlaySize() {
   const canvas = document.getElementById('overlay');
   const img = document.getElementById('screen');
+  const container = document.getElementById('canvasContainer');
 
-  if (!img || img.style.display === 'none') return;
+  if (!img || img.style.display === 'none' || !img.naturalWidth || !container) return;
 
-  const containerWidth = img.clientWidth;
-  const containerHeight = img.clientHeight;
-  const naturalWidth = img.naturalWidth;
-  const naturalHeight = img.naturalHeight;
+  const availW = Math.max(50, container.clientWidth - 24);
+  const availH = Math.max(50, container.clientHeight - 24);
 
-  if (!naturalWidth) return;
+  const imgRatio = img.naturalWidth / img.naturalHeight;
+  const contRatio = availW / availH;
 
-  const imageRatio = naturalWidth / naturalHeight;
-  const containerRatio = containerWidth / containerHeight;
+  let renderWidth, renderHeight;
 
-  let renderWidth, renderHeight, offsetX = 0, offsetY = 0;
-
-  if (containerRatio > imageRatio) {
-    renderHeight = containerHeight;
-    renderWidth = renderHeight * imageRatio;
-    offsetX = (containerWidth - renderWidth) / 2;
+  if (contRatio > imgRatio) {
+    // Container is wider than image aspect ratio -> fit to full available height
+    renderHeight = availH;
+    renderWidth = Math.round(renderHeight * imgRatio);
   } else {
-    renderWidth = containerWidth;
-    renderHeight = renderWidth / imageRatio;
-    offsetY = (containerHeight - renderHeight) / 2;
+    // Container is taller than image aspect ratio -> fit to full available width
+    renderWidth = availW;
+    renderHeight = Math.round(renderWidth / imgRatio);
   }
+
+  // Explicitly apply computed fit dimensions
+  img.style.width = renderWidth + 'px';
+  img.style.height = renderHeight + 'px';
 
   canvas.width = renderWidth;
   canvas.height = renderHeight;
   canvas.style.width = renderWidth + 'px';
   canvas.style.height = renderHeight + 'px';
-  canvas.style.left = offsetX + 'px';
-  canvas.style.top = offsetY + 'px';
+  canvas.style.left = '0px';
+  canvas.style.top = '0px';
 
-  scaleX = renderWidth / naturalWidth;
-  scaleY = renderHeight / naturalHeight;
+  scaleX = renderWidth / img.naturalWidth;
+  scaleY = renderHeight / img.naturalHeight;
 
   drawOverlay(lastSelectedBounds);
 }
