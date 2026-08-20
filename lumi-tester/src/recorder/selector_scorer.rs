@@ -635,6 +635,29 @@ impl SelectorScorer {
         let mut candidates = vec![];
         let short_class = get_short_type(&element.class);
 
+        // Pre-filter candidate elements of same short_class, eliminating strict enclosing parent wrappers
+        let all_same_class: Vec<&UiElement> = self
+            .all_elements
+            .iter()
+            .filter(|e| get_short_type(&e.class) == short_class)
+            .collect();
+
+        let filtered_class_elements: Vec<&UiElement> = all_same_class
+            .iter()
+            .filter(|cand| {
+                // If cand is a parent container that strictly contains another same-class candidate of smaller area, skip parent
+                let cand_area = (cand.bounds.right - cand.bounds.left).max(0) * (cand.bounds.bottom - cand.bounds.top).max(0);
+                !all_same_class.iter().any(|other| {
+                    if cand.bounds.left == other.bounds.left && cand.bounds.top == other.bounds.top && cand.bounds.right == other.bounds.right && cand.bounds.bottom == other.bounds.bottom {
+                        return false;
+                    }
+                    let other_area = (other.bounds.right - other.bounds.left).max(0) * (other.bounds.bottom - other.bounds.top).max(0);
+                    cand.bounds.contains(&other.bounds) && other_area < cand_area
+                })
+            })
+            .copied()
+            .collect();
+
         // Find potential anchors (elements with stable ID or unique text or unique content_desc)
         for anchor in &self.all_elements {
             if anchor.bounds.left == element.bounds.left && anchor.bounds.top == element.bounds.top
@@ -644,17 +667,24 @@ impl SelectorScorer {
 
             let mut anchor_selector = None;
             let mut anchor_desc = String::new();
+            let mut is_long_text = false;
 
             if !anchor.text.is_empty()
                 && self.count_by_text(&anchor.text) == 1
                 && anchor.text.trim().len() >= 2
             {
+                if anchor.text.trim().len() > 35 {
+                    is_long_text = true;
+                }
                 anchor_selector = Some(("text", anchor.text.clone()));
                 anchor_desc = format!("\"{}\"", anchor.text);
             } else if !anchor.content_desc.is_empty()
                 && self.count_by_content_desc(&anchor.content_desc) == 1
                 && anchor.content_desc.trim().len() >= 2
             {
+                if anchor.content_desc.trim().len() > 35 {
+                    is_long_text = true;
+                }
                 anchor_selector = Some(("text", anchor.content_desc.clone()));
                 anchor_desc = format!("\"{}\"", anchor.content_desc);
             } else if !anchor.resource_id.is_empty()
@@ -670,115 +700,65 @@ impl SelectorScorer {
             }
             let (sel_type, sel_val) = anchor_selector.unwrap();
 
-            // Geometric relations
+            // Check potential directions
             let ab = &anchor.bounds;
             let eb = &element.bounds;
             let (ax, ay) = ab.center();
             let (ex, ey) = eb.center();
 
-            let mut best_dir = None;
-            let mut min_dist = 10000;
+            let directions = [
+                (crate::driver::traits::RelativeDirection::Below, "below", eb.top >= ab.bottom - 50 && (ex - ax).abs() < 500, (eb.top as i32 - ab.bottom as i32).abs()),
+                (crate::driver::traits::RelativeDirection::Above, "above", eb.bottom <= ab.top + 50 && (ex - ax).abs() < 500, (ab.top as i32 - eb.bottom as i32).abs()),
+                (crate::driver::traits::RelativeDirection::RightOf, "rightOf", eb.left >= ab.right - 50 && (ey - ay).abs() < 300, (eb.left as i32 - ab.right as i32).abs()),
+                (crate::driver::traits::RelativeDirection::LeftOf, "leftOf", eb.right <= ab.left + 50 && (ey - ay).abs() < 300, (ab.left as i32 - eb.right as i32).abs()),
+            ];
 
-            // Check Below (e.g. slider below label "Brightness")
-            if eb.top >= ab.bottom - 50 && (ex - ax).abs() < 500 {
-                let dist = (eb.top as i32 - ab.bottom as i32).abs() as u32;
-                if dist < 800 && dist < min_dist {
-                    best_dir = Some(("below", dist));
-                    min_dist = dist;
+            for (rel_dir, dir_name, is_candidate, edge_dist) in directions {
+                if !is_candidate || edge_dist > 800 {
+                    continue;
                 }
-            }
-            // Check RightOf
-            else if eb.left >= ab.right - 50 && (ey - ay).abs() < 300 {
-                let dist = (eb.left as i32 - ab.right as i32).abs() as u32;
-                if dist < 800 && dist < min_dist {
-                    best_dir = Some(("rightOf", dist));
-                    min_dist = dist;
-                }
-            }
-            // Check LeftOf
-            else if eb.right <= ab.left + 50 && (ey - ay).abs() < 300 {
-                let dist = (ab.left as i32 - eb.right as i32).abs() as u32;
-                if dist < 800 && dist < min_dist {
-                    best_dir = Some(("leftOf", dist));
-                    min_dist = dist;
-                }
-            }
-            // Check Above
-            else if eb.bottom <= ab.top + 50 && (ex - ax).abs() < 500 {
-                let dist = (ab.top as i32 - eb.bottom as i32).abs() as u32;
-                if dist < 800 && dist < min_dist {
-                    best_dir = Some(("above", dist));
-                    min_dist = dist;
-                }
-            }
 
-            if let Some((dir, dist)) = best_dir {
-                let score = 65u32.saturating_sub((dist / 15) as u32);
+                // Call uiautomator::find_relative to rank elements exactly like runtime driver
+                let ranked = crate::driver::android::uiautomator::find_relative(filtered_class_elements.clone(), anchor, rel_dir, Some(1000));
+                if let Some(pos) = ranked.iter().position(|e| e.bounds.left == element.bounds.left && e.bounds.top == element.bounds.top && e.bounds.right == element.bounds.right && e.bounds.bottom == element.bounds.bottom) {
+                    let index = if pos > 0 { Some(pos) } else { None };
 
-                // Compute relative index among all matching elements in that direction from anchor
-                let mut matching_rel_elements: Vec<&UiElement> = self
-                    .all_elements
-                    .iter()
-                    .filter(|other| {
-                        if get_short_type(&other.class) != short_class {
-                            return false;
-                        }
-                        let ot_b = &other.bounds;
-                        let (ot_x, ot_y) = ot_b.center();
-                        match dir {
-                            "below" => ot_b.top >= ab.bottom - 50 && (ot_x - ax).abs() < 500 && (ot_b.top - ab.bottom).abs() < 800,
-                            "above" => ot_b.bottom <= ab.top + 50 && (ot_x - ax).abs() < 500 && (ab.top - ot_b.bottom).abs() < 800,
-                            "rightOf" => ot_b.left >= ab.right - 50 && (ot_y - ay).abs() < 300 && (ot_b.left - ab.right).abs() < 800,
-                            "leftOf" => ot_b.right <= ab.left + 50 && (ot_y - ay).abs() < 300 && (ab.left - ot_b.right).abs() < 800,
-                            _ => false,
-                        }
-                    })
-                    .collect();
-
-                // Sort by distance from anchor
-                matching_rel_elements.sort_by_key(|other| {
-                    let ot_b = &other.bounds;
-                    match dir {
-                        "below" => (ot_b.top as i32 - ab.bottom as i32).abs(),
-                        "above" => (ab.top as i32 - ot_b.bottom as i32).abs(),
-                        "rightOf" => (ot_b.left as i32 - ab.right as i32).abs(),
-                        "leftOf" => (ab.left as i32 - ot_b.right as i32).abs(),
-                        _ => 0,
+                    let mut score = 75u32.saturating_sub((edge_dist / 25) as u32);
+                    if pos > 0 {
+                        score = score.saturating_sub((pos * 15) as u32);
                     }
-                });
+                    if is_long_text {
+                        score = score.saturating_sub(15);
+                    } else if !anchor.text.is_empty() && anchor.text.len() <= 25 {
+                        score = score.saturating_add(5);
+                    }
 
-                let rel_index = matching_rel_elements
-                    .iter()
-                    .position(|e| e.bounds.left == element.bounds.left && e.bounds.top == element.bounds.top)
-                    .unwrap_or(0);
+                    let anchor_cand = SelectorCandidate {
+                        selector_type: sel_type.to_string(),
+                        value: sel_val.clone(),
+                        index: None,
+                        relative_anchor: None,
+                        relative_direction: None,
+                        score: 95,
+                        reason: format!("Anchor ({})", anchor_desc),
+                        is_stable: true,
+                    };
 
-                let index = if rel_index > 0 { Some(rel_index) } else { None };
-
-                let anchor_cand = SelectorCandidate {
-                    selector_type: sel_type.to_string(),
-                    value: sel_val,
-                    index: None,
-                    relative_anchor: None,
-                    relative_direction: None,
-                    score: 95,
-                    reason: format!("Anchor ({})", anchor_desc),
-                    is_stable: true,
-                };
-
-                candidates.push(SelectorCandidate {
-                    selector_type: "relative".to_string(),
-                    value: short_class.clone(),
-                    index,
-                    relative_anchor: Some(Box::new(anchor_cand)),
-                    relative_direction: Some(dir.to_string()),
-                    score: if index.is_some() { score.saturating_sub(5) } else { score },
-                    reason: if let Some(idx) = index {
-                        format!("{} of {} (index {})", dir, anchor_desc, idx)
-                    } else {
-                        format!("{} of {}", dir, anchor_desc)
-                    },
-                    is_stable: true,
-                });
+                    candidates.push(SelectorCandidate {
+                        selector_type: "relative".to_string(),
+                        value: short_class.clone(),
+                        index,
+                        relative_anchor: Some(Box::new(anchor_cand)),
+                        relative_direction: Some(dir_name.to_string()),
+                        score,
+                        reason: if let Some(idx) = index {
+                            format!("{} of {} (index {})", dir_name, anchor_desc, idx)
+                        } else {
+                            format!("{} of {}", dir_name, anchor_desc)
+                        },
+                        is_stable: true,
+                    });
+                }
             }
         }
 
