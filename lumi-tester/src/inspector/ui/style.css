@@ -329,6 +329,8 @@ body {
   margin-bottom: 8px;
   transition: border-color 0.2s;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .selector-card:hover {
@@ -379,6 +381,17 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
   overflow-x: auto;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  cursor: text;
+  position: relative;
+}
+
+.sel-value * {
+  user-select: text !important;
+  -webkit-user-select: text !important;
 }
 
 .yaml-cmd {

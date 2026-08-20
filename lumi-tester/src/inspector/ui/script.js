@@ -360,7 +360,7 @@ function renderDetails(selectors) {
           <span class="sel-type">${s.selector_type}</span>
           <span class="sel-score">${s.score} pts</span>
         </div>
-        <pre class="sel-value">${displayValue}</pre>
+        <pre class="sel-value" title="Click to copy or select text" onclick="copyToClipboard(${i})">${displayValue}</pre>
         ${s.description ? `<div class="sel-desc">${escapeHtml(s.description)}</div>` : ''}
         <div class="sel-actions">
           <button class="btn btn-outline btn-sm" onclick="copyToClipboard(${i})">Copy</button>
@@ -375,17 +375,51 @@ function renderDetails(selectors) {
 }
 
 // External Actions
-function copyToClipboard(idx) {
+async function copyToClipboard(idx) {
   const s = currentSelectors[idx];
-  if (!s || !window.parent) return;
+  if (!s) return;
+  const text = s.yaml || s.value || '';
+  if (!text) return;
 
-  // Use postMessage to let VS Code handle clipboard
-  window.parent.postMessage({
-    type: 'copySelector',
-    value: s.yaml
-  }, '*');
+  let copied = false;
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } catch (e) {}
+  }
 
-  // Optimistically show toast
+  if (!copied) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.top = '0';
+      ta.style.left = '0';
+      ta.style.width = '2em';
+      ta.style.height = '2em';
+      ta.style.padding = '0';
+      ta.style.border = 'none';
+      ta.style.outline = 'none';
+      ta.style.boxShadow = 'none';
+      ta.style.background = 'transparent';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      copied = true;
+    } catch (e) {}
+  }
+
+  // Also notify parent iframe (VS Code extension) if present
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({
+      type: 'copySelector',
+      value: text
+    }, '*');
+  }
+
   showToast('Copied to Clipboard');
 }
 
@@ -394,7 +428,7 @@ function insertToEditor(idx) {
   if (!s || !window.parent) return;
   window.parent.postMessage({
     type: 'insertSelector',
-    value: s.yaml,
+    value: s.yaml || s.value || '',
     selector: s
   }, '*');
   showToast('Inserted to VSCode');
