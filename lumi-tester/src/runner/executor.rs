@@ -456,8 +456,8 @@ impl TestExecutor {
 
         flow_state.start();
 
-        // Video Recording Setup
-        let video_active = self.video_enabled;
+        // Video Recording Setup (only on root depth)
+        let video_active = self.video_enabled && self.depth == 0;
         let mut video_rel_path = None;
 
         if video_active {
@@ -609,12 +609,14 @@ impl TestExecutor {
             anyhow::bail!(error_msg);
         }
 
-        // Cleanup Jig connection if active
-        if let Some(ctrl) = &self.hardware_controller {
-            let _ = ctrl.enter_safe_state();
-            ctrl.disconnect();
-            println!("  {} Auto-disconnected hardware Jig (safe state)", "🔌".yellow());
-            self.hardware_controller = None;
+        // Cleanup Jig connection if active (only on root depth)
+        if self.depth == 0 {
+            if let Some(ctrl) = &self.hardware_controller {
+                let _ = ctrl.enter_safe_state();
+                ctrl.disconnect();
+                println!("  {} Auto-disconnected hardware Jig (safe state)", "🔌".yellow());
+                self.hardware_controller = None;
+            }
         }
 
         self.session.add_flow(flow_state);
@@ -2350,27 +2352,22 @@ impl TestExecutor {
             TestCommand::Conditional(params) => {
                 let condition_met = self.check_condition(&params.condition).await;
 
-                let commands_val = if condition_met {
-                    Some(&params.then)
+                let (branch_name, commands_val) = if condition_met {
+                    ("then", Some(&params.then))
                 } else {
-                    params.else_cmd.as_ref()
+                    ("else", params.else_cmd.as_ref())
                 };
 
                 if let Some(val) = commands_val {
                     let cmds = parse_commands_from_value(val)?;
-                    self.emitter.emit(TestEvent::Log {
-                        message: format!(
-                            "{} Condition met: {}, Running {} nested commands...",
-                            "ℹ".blue(),
-                            condition_met,
-                            cmds.len()
-                        ),
-                        depth: self.depth,
-                    });
-
-                    for cmd in cmds {
-                        Box::pin(self.execute_command(&cmd)).await?;
-                    }
+                    let label = format!(
+                        "Conditional ({})",
+                        if condition_met { "then" } else { "else" }
+                    );
+                    self.depth += 1;
+                    let res = Box::pin(self.run_commands_set(&cmds, &label, "conditional")).await;
+                    self.depth -= 1;
+                    res?;
                 }
                 Ok(())
             }
