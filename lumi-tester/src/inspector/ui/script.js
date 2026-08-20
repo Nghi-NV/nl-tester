@@ -253,9 +253,10 @@ function syncOverlaySize() {
 
   if (!img || img.style.display === 'none' || !img.naturalWidth || !container || !wrapper) return;
 
-  const pad = 16;
-  const availW = Math.max(40, container.clientWidth - pad);
-  const availH = Math.max(40, container.clientHeight - pad);
+  const padX = 24;
+  const padY = 40;
+  const availW = Math.max(40, container.clientWidth - padX);
+  const availH = Math.max(40, container.clientHeight - padY);
 
   const imgRatio = img.naturalWidth / img.naturalHeight;
   const contRatio = availW / availH;
