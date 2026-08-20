@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Git pre-commit hook for Lumi Tester
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+"${ROOT}/scripts/pre-commit-check.sh"

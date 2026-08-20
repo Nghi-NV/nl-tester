@@ -174,3 +174,19 @@ For text entry, tap/focus the field first, then use `inputText`.
 - `output/run.json` is always written after executor finalization, even when full reports are disabled.
 - `output/events.jsonl` is written when `--events-jsonl` is passed.
 - Prefer minimal selector patches, then rerun the failing command index.
+
+## Pre-Commit & Release Verification Gates
+
+Before committing changes, pushing tags, or opening PRs, always execute the automated pre-commit verification pipeline:
+
+```bash
+./scripts/pre-commit-check.sh
+```
+
+This verification gate guarantees:
+1. **Shell syntax (`bash -n`)**: Validates all scripts in `lumi-tester/scripts/` and root `install.sh`.
+2. **AI references & schema sync**: Ensures `commands.csv`, `selectors.csv`, and `lumi-test.schema.json` match all parser commands/aliases.
+3. **Package manager manifests**: Verifies Homebrew / Scoop / Chocolatey manifest generators.
+4. **MCP unit tests**: Runs `npm test` across `lumi-tester-mcp`.
+5. **VS Code extension tests**: Runs `npm test` across `lumi-tester-vscode`.
+6. **Rust core tests**: Runs `cargo test --manifest-path lumi-tester/Cargo.toml`.
