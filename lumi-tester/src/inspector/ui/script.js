@@ -868,27 +868,44 @@ function initPanelResizer() {
 
   if (!resizer || !screenPanel || !appContainer) return;
 
-  const isOneColumn = () => window.innerWidth <= 540;
+  const isOneColumn = () => window.innerWidth <= 680;
 
-  // Restore saved dimensions
-  const savedWidth = localStorage.getItem('lumi_panel_width');
-  const savedHeight = localStorage.getItem('lumi_panel_height');
-
-  if (isOneColumn() && savedHeight) {
-    const h = parseInt(savedHeight, 10);
-    if (h >= 140 && h <= window.innerHeight - 200) {
-      screenPanel.style.flex = `0 0 ${h}px`;
-      screenPanel.style.height = `${h}px`;
-      screenPanel.style.maxHeight = 'none';
+  function applyLayoutDimensions() {
+    if (isOneColumn()) {
+      screenPanel.style.width = '';
+      screenPanel.style.maxWidth = '';
+      const savedHeight = localStorage.getItem('lumi_panel_height');
+      if (savedHeight) {
+        const h = parseInt(savedHeight, 10);
+        if (h >= 160 && h <= window.innerHeight - 180) {
+          screenPanel.style.flex = `0 0 ${h}px`;
+          screenPanel.style.height = `${h}px`;
+        }
+      } else {
+        screenPanel.style.flex = '';
+        screenPanel.style.height = '';
+      }
+    } else {
+      screenPanel.style.height = '';
+      screenPanel.style.maxHeight = '';
+      const savedWidth = localStorage.getItem('lumi_panel_width');
+      if (savedWidth) {
+        const w = parseInt(savedWidth, 10);
+        if (w >= 220 && w <= window.innerWidth - 250) {
+          screenPanel.style.flex = `0 0 ${w}px`;
+          screenPanel.style.width = `${w}px`;
+        }
+      } else {
+        screenPanel.style.flex = '';
+        screenPanel.style.width = '';
+      }
     }
-  } else if (!isOneColumn() && savedWidth) {
-    const w = parseInt(savedWidth, 10);
-    if (w >= 200 && w <= window.innerWidth - 250) {
-      screenPanel.style.flex = `0 0 ${w}px`;
-      screenPanel.style.width = `${w}px`;
-      screenPanel.style.maxWidth = 'none';
-    }
+    requestAnimationFrame(syncOverlaySize);
   }
+
+  // Initial layout application
+  applyLayoutDimensions();
+  window.addEventListener('resize', applyLayoutDimensions);
 
   let isDragging = false;
   let activePointerId = null;
@@ -910,8 +927,8 @@ function initPanelResizer() {
 
     if (isOneColumn()) {
       // Vertical resizing (Height) in 1-column mode
-      const minHeight = 140;
-      const maxHeight = Math.max(minHeight, containerRect.height - 200);
+      const minHeight = 160;
+      const maxHeight = Math.max(minHeight, containerRect.height - 180);
       const newHeight = Math.max(minHeight, Math.min(maxHeight, e.clientY - containerRect.top));
 
       screenPanel.style.flex = `0 0 ${newHeight}px`;
@@ -919,7 +936,7 @@ function initPanelResizer() {
       screenPanel.style.maxHeight = 'none';
     } else {
       // Horizontal resizing (Width) in 2-column mode
-      const minWidth = 200;
+      const minWidth = 220;
       const maxWidth = Math.max(minWidth, containerRect.width - 250);
       const newWidth = Math.max(minWidth, Math.min(maxWidth, e.clientX - containerRect.left));
 
