@@ -387,6 +387,24 @@ async function inspectAt(x, y, clickX, clickY) {
 
       renderAppInfo(data.app_id);
       renderBreadcrumbs(currentHierarchy);
+
+      // Auto-detect best action or reset to tap
+      const isEditable = (data.attributes && (data.attributes['focusable'] === 'true' || data.attributes['editable'] === 'true')) ||
+                         (data.element_class && (data.element_class.includes('EditText') || data.element_class.includes('TextInput') || data.element_class.includes('TextField')));
+      const isSlider = (data.element_class && (data.element_class.includes('SeekBar') || data.element_class.includes('Slider') || data.element_class.includes('ProgressBar')));
+
+      if (isSlider) {
+        currentActionType = 'drag';
+      } else if (isEditable) {
+        currentActionType = 'inputText';
+      } else {
+        currentActionType = 'tap';
+      }
+
+      document.querySelectorAll('.action-segment').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.action === currentActionType);
+      });
+
       renderSelectors();
       renderAttributes(currentAttributes);
 
@@ -502,6 +520,16 @@ function transformYamlForAction(rawYaml, actionType) {
   if (actionType === 'wait') return rawYaml.replace(/^- tap:/g, '- waitUntilVisible:');
   if (actionType === 'longPress') return rawYaml.replace(/^- tap:/g, '- longPress:');
   if (actionType === 'copyText') return rawYaml.replace(/^- tap:/g, '- copyTextFrom:');
+  if (actionType === 'drag') {
+    let selectorBody = rawYaml.replace(/^- tap:\n?/, '').trimEnd();
+    if (!selectorBody.startsWith('    ')) {
+      const val = selectorBody.trim();
+      return `- drag:\n    from:\n      ${val}\n      offset: "0%,50%"\n    to:\n      ${val}\n      offset: "80%,50%"\n    duration: 500`;
+    } else {
+      const indented = selectorBody.split('\n').map(line => '  ' + line).join('\n');
+      return `- drag:\n    from:\n${indented}\n      offset: "0%,50%"\n    to:\n${indented}\n      offset: "80%,50%"\n    duration: 500`;
+    }
+  }
   if (actionType === 'inputText') return `${rawYaml}\n- inputText: "example_text"`;
 
   return rawYaml;
