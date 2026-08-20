@@ -3,11 +3,7 @@ name: VS Code Extension
 on:
   workflow_dispatch:
   push:
-    branches: [main]
     tags: ["extension-v*"]
-    paths:
-      - "lumi-tester-vscode/**"
-      - ".github/workflows/vscode-extension.yml"
 
 permissions:
   contents: write
