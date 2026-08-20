@@ -1158,7 +1158,7 @@ fn find_element_at(
     x: i32,
     y: i32,
 ) -> Option<uiautomator::UiElement> {
-    let mut matching: Vec<(&uiautomator::UiElement, i64, i32)> = Vec::new();
+    let mut matching: Vec<(&uiautomator::UiElement, i64, i32, f64)> = Vec::new();
 
     for el in elements {
         let bounds = &el.bounds;
@@ -1226,26 +1226,33 @@ fn find_element_at(
                 || el.class.ends_with("Layout")
                 || el.class.ends_with("ViewGroup");
 
-            // Base priority score
+            // Calculate distance from touch point (x, y) to element center
+            let center_x = (bounds.left + bounds.right) as f64 / 2.0;
+            let center_y = (bounds.top + bounds.bottom) as f64 / 2.0;
+            let dx = (x as f64) - center_x;
+            let dy = (y as f64) - center_y;
+            let dist_to_center = (dx * dx + dy * dy).sqrt();
+
+            // Direct interactive control priority
             let priority = if is_backdrop {
                 0 // Backdrops have absolute lowest priority
             } else if is_input {
-                6 // Text inputs
+                7 // Text inputs being clicked
             } else if is_control && has_text && !is_container {
-                5 // Interactive control with label / stable ID
+                6 // Interactive controls with label / stable ID (e.g. Buttons, Switches, Tabs)
             } else if is_control && !is_container {
-                4 // Interactive control without direct label (e.g. Sliders, Canvas views)
+                5 // Interactive controls without label (e.g. Sliders, SeekBars, custom clickable Views)
             } else if has_text && !is_container {
-                3 // Text labels, icons, titles
+                4 // Text labels, icons, titles
             } else if !is_container {
-                2 // Leaf view / component
+                3 // Leaf view / component
             } else if has_text {
-                1 // Container with label
+                2 // Container with label
             } else {
-                0 // Raw layout container
+                1 // Raw layout container
             };
 
-            matching.push((el, area, priority));
+            matching.push((el, area, priority, dist_to_center));
         }
     }
 
@@ -1254,13 +1261,14 @@ fn find_element_at(
     }
 
     // Sort strategy:
-    // 1. Non-backdrops come before backdrops.
-    // 2. Area is primary for hierarchy depth: If element A is much smaller than element B
-    //    (e.g., A.area <= B.area * 0.7), A is the inner / leaf element containing the touch point.
-    // 3. Among elements with comparable areas (within 1.4x of each other), higher priority wins.
+    // 1. Non-backdrops strictly before backdrops.
+    // 2. Interactive / control priority: An interactive control (is_control / is_input)
+    //    at the clicked coordinate is prioritized over enclosing layout wrappers.
+    // 3. Significant area difference (> 1.4x): The smaller enclosing element is chosen.
+    // 4. Comparable area (within 1.4x): Higher priority wins, then closer distance to center.
     matching.sort_by(|a, b| {
-        let (_el_a, area_a, prio_a) = a;
-        let (_el_b, area_b, prio_b) = b;
+        let (_el_a, area_a, prio_a, dist_a) = a;
+        let (_el_b, area_b, prio_b, dist_b) = b;
 
         // If one is backdrop and other is not, non-backdrop strictly wins
         let is_backdrop_a = *prio_a == 0;
@@ -1273,6 +1281,16 @@ fn find_element_at(
             };
         }
 
+        // Check if one is a direct interactive control (priority >= 5) and the other is a container (priority <= 2)
+        let is_active_control_a = *prio_a >= 5;
+        let is_active_control_b = *prio_b >= 5;
+        if is_active_control_a && !is_active_control_b {
+            return std::cmp::Ordering::Less;
+        }
+        if !is_active_control_a && is_active_control_b {
+            return std::cmp::Ordering::Greater;
+        }
+
         // Compare areas: If area difference is significant (> 1.4x), smaller area wins!
         let ratio = (*area_a as f64) / (*area_b as f64);
         if ratio < 0.7 {
@@ -1280,12 +1298,15 @@ fn find_element_at(
         } else if ratio > 1.4 {
             std::cmp::Ordering::Greater
         } else {
-            // Comparable area: higher priority wins, tie-breaker smaller area
-            prio_b.cmp(prio_a).then_with(|| area_a.cmp(area_b))
+            // Comparable area: higher priority wins, tie-breaker closest to center, then smaller area
+            prio_b
+                .cmp(prio_a)
+                .then_with(|| dist_a.partial_cmp(dist_b).unwrap_or(std::cmp::Ordering::Equal))
+                .then_with(|| area_a.cmp(area_b))
         }
     });
 
-    matching.first().map(|(el, _, _)| (*el).clone())
+    matching.first().map(|(el, _, _, _)| (*el).clone())
 }
 
 fn build_yaml_command(request: &AppendCommandRequest) -> String {

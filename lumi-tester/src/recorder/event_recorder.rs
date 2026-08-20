@@ -232,23 +232,142 @@ impl EventRecorder {
 
     /// Find element at coordinates
     fn find_element_at(&self, elements: &[UiElement], x: i32, y: i32) -> Option<UiElement> {
-        // Find the smallest (most specific) element containing the point
-        let mut best: Option<&UiElement> = None;
-        let mut best_area = i64::MAX;
+        let mut matching: Vec<(&UiElement, i64, i32, f64)> = Vec::new();
 
         for el in elements {
             let bounds = &el.bounds;
             if x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom {
-                let area =
-                    (bounds.right - bounds.left) as i64 * (bounds.bottom - bounds.top) as i64;
-                if area < best_area {
-                    best_area = area;
-                    best = Some(el);
+                let width = bounds.right - bounds.left;
+                let height = bounds.bottom - bounds.top;
+                let area = width as i64 * height as i64;
+                if area <= 0 || width <= 0 || height <= 0 {
+                    continue;
                 }
+
+                let is_generic_system_id = el.resource_id == "android:id/content"
+                    || el.resource_id == "android:id/decor_content_parent"
+                    || el.resource_id == "android:id/navigationBarBackground"
+                    || el.resource_id == "android:id/statusBarBackground"
+                    || el.resource_id == "android:id/custom"
+                    || el.resource_id == "android:id/touch_outside";
+
+                let desc_lower = el.content_desc.trim().to_lowercase();
+                let text_lower = el.text.trim().to_lowercase();
+
+                let is_backdrop = desc_lower == "dismiss"
+                    || desc_lower == "scrim"
+                    || desc_lower == "backdrop"
+                    || desc_lower == "modal barrier"
+                    || desc_lower == "modal-barrier"
+                    || desc_lower == "dialog-overlay"
+                    || text_lower == "dismiss"
+                    || text_lower == "scrim"
+                    || text_lower == "backdrop"
+                    || is_generic_system_id;
+
+                let is_input = el.class == "Input"
+                    || el.class == "TextField"
+                    || el.class.contains("Edit")
+                    || el.class.to_lowercase().contains("edittext");
+
+                let is_control = is_input
+                    || el.class == "Button"
+                    || el.class == "CheckBox"
+                    || el.class == "RadioButton"
+                    || el.class == "Switch"
+                    || el.class == "ComboBox"
+                    || el.class == "Link"
+                    || el.class == "Slider"
+                    || el.class.contains("SeekBar")
+                    || el.clickable
+                    || el.scrollable
+                    || el.focusable;
+
+                let has_semantic_id = !el.resource_id.trim().is_empty() && !is_generic_system_id;
+                let has_text = !el.text.trim().is_empty()
+                    || (!el.content_desc.trim().is_empty() && !is_backdrop)
+                    || !el.hint.trim().is_empty()
+                    || has_semantic_id;
+
+                let is_container = is_backdrop
+                    || el.class == "Group"
+                    || el.class == "Window"
+                    || el.class == "WebArea"
+                    || el.class == "ScrollArea"
+                    || el.class == "ScrollView"
+                    || el.class == "android.widget.FrameLayout"
+                    || el.class.ends_with("Layout")
+                    || el.class.ends_with("ViewGroup");
+
+                let center_x = (bounds.left + bounds.right) as f64 / 2.0;
+                let center_y = (bounds.top + bounds.bottom) as f64 / 2.0;
+                let dx = (x as f64) - center_x;
+                let dy = (y as f64) - center_y;
+                let dist_to_center = (dx * dx + dy * dy).sqrt();
+
+                let priority = if is_backdrop {
+                    0
+                } else if is_input {
+                    7
+                } else if is_control && has_text && !is_container {
+                    6
+                } else if is_control && !is_container {
+                    5
+                } else if has_text && !is_container {
+                    4
+                } else if !is_container {
+                    3
+                } else if has_text {
+                    2
+                } else {
+                    1
+                };
+
+                matching.push((el, area, priority, dist_to_center));
             }
         }
 
-        best.cloned()
+        if matching.is_empty() {
+            return None;
+        }
+
+        matching.sort_by(|a, b| {
+            let (_el_a, area_a, prio_a, dist_a) = a;
+            let (_el_b, area_b, prio_b, dist_b) = b;
+
+            let is_backdrop_a = *prio_a == 0;
+            let is_backdrop_b = *prio_b == 0;
+            if is_backdrop_a != is_backdrop_b {
+                return if is_backdrop_a {
+                    std::cmp::Ordering::Greater
+                } else {
+                    std::cmp::Ordering::Less
+                };
+            }
+
+            let is_active_control_a = *prio_a >= 5;
+            let is_active_control_b = *prio_b >= 5;
+            if is_active_control_a && !is_active_control_b {
+                return std::cmp::Ordering::Less;
+            }
+            if !is_active_control_a && is_active_control_b {
+                return std::cmp::Ordering::Greater;
+            }
+
+            let ratio = (*area_a as f64) / (*area_b as f64);
+            if ratio < 0.7 {
+                std::cmp::Ordering::Less
+            } else if ratio > 1.4 {
+                std::cmp::Ordering::Greater
+            } else {
+                prio_b
+                    .cmp(prio_a)
+                    .then_with(|| dist_a.partial_cmp(dist_b).unwrap_or(std::cmp::Ordering::Equal))
+                    .then_with(|| area_a.cmp(area_b))
+            }
+        });
+
+        matching.first().map(|(el, _, _, _)| (*el).clone())
     }
 
     /// Record a tap at specific coordinates
