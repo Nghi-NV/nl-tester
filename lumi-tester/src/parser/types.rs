@@ -1424,10 +1424,10 @@ pub struct TapParams {
     #[serde(default, alias = "leftOf")]
     pub left_of: Option<RelativeAnchorInput>,
 
-    #[serde(default)]
+    #[serde(default, alias = "aboveOf")]
     pub above: Option<RelativeAnchorInput>,
 
-    #[serde(default)]
+    #[serde(default, alias = "belowOf")]
     pub below: Option<RelativeAnchorInput>,
 
     #[serde(default)]
@@ -1677,13 +1677,13 @@ pub struct AssertParams {
     #[serde(default)]
     pub contains_child: Option<Box<AssertParams>>,
 
-    #[serde(default)]
+    #[serde(default, alias = "rightOf")]
     pub right_of: Option<RelativeAnchorInput>,
-    #[serde(default)]
+    #[serde(default, alias = "leftOf")]
     pub left_of: Option<RelativeAnchorInput>,
-    #[serde(default)]
+    #[serde(default, alias = "aboveOf")]
     pub above: Option<RelativeAnchorInput>,
-    #[serde(default)]
+    #[serde(default, alias = "belowOf")]
     pub below: Option<RelativeAnchorInput>,
 
     #[serde(default)]
@@ -2986,9 +2986,13 @@ impl RelativeAnchorInput {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RelativeParams {
+    #[serde(alias = "rightOf")]
     pub right_of: Option<RelativeAnchorInput>,
+    #[serde(alias = "leftOf")]
     pub left_of: Option<RelativeAnchorInput>,
+    #[serde(alias = "aboveOf")]
     pub above: Option<RelativeAnchorInput>,
+    #[serde(alias = "belowOf")]
     pub below: Option<RelativeAnchorInput>,
     #[serde(alias = "maxDistance")]
     pub max_dist: Option<u32>,

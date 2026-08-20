@@ -769,6 +769,34 @@ impl TestExecutor {
             }
         }
 
+        // Merge relative aliases (above, below, right_of, left_of) into relative
+        if params.right_of.is_some()
+            || params.left_of.is_some()
+            || params.above.is_some()
+            || params.below.is_some()
+        {
+            let mut r = params.relative.unwrap_or(crate::parser::types::RelativeParams {
+                right_of: None,
+                left_of: None,
+                above: None,
+                below: None,
+                max_dist: None,
+            });
+            if params.right_of.is_some() {
+                r.right_of = params.right_of.clone();
+            }
+            if params.left_of.is_some() {
+                r.left_of = params.left_of.clone();
+            }
+            if params.above.is_some() {
+                r.above = params.above.clone();
+            }
+            if params.below.is_some() {
+                r.below = params.below.clone();
+            }
+            params.relative = Some(r);
+        }
+
         params
     }
 
@@ -870,6 +898,34 @@ impl TestExecutor {
                     }
                 }
             }
+        }
+
+        // Merge relative aliases (above, below, right_of, left_of) into relative
+        if params.right_of.is_some()
+            || params.left_of.is_some()
+            || params.above.is_some()
+            || params.below.is_some()
+        {
+            let mut r = params.relative.unwrap_or(crate::parser::types::RelativeParams {
+                right_of: None,
+                left_of: None,
+                above: None,
+                below: None,
+                max_dist: None,
+            });
+            if params.right_of.is_some() {
+                r.right_of = params.right_of.clone();
+            }
+            if params.left_of.is_some() {
+                r.left_of = params.left_of.clone();
+            }
+            if params.above.is_some() {
+                r.above = params.above.clone();
+            }
+            if params.below.is_some() {
+                r.below = params.below.clone();
+            }
+            params.relative = Some(r);
         }
 
         params
