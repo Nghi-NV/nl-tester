@@ -14,95 +14,95 @@
 
   <div class="app-container">
 
-    <!-- Screen Panel (Left) -->
+    <!-- Screen Panel (Left Viewport) -->
     <div class="screen-panel" id="screenPanel">
       
-      <!-- Studio Floating Header Toolbar -->
-      <div class="studio-topbar">
+      <!-- Studio Header Toolbar (Top, Non-overlapping) -->
+      <header class="studio-topbar">
         <div class="brand-badge">
           <span class="brand-dot"></span>
           <span class="brand-name">LUMI</span>
-          <span class="brand-sub">INSPECTOR</span>
+          <span class="brand-sub">STUDIO</span>
         </div>
 
         <div class="app-search-wrapper">
-          <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8"></circle>
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
           <input type="text" id="appSearchInput" class="app-search-input" placeholder="Search target window or package..." oninput="filterApps()" onfocus="showAppDropdown()" autocomplete="off">
-          <span id="clearAppBtn" class="clear-app-btn" onclick="clearAppSelection()" style="display:none" title="Clear selection (Full Screen)">✕</span>
+          <span id="clearAppBtn" class="clear-app-btn" onclick="clearAppSelection()" style="display:none" title="Clear selection">✕</span>
           <div id="appDropdown" class="app-dropdown" style="display:none"></div>
         </div>
 
         <div class="topbar-actions">
           <div class="toggle-pill" onclick="toggleBoxes()" title="Toggle element bounding boxes">
             <span class="toggle-pill-label">Bounds</span>
-            <div class="switch-control" id="boxToggle">
+            <div class="switch-control on" id="boxToggle">
               <div class="switch-thumb"></div>
             </div>
           </div>
 
           <button class="btn-refresh" onclick="capture()" title="Capture Screenshot (R)">
-            <svg class="refresh-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg class="refresh-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
             </svg>
             <span>Refresh</span>
           </button>
         </div>
-      </div>
+      </header>
 
-      <!-- Floating Zoom Controls -->
-      <div class="canvas-zoom-dock">
-        <button class="zoom-dock-btn" onclick="zoomOut()" title="Zoom Out (Ctrl -)">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-        </button>
-        <span class="zoom-dock-text" id="zoomLevelText" onclick="resetZoom()" title="Reset to 100%">100%</span>
-        <button class="zoom-dock-btn" onclick="zoomIn()" title="Zoom In (Ctrl +)">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-        </button>
-        <div class="zoom-dock-divider"></div>
-        <button class="zoom-dock-btn fit-btn" onclick="fitToScreen()" title="Fit to Viewport">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
-          <span>Fit</span>
-        </button>
-      </div>
-
-      <!-- Canvas Viewport -->
-      <div class="canvas-container" id="canvasContainer">
+      <!-- Canvas Viewport with Grid Blueprint background -->
+      <main class="canvas-container" id="canvasContainer">
         <div class="placeholder" id="placeholder">
           <div class="placeholder-halo">
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
               <line x1="12" y1="18" x2="12.01" y2="18"></line>
             </svg>
           </div>
-          <div class="placeholder-title">Waiting for device screen...</div>
-          <div class="placeholder-sub">Click Refresh or run your target app</div>
+          <div class="placeholder-title">Connecting to Target Device...</div>
+          <div class="placeholder-sub">Click Refresh or run test on device</div>
         </div>
 
         <div id="screenWrapper" class="device-frame">
-          <img id="screen" src="" style="display:none" alt="Device Viewport">
+          <img id="screen" src="" style="display:none" alt="Device Screen Viewport">
           <canvas id="overlay"></canvas>
           <div id="hoverTooltip" class="hover-tooltip" style="display:none"></div>
         </div>
-      </div>
 
-      <div class="studio-statusbar" id="status">
+        <!-- Floating Zoom Dock (Docked bottom left) -->
+        <div class="canvas-zoom-dock">
+          <button class="zoom-dock-btn" onclick="zoomOut()" title="Zoom Out (Ctrl -)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+          <span class="zoom-dock-text" id="zoomLevelText" onclick="resetZoom()" title="Reset Zoom">100%</span>
+          <button class="zoom-dock-btn" onclick="zoomIn()" title="Zoom In (Ctrl +)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+          <div class="zoom-dock-divider"></div>
+          <button class="zoom-dock-btn fit-btn" onclick="fitToScreen()" title="Fit to Viewport">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+            <span>Fit</span>
+          </button>
+        </div>
+      </main>
+
+      <footer class="studio-statusbar" id="status">
         <span class="status-indicator"></span>
         <span id="statusText">Ready</span>
-      </div>
+      </footer>
     </div>
 
-    <!-- Details Panel (Right) -->
-    <div class="details-panel" id="detailsPanel">
+    <!-- Details Panel (Right Sidebar) -->
+    <aside class="details-panel" id="detailsPanel">
       
-      <!-- Hero Element Header -->
-      <div class="details-hero">
+      <!-- Hero Header -->
+      <section class="details-hero">
         <div class="hero-top-row">
           <div class="hero-title-group">
-            <span class="hero-label">Target Inspector</span>
-            <div class="hero-app-info" id="appInfo" title="Target App ID"></div>
+            <span class="hero-label">ELEMENT INSPECTOR</span>
+            <div class="hero-app-info" id="appInfo" title="Attached App ID"></div>
           </div>
           <span class="hero-badge" id="selectionBadge">No Selection</span>
         </div>
@@ -111,57 +111,57 @@
           <span class="meta-tag meta-dim" id="metaDim">576 × 60 px</span>
           <span class="meta-tag meta-res" id="metaRes" style="display:none"></span>
         </div>
-      </div>
+      </section>
 
-      <!-- Hierarchy Breadcrumbs -->
-      <div class="hierarchy-section" id="breadcrumbBar" style="display:none">
+      <!-- Hierarchy Breadcrumbs Bar -->
+      <section class="hierarchy-section" id="breadcrumbBar" style="display:none">
         <div class="section-title-row">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
             <circle cx="18" cy="5" r="3"></circle>
             <circle cx="6" cy="12" r="3"></circle>
             <circle cx="18" cy="19" r="3"></circle>
             <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
             <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
           </svg>
-          <span>View Hierarchy</span>
+          <span>Hierarchy Trail</span>
         </div>
         <div class="breadcrumbs-track" id="breadcrumbList">
           <!-- Injected dynamically -->
         </div>
-      </div>
+      </section>
 
       <!-- Action Segmented Control -->
-      <div class="action-section" id="actionBar" style="display:none">
+      <section class="action-section" id="actionBar" style="display:none">
         <div class="action-segment-container">
           <button class="action-segment active" data-action="tap" onclick="setActionType('tap')">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v10m0 0l4-4m-4 4l-4-4M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"></path></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2v10m0 0l4-4m-4 4l-4-4M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"></path></svg>
             <span>Tap</span>
           </button>
           <button class="action-segment" data-action="see" onclick="setActionType('see')">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
             <span>Assert</span>
           </button>
           <button class="action-segment" data-action="wait" onclick="setActionType('wait')">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
             <span>Wait</span>
           </button>
           <button class="action-segment" data-action="inputText" onclick="setActionType('inputText')">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="6" y1="8" x2="6" y2="8"></line><line x1="10" y1="8" x2="10" y2="8"></line><line x1="14" y1="8" x2="14" y2="8"></line><line x1="18" y1="8" x2="18" y2="8"></line><line x1="8" y1="16" x2="16" y2="16"></line></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="6" y1="8" x2="6" y2="8"></line><line x1="10" y1="8" x2="10" y2="8"></line><line x1="14" y1="8" x2="14" y2="8"></line><line x1="18" y1="8" x2="18" y2="8"></line></svg>
             <span>Input</span>
           </button>
           <button class="action-segment" data-action="copyText" onclick="setActionType('copyText')">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
             <span>Copy</span>
           </button>
           <button class="action-segment" data-action="longPress" onclick="setActionType('longPress')">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10M18 20V4M6 20v-4"></path></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20V10M18 20V4M6 20v-4"></path></svg>
             <span>Press</span>
           </button>
         </div>
-      </div>
+      </section>
 
       <!-- Studio Tab Navigation -->
-      <div class="studio-tab-bar" id="tabBar" style="display:none">
+      <nav class="studio-tab-bar" id="tabBar" style="display:none">
         <button class="studio-tab active" id="tabSelectorsBtn" onclick="switchTab('selectors')">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
           <span>Ranked Selectors</span>
@@ -172,9 +172,9 @@
           <span>Attributes</span>
           <span class="tab-pill-badge" id="attributesCountBadge">0</span>
         </button>
-      </div>
+      </nav>
 
-      <!-- Details Body -->
+      <!-- Details Scroll Body -->
       <div class="details-content" id="detailsContent">
 
         <!-- VIEW 1: SELECTORS -->
@@ -196,7 +196,7 @@
           <!-- Empty State -->
           <div class="studio-empty-state" id="emptyState">
             <div class="empty-state-art">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3">
                 <circle cx="12" cy="12" r="10"></circle>
                 <line x1="22" y1="12" x2="18" y2="12"></line>
                 <line x1="6" y1="12" x2="2" y2="12"></line>
@@ -217,12 +217,12 @@
           </div>
           
           <div class="attributes-grid" id="attributesGrid">
-            <!-- Injected dynamically as cards -->
+            <!-- Injected dynamically -->
           </div>
         </div>
 
       </div>
-    </div>
+    </aside>
 
     <!-- Modern Floating Toast -->
     <div id="toast" class="studio-toast">

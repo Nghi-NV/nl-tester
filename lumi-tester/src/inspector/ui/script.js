@@ -54,6 +54,14 @@ window.addEventListener('DOMContentLoaded', () => {
   }, { passive: false });
 
   window.addEventListener('resize', syncOverlaySize);
+
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(() => {
+      syncOverlaySize();
+    });
+    const cc = document.getElementById('canvasContainer');
+    if (cc) ro.observe(cc);
+  }
 });
 
 // Toast Feedback Notification
