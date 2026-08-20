@@ -238,13 +238,53 @@ defaultTimeout: 10000
 
 Selector priority:
 
-1. `id`, `desc`, `accessibilityId`, `contentDesc`
-2. `text` with `exact: true` when stable
-3. `regex` for dynamic text
-4. relative selectors near a stable anchor
-5. `type` with `index`
-6. `ocr` when native hierarchy cannot expose text
-7. `point` only as a last resort, preferably percentages like `"50%,80%"`
+1. `regex` / Shorthand (e.g. `tap: "name|tên"`, `see: "Accept|Đồng ý"`) for dynamic/multi-language UI
+2. `id` when stable resource ID exists in hierarchy
+3. `text` with `exact: true` when stable single-locale text
+4. Platform fields (`desc`, `accessibilityId`, `contentDesc`, `placeholder`)
+5. Relative positioning (`below`, `above`, `rightOf`, `leftOf`) near a stable anchor
+6. `type` with `index` (omit `index` if 0, require `index: N` if > 0)
+7. `ocr` when native hierarchy cannot expose text
+8. `point` only as a last resort, preferably percentages like `"50%,80%"`
+
+### Sub-Element Positioning (`align` / `offset`)
+For composite elements (e.g. Switch toggles, slider tracks, list rows):
+```yaml
+# Tap right side of switch:
+- tap:
+    type: "Switch"
+    index: 1
+    align: right # Presets: left, right, top, bottom, center
+
+# Specific offset inside element bounds:
+- tap:
+    id: "settings_row"
+    offset: "85%,50%"
+```
+
+### Relative Positioning (`below`, `above`, `rightOf`, `leftOf`)
+Target elements without IDs or text relative to nearby stable anchors:
+```yaml
+- tap:
+    type: "View"
+    below: "30%"
+    offset: "50%,50%"
+```
+
+### Continuous Drag & Slider Control (`drag`)
+Use `drag` for sliders, seekbars, reordering, and canvas drawing across Android, iOS, Web, macOS, Windows:
+```yaml
+- drag:
+    from:
+      type: "View"
+      below: "Brightness"
+      offset: "0%,50%"
+    to:
+      type: "View"
+      below: "Brightness"
+      offset: "80%,50%"
+    duration: 500
+```
 
 For macOS and Windows desktop tests, `ocr` and `image` are not selector
 fallbacks in the current runtime. Use Accessibility/UI Automation selectors
