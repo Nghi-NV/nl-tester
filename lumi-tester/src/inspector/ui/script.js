@@ -4,7 +4,8 @@ let cachedElements = [];
 let currentSelectors = [];
 let currentAttributes = {};
 let currentHierarchy = [];
-let currentActionType = 'tap'; // 'tap' | 'see' | 'wait' | 'inputText' | 'copyText' | 'longPress'
+let currentElementData = null;
+let currentActionType = 'tap'; // 'tap' | 'see' | 'wait' | 'drag' | 'inputText' | 'copyText' | 'longPress'
 let activeTab = 'selectors'; // 'selectors' | 'attributes'
 let allApps = [];
 let selectedAppTarget = null;
@@ -388,22 +389,8 @@ async function inspectAt(x, y, clickX, clickY) {
       renderAppInfo(data.app_id);
       renderBreadcrumbs(currentHierarchy);
 
-      // Auto-detect best action or reset to tap
-      const isEditable = (data.attributes && (data.attributes['focusable'] === 'true' || data.attributes['editable'] === 'true')) ||
-                         (data.element_class && (data.element_class.includes('EditText') || data.element_class.includes('TextInput') || data.element_class.includes('TextField')));
-      const isSlider = (data.element_class && (data.element_class.includes('SeekBar') || data.element_class.includes('Slider') || data.element_class.includes('ProgressBar')));
-
-      if (isSlider) {
-        currentActionType = 'drag';
-      } else if (isEditable) {
-        currentActionType = 'inputText';
-      } else {
-        currentActionType = 'tap';
-      }
-
-      document.querySelectorAll('.action-segment').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.action === currentActionType);
-      });
+      currentElementData = data;
+      updateActionToolbarForElement(data);
 
       renderSelectors();
       renderAttributes(currentAttributes);
@@ -419,6 +406,7 @@ async function inspectAt(x, y, clickX, clickY) {
       currentSelectors = data.selectors || [];
       currentAttributes = {};
       currentHierarchy = [];
+      currentElementData = null;
       lastSelectedBounds = null;
 
       const badge = document.getElementById('selectionBadge');
@@ -435,6 +423,7 @@ async function inspectAt(x, y, clickX, clickY) {
 }
 
 function clearDetails() {
+  currentElementData = null;
   document.getElementById('appInfo').textContent = '';
   document.getElementById('elementMeta').style.display = 'none';
   document.getElementById('breadcrumbBar').style.display = 'none';
@@ -444,6 +433,53 @@ function clearDetails() {
   document.getElementById('attributesGrid').innerHTML = '';
   document.getElementById('emptyState').style.display = 'flex';
   drawOverlay();
+}
+
+function classifyElement(data) {
+  if (!data) return 'general';
+  const cls = (data.element_class || '').toLowerCase();
+  const attrs = data.attributes || {};
+  const isClickable = attrs['clickable'] === 'true';
+  const isCheckable = attrs['checkable'] === 'true';
+  const isEditable = attrs['editable'] === 'true' || cls.includes('edittext') || cls.includes('textinput') || cls.includes('textfield') || cls.includes('textbox') || cls.includes('search');
+  const isSlider = cls.includes('seekbar') || cls.includes('slider') || cls.includes('progressbar') || cls.includes('range') || (attrs['resource-id'] && attrs['resource-id'].toLowerCase().includes('slider'));
+  const isSwitch = cls.includes('switch') || cls.includes('checkbox') || cls.includes('radio') || cls.includes('toggle') || isCheckable;
+  const isButton = cls.includes('button') || cls.includes('fab') || (isClickable && !isEditable && !isSlider && !isSwitch);
+  const hasText = !!(data.text || attrs['text'] || attrs['content-desc']);
+
+  if (isSlider) return 'slider';
+  if (isEditable) return 'input';
+  if (isSwitch) return 'switch';
+  if (isButton) return 'button';
+  if (hasText && !isClickable) return 'text';
+  return 'general';
+}
+
+function updateActionToolbarForElement(data) {
+  const category = classifyElement(data);
+
+  const allowedActionsMap = {
+    slider: ['drag', 'tap', 'wait', 'see'],
+    input: ['inputText', 'tap', 'copyText', 'wait', 'see'],
+    switch: ['tap', 'see', 'wait'],
+    button: ['tap', 'longPress', 'see', 'wait'],
+    text: ['see', 'wait', 'copyText', 'tap'],
+    general: ['tap', 'see', 'wait', 'drag', 'inputText', 'copyText', 'longPress']
+  };
+
+  const allowed = allowedActionsMap[category] || allowedActionsMap.general;
+
+  if (category === 'slider') currentActionType = 'drag';
+  else if (category === 'input') currentActionType = 'inputText';
+  else if (category === 'text') currentActionType = 'see';
+  else currentActionType = 'tap';
+
+  document.querySelectorAll('.action-segment').forEach(btn => {
+    const action = btn.dataset.action;
+    const isAllowed = allowed.includes(action);
+    btn.style.display = isAllowed ? 'inline-flex' : 'none';
+    btn.classList.toggle('active', action === currentActionType);
+  });
 }
 
 function renderAppInfo(appId) {
@@ -530,7 +566,11 @@ function transformYamlForAction(rawYaml, actionType) {
       return `- drag:\n    from:\n${indented}\n      offset: "0%,50%"\n    to:\n${indented}\n      offset: "80%,50%"\n    duration: 500`;
     }
   }
-  if (actionType === 'inputText') return `${rawYaml}\n- inputText: "example_text"`;
+  if (actionType === 'inputText') {
+    const attrs = currentElementData?.attributes || {};
+    const textVal = attrs['text'] || attrs['hint'] || 'example_text';
+    return `${rawYaml}\n- inputText: "${escapeHtml(textVal)}"`;
+  }
 
   return rawYaml;
 }
