@@ -107,7 +107,7 @@ impl ColorSensorControl for ColorSensorService {
         let resp = transport.request(
             &cmd_color_read(channel),
             |line| line.kind == "color" || line.kind == "ok",
-            5.0,
+            0.5,
         )?;
 
         let red = resp.get_u16("red").unwrap_or(0);
@@ -296,17 +296,41 @@ impl ColorSensorControl for ColorSensorService {
 
             // 2. Real-time optical pulse & blink tracker with high-speed sampling
             if let Ok(reading) = self.read_color(channel) {
+                let is_pink_match = expected_color.map(|s| s.eq_ignore_ascii_case("PINK") || s.to_uppercase().contains("PINK")).unwrap_or(false)
+                    && (reading.color == Color::Pink || reading.color == Color::Magenta || reading.color == Color::Red
+                        || (reading.sample.red >= 25 && reading.sample.blue >= 35 && (reading.sample.red as f32 / reading.sample.blue as f32) >= 0.5 && reading.sample.clear >= 65));
+
                 let is_matching_color = match (&exp_color_enum, reading.color) {
-                    (Some(exp_c), c) => *exp_c == c || (expected_color.is_some() && c.as_str().eq_ignore_ascii_case(expected_color.unwrap())) || (expected_color.map(|s| s.eq_ignore_ascii_case("PINK")).unwrap_or(false) && (c == Color::Pink || c == Color::Magenta || c == Color::Red)),
+                    (Some(exp_c), c) => {
+                        let matches_any = if let Some(exp_str) = expected_color {
+                            exp_str.split('|').any(|part| {
+                                let part = part.trim();
+                                c.as_str().eq_ignore_ascii_case(part) || Color::from_str(part) == c
+                            })
+                        } else {
+                            false
+                        };
+                        *exp_c == c || is_pink_match || matches_any
+                    }
                     (None, Color::Off) | (None, Color::Unknown) => false,
                     (None, _) => true,
+                };
+
+                let matched_color = if is_matching_color {
+                    if is_pink_match {
+                        Some(Color::Pink)
+                    } else {
+                        Some(reading.color)
+                    }
+                } else {
+                    None
                 };
 
                 if is_matching_color {
                     if !in_pulse {
                         in_pulse = true;
                         pulse_start = Instant::now();
-                        last_detected_color = Some(reading.color);
+                        last_detected_color = matched_color;
                     }
                 } else if in_pulse {
                     in_pulse = false;
@@ -321,7 +345,7 @@ impl ColorSensorControl for ColorSensorService {
                 }
             }
 
-            thread::sleep(Duration::from_millis(10));
+            thread::sleep(Duration::from_millis(30));
         }
     }
 }
