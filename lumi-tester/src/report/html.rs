@@ -137,12 +137,23 @@ fn generate_html(results: &TestResults) -> String {
             let error_html = match &cmd.status {
                 CommandStatus::Failed { error } => {
                     let screenshot_box = if let Some(path) = &cmd.screenshot_path {
+                        let img_src = if let Ok(bytes) = std::fs::read(path) {
+                            use base64::{engine::general_purpose::STANDARD, Engine};
+                            format!("data:image/png;base64,{}", STANDARD.encode(&bytes))
+                        } else {
+                            std::path::Path::new(path)
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or(path)
+                                .to_string()
+                        };
+
                         format!(
-                            r#"<div class="evidence-thumb-box" onclick="showScreenshot('{path}')">
-                                <img src="{path}" alt="Failure Snapshot" />
+                            r#"<div class="evidence-thumb-box" onclick="showScreenshot(this.querySelector('img').src)">
+                                <img src="{img_src}" alt="Failure Snapshot" />
                                 <div class="zoom-label">🔍 Zoom Screenshot</div>
                             </div>"#,
-                            path = path
+                            img_src = img_src
                         )
                     } else {
                         String::new()
@@ -832,16 +843,21 @@ fn generate_html(results: &TestResults) -> String {
     </div>
 
     <div id="modal" onclick="this.classList.remove('active')">
-        <img id="modal-img" src="" alt="Screenshot">
+        <div style="position: relative; max-width: 90vw; max-height: 90vh; display: flex; flex-direction: column; align-items: center;" onclick="event.stopPropagation()">
+            <img id="modal-img" src="" alt="Screenshot" style="max-width: 100%; max-height: 80vh; object-fit: contain; border-radius: 0.5rem; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);">
+            <div style="margin-top: 0.75rem; color: #94a3b8; font-size: 0.8125rem; background: rgba(0,0,0,0.6); padding: 0.25rem 0.75rem; border-radius: 9999px; cursor: pointer;" onclick="document.getElementById('modal').classList.remove('active')">✕ Close Preview</div>
+        </div>
     </div>
 
     <script>
-        function showScreenshot(path) {{
+        function showScreenshot(src) {{
             const modal = document.getElementById('modal');
             const img = document.getElementById('modal-img');
-            img.src = path;
+            img.src = src;
             modal.classList.add('active');
-            event.stopPropagation();
+            if (window.event) {{
+                window.event.stopPropagation();
+            }}
         }}
     </script>
 </body>
