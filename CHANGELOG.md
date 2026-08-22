@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.22] - 2026-08-22
+
+### 🚀 Highlights & Improvements
+
+#### 1. Interactive UI Hierarchy Bounding Box Visual Inspector
+- **Overlay Bounding Boxes on Failure Screenshots**: Extracts element bounds from UI hierarchy XML and renders interactive, color-coded bounding boxes directly on top of failure screenshots.
+- **Smart Color Coding**:
+  - 🟢 **Green (Emerald)**: Elements containing text labels.
+  - 🔵 **Blue / Cyan**: Clickable / interactive elements (`clickable=true`).
+  - 🟣 **Purple**: View containers and structural layouts.
+- **Rich Hover Tooltips**: Hovering on any bounding box reveals element Text, Resource-ID, Class name, and pixel Bounds dimensions (`[left, top][right, bottom]` and `WxH`).
+- **Interactive Element Sidebar & Real-time Filter**: Side panel listing all detected UI elements with instant search by text, ID, or class, with bidirectional hover/click synchronization.
+- **Overlay Controls**: Toggle button (`👁️ Bounding Boxes`) to easily show or hide bounding boxes.
+
+#### 2. Self-Contained Base64 Failure Screenshot Embedding
+- **Embedded Base64 Data URIs**: Encodes failure screenshots as base64 data URIs directly inside HTML reports (`report.html`), eliminating broken relative paths across nested session folders (`./output/<serial>/sessions/...`).
+- **100% Standalone Reports**: Reports can now be viewed anywhere, emailed, or uploaded as CI/CD artifacts without losing screenshot evidence.
+
+#### 3. Fixed Sessions Dashboard False-Failure Parsing
+- **Support CamelCase & SnakeCase**: Corrected parsing in `generate_sessions_dashboard` to handle both naming conventions in `session.json`.
+- **Accurate Pass/Fail Determination**: Ensured all-passed test runs are marked as `PASSED` instead of false failures.
+
+---
+
 ## [v0.1.21] - 2026-08-22
 
 ### 🚀 Highlights & Improvements
