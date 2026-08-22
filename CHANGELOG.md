@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.23] - 2026-08-22
+
+### 🚀 Highlights & Improvements
+
+#### 1. Dynamic Ambient Baseline Calibration & Robust LED Blink Detection
+- **Dynamic Ambient Baseline (Delta RGBC)**: Implemented adaptive baseline sampling before blink sequences (`hwSeeLedBlink`, `hwSeeLed`) to calculate $\Delta R, \Delta G, \Delta B, \Delta C$ relative to ambient room illumination.
+- **Eliminated Hardcoded OFF Thresholds**: Replaced fixed Clear-channel thresholds with adaptive Delta-based optical energy detection across all color sensor commands (`read_color`, `verify_color`, `wait_for_color`, `wait_for_blink`).
+- **Rich Diagnostic & Per-Pulse Breakdown**: Detailed real-time logging of each detected blink pulse with exact duration, peak RGBC, ambient baseline, and Delta optical deltas.
+- **Enhanced Pink/Magenta Optical Matching**: Tuned color classification for RGB diffuser LEDs with low saturation or high ambient bleed.
+
+---
+
 ## [v0.1.22] - 2026-08-22
 
 ### 🚀 Highlights & Improvements
