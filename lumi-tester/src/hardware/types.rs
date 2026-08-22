@@ -168,9 +168,20 @@ pub struct ColorReading {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PulseDetail {
+    pub index: usize,
+    pub duration_ms: u64,
+    pub color: Color,
+    pub sample: RawColorSample,
+    pub delta: (u16, u16, u16, u16),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlinkResult {
     pub event_id: u32,
     pub blink_count: usize,
     pub color: Option<Color>,
     pub durations_ms: Vec<u64>,
+    #[serde(default)]
+    pub pulses: Vec<PulseDetail>,
 }

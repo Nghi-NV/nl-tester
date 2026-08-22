@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use crate::hardware::protocol::cmd_color_read;
 use crate::hardware::transport::SerialTransport;
 use crate::hardware::traits::ColorSensorControl;
-use crate::hardware::types::{BlinkResult, Color, ColorConfidence, ColorReading, RawColorSample};
+use crate::hardware::types::{BlinkResult, Color, ColorConfidence, ColorReading, PulseDetail, RawColorSample};
 
 pub struct ColorSensorService {
     transport: Arc<Mutex<SerialTransport>>,
@@ -236,6 +236,9 @@ impl ColorSensorControl for ColorSensorService {
         let mut in_pulse = false;
         let mut pulse_start = Instant::now();
         let mut pulse_durations = Vec::new();
+        let mut pulses = Vec::new();
+        let mut peak_sample: Option<RawColorSample> = None;
+        let mut peak_delta = (0u16, 0u16, 0u16, 0u16);
         let mut last_detected_color = None;
         let mut last_pulse_end: Option<Instant> = None;
         let mut last_reading: Option<ColorReading> = None;
@@ -256,6 +259,7 @@ impl ColorSensorControl for ColorSensorService {
                             blink_count: sw_blink_count,
                             color: last_detected_color,
                             durations_ms: pulse_durations,
+                            pulses,
                         });
                     }
                 }
@@ -297,6 +301,7 @@ impl ColorSensorControl for ColorSensorService {
                                     blink_count: sw_blink_count,
                                     color: last_detected_color,
                                     durations_ms: pulse_durations,
+                                    pulses,
                                 });
                             } else if sw_blink_count > exp_c {
                                 anyhow::bail!(
@@ -313,6 +318,7 @@ impl ColorSensorControl for ColorSensorService {
                                 blink_count: sw_blink_count,
                                 color: last_detected_color,
                                 durations_ms: pulse_durations,
+                                pulses,
                             });
                         }
                     }
@@ -417,6 +423,11 @@ impl ColorSensorControl for ColorSensorService {
                         in_pulse = true;
                         pulse_start = Instant::now();
                         last_detected_color = matched_color;
+                        peak_sample = Some(reading.sample.clone());
+                        peak_delta = (delta_r, delta_g, delta_b, delta_c);
+                    } else if reading.sample.clear >= peak_sample.as_ref().map_or(0, |s| s.clear) {
+                        peak_sample = Some(reading.sample.clone());
+                        peak_delta = (delta_r, delta_g, delta_b, delta_c);
                     }
                 } else if in_pulse {
                     in_pulse = false;
@@ -426,6 +437,16 @@ impl ColorSensorControl for ColorSensorService {
                     if min_ok && max_ok {
                         sw_blink_count += 1;
                         pulse_durations.push(duration);
+                        let p_sample = peak_sample.take().unwrap_or(reading.sample.clone());
+                        let p_color = matched_color.unwrap_or(last_detected_color.unwrap_or(reading.color));
+                        let p_detail = PulseDetail {
+                            index: sw_blink_count,
+                            duration_ms: duration,
+                            color: p_color,
+                            sample: p_sample,
+                            delta: peak_delta,
+                        };
+                        pulses.push(p_detail);
                         last_pulse_end = Some(Instant::now());
                     }
                 }

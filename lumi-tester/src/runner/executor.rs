@@ -3547,16 +3547,38 @@ impl TestExecutor {
                     durations_str.yellow(),
                     total_duration
                 );
-                for (i, dur) in blink_res.durations_ms.iter().enumerate() {
-                    let is_last = i + 1 == blink_res.durations_ms.len();
-                    let prefix = if is_last { "└─" } else { "├─" };
-                    println!(
-                        "     {} Pulse #{}: {}ms (color: {})",
-                        prefix.dimmed(),
-                        i + 1,
-                        dur.to_string().yellow().bold(),
-                        color_name.magenta()
-                    );
+                if !blink_res.pulses.is_empty() {
+                    for (i, p) in blink_res.pulses.iter().enumerate() {
+                        let is_last = i + 1 == blink_res.pulses.len();
+                        let prefix = if is_last { "└─" } else { "├─" };
+                        println!(
+                            "     {} Pulse #{}: {}ms | Color: {} | RGBC=[R:{} G:{} B:{} C:{}] | ΔRGBC=[+{}, +{}, +{}, +{}]",
+                            prefix.dimmed(),
+                            p.index,
+                            p.duration_ms.to_string().yellow().bold(),
+                            p.color.as_str().magenta().bold(),
+                            p.sample.red,
+                            p.sample.green,
+                            p.sample.blue,
+                            p.sample.clear,
+                            p.delta.0,
+                            p.delta.1,
+                            p.delta.2,
+                            p.delta.3
+                        );
+                    }
+                } else {
+                    for (i, dur) in blink_res.durations_ms.iter().enumerate() {
+                        let is_last = i + 1 == blink_res.durations_ms.len();
+                        let prefix = if is_last { "└─" } else { "├─" };
+                        println!(
+                            "     {} Pulse #{}: {}ms (color: {})",
+                            prefix.dimmed(),
+                            i + 1,
+                            dur.to_string().yellow().bold(),
+                            color_name.magenta()
+                        );
+                    }
                 }
                 Ok(())
             }
