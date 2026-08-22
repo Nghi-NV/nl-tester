@@ -930,11 +930,11 @@ pub fn generate_sessions_dashboard(output_dir: &Path) -> Result<()> {
                     if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
                         let summary = val.get("summary");
                         let total_flows = summary
-                            .and_then(|s| s.get("total_flows"))
+                            .and_then(|s| s.get("totalFlows").or_else(|| s.get("total_flows")))
                             .and_then(|v| v.as_u64())
                             .unwrap_or(0) as usize;
                         let total_commands = summary
-                            .and_then(|s| s.get("total_commands"))
+                            .and_then(|s| s.get("totalCommands").or_else(|| s.get("total_commands")))
                             .and_then(|v| v.as_u64())
                             .unwrap_or(0) as usize;
                         let passed = summary
@@ -946,7 +946,7 @@ pub fn generate_sessions_dashboard(output_dir: &Path) -> Result<()> {
                             .and_then(|v| v.as_u64())
                             .unwrap_or(0) as usize;
                         let duration_ms = summary
-                            .and_then(|s| s.get("total_duration_ms"))
+                            .and_then(|s| s.get("totalDurationMs").or_else(|| s.get("total_duration_ms")))
                             .and_then(|v| v.as_u64())
                             .unwrap_or(0);
                         let created_at = val
@@ -978,7 +978,7 @@ pub fn generate_sessions_dashboard(output_dir: &Path) -> Result<()> {
                             });
 
                         let rel_report = format!("sessions/{}/report/report.html", session_id);
-                        let is_passed = failed == 0 && total_commands > 0;
+                        let is_passed = failed == 0 && (passed > 0 || total_commands > 0);
 
                         sessions.push(SessionDashboardItem {
                             session_id,
@@ -1370,6 +1370,39 @@ mod tests {
         assert!(html.contains("login"));
         assert!(html.contains("PASSED"));
         assert!(html.contains("FAILED"));
+    }
+
+    #[test]
+    fn test_generate_sessions_dashboard_from_dir() {
+        let temp_dir = std::env::temp_dir().join(format!("lumi_dash_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()));
+        let sessions_dir = temp_dir.join("sessions");
+        let session1_dir = sessions_dir.join("session_login_2026-08-22_10-00-00");
+        std::fs::create_dir_all(&session1_dir).unwrap();
+
+        let session_json = serde_json::json!({
+            "created_at": "2026-08-22 10:00:00",
+            "session_id": "session_login_2026-08-22_10-00-00",
+            "summary": {
+                "failed": 0,
+                "passed": 5,
+                "sessionId": "session_login_2026-08-22_10-00-00",
+                "skipped": 0,
+                "totalCommands": 5,
+                "totalDurationMs": 1200,
+                "totalFlows": 1
+            }
+        });
+        std::fs::write(session1_dir.join("session.json"), session_json.to_string()).unwrap();
+
+        assert!(generate_sessions_dashboard(&temp_dir).is_ok());
+
+        let index_content = std::fs::read_to_string(temp_dir.join("index.html")).unwrap();
+        assert!(index_content.contains("PASSED"));
+        assert!(index_content.contains("5 cmd(s)"));
+        assert!(index_content.contains("5 pass / 0 fail"));
+        assert!(index_content.contains("1.2s"));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
 
