@@ -3518,14 +3518,36 @@ impl TestExecutor {
                     params.max_pulse_ms,
                     timeout_s,
                 )?;
+                let color_name = blink_res.color.as_ref().map(|c| c.as_str()).unwrap_or("UNKNOWN");
+                let durations_str = blink_res
+                    .durations_ms
+                    .iter()
+                    .map(|d| format!("{}ms", d))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let total_duration: u64 = blink_res.durations_ms.iter().sum();
+                let target_cnt = params.count.unwrap_or(1);
                 println!(
-                    "  {} Detected LED blink {}: count={}, color={:?}, durations={:?}",
-                    "💡".green(),
-                    label,
-                    blink_res.blink_count,
-                    blink_res.color.map(|c| c.as_str()),
-                    blink_res.durations_ms
+                    "  {} Verified LED Blink {}: count={} (target={}), color={}, durations=[{}] (total: {}ms)",
+                    "💡".green().bold(),
+                    label.cyan().bold(),
+                    blink_res.blink_count.to_string().green().bold(),
+                    target_cnt.to_string().yellow(),
+                    color_name.magenta().bold(),
+                    durations_str.yellow(),
+                    total_duration
                 );
+                for (i, dur) in blink_res.durations_ms.iter().enumerate() {
+                    let is_last = i + 1 == blink_res.durations_ms.len();
+                    let prefix = if is_last { "└─" } else { "├─" };
+                    println!(
+                        "     {} Pulse #{}: {}ms (color: {})",
+                        prefix.dimmed(),
+                        i + 1,
+                        dur.to_string().yellow().bold(),
+                        color_name.magenta()
+                    );
+                }
                 Ok(())
             }
 

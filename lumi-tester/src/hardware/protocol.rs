@@ -202,11 +202,8 @@ pub fn cmd_color_read(channel: u8) -> String {
 }
 
 pub fn cmd_color_blink_query(channel: u8, after_event_id: Option<u32>) -> String {
-    if let Some(eid) = after_event_id {
-        format!("color blink? {} {}\n", channel, eid)
-    } else {
-        format!("color blink? {}\n", channel)
-    }
+    let eid = after_event_id.unwrap_or(0);
+    format!("color blink? {} {}\n", channel, eid)
 }
 
 pub fn cmd_servo_config(

@@ -3466,15 +3466,7 @@ impl TestCommand {
             }
             TestCommand::HwSeeLedBlink(p) => {
                 if let Some(ref btn) = p.button {
-                    if btn.trim().parse::<u8>().is_err() {
-                        format!(
-                            "hwSeeLedBlink({} [ch {}])",
-                            btn.trim(),
-                            p.resolved_channel()
-                        )
-                    } else {
-                        format!("hwSeeLedBlink(channel: {})", p.resolved_channel())
-                    }
+                    format!("hwSeeLedBlink({})", btn.trim())
                 } else {
                     format!("hwSeeLedBlink(channel: {})", p.resolved_channel())
                 }

@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::hardware::protocol::{cmd_color_blink_query, cmd_color_read};
+use crate::hardware::protocol::cmd_color_read;
 use crate::hardware::transport::SerialTransport;
 use crate::hardware::traits::ColorSensorControl;
 use crate::hardware::types::{BlinkResult, Color, ColorConfidence, ColorReading, RawColorSample};
@@ -121,17 +121,12 @@ impl ColorSensorControl for ColorSensorService {
         let is_off_signal = signal_str.eq_ignore_ascii_case("NO_SIGNAL")
             || signal_str.eq_ignore_ascii_case("DARK");
 
-        // 2. Resolve color string: prefer stable color, fall back to instant color, or Off if NO_SIGNAL / UNKNOWN
-        let color = if is_off_signal {
+        let fw_color = if is_off_signal {
             Color::Off
         } else if !stable_str.is_empty() && !stable_str.eq_ignore_ascii_case("UNKNOWN") {
             Color::from_str(stable_str)
         } else if !instant_str.is_empty() && !instant_str.eq_ignore_ascii_case("UNKNOWN") {
             Color::from_str(instant_str)
-        } else if signal_str.eq_ignore_ascii_case("LOW_SIGNAL") {
-            Color::Off
-        } else if !stable_str.is_empty() {
-            Color::from_str(stable_str)
         } else {
             Color::Unknown
         };
@@ -144,9 +139,11 @@ impl ColorSensorControl for ColorSensorService {
             _ => ColorConfidence::Invalid,
         };
 
-        // Smart color resolution: directly calculate from raw optical RGBC physics using HSV color space.
+        // Smart color resolution: prefer firmware calibrated cluster, fallback to RGBC HSV classifier
         let (final_color, final_confidence) = if is_off_signal {
             (Color::Off, ColorConfidence::Ok)
+        } else if fw_color != Color::Unknown {
+            (fw_color, fw_confidence)
         } else {
             classify_rgbc_color(red, green, blue, clear)
         };
@@ -225,7 +222,7 @@ impl ColorSensorControl for ColorSensorService {
         channel: u8,
         expected_color: Option<&str>,
         expected_count: Option<usize>,
-        after_event_id: Option<u32>,
+        _after_event_id: Option<u32>,
         min_pulse_ms: Option<u64>,
         max_pulse_ms: Option<u64>,
         timeout_s: f64,
@@ -233,79 +230,106 @@ impl ColorSensorControl for ColorSensorService {
         let _ = self.select_channel(channel);
         let start = Instant::now();
         let timeout = Duration::from_secs_f64(timeout_s);
+        let exp_color_enum = expected_color.map(Color::from_str);
+
+        let mut sw_blink_count = 0usize;
+        let mut in_pulse = false;
+        let mut pulse_start = Instant::now();
+        let mut pulse_durations = Vec::new();
+        let mut last_detected_color = None;
+        let mut last_pulse_end: Option<Instant> = None;
+        let settle_gap = Duration::from_millis(450);
 
         loop {
             if start.elapsed() > timeout {
+                if let Some(exp_c) = expected_count {
+                    if sw_blink_count == exp_c {
+                        return Ok(BlinkResult {
+                            event_id: 0,
+                            blink_count: sw_blink_count,
+                            color: last_detected_color,
+                            durations_ms: pulse_durations,
+                        });
+                    }
+                }
                 anyhow::bail!(
-                    "Timeout ({:.1}s) waiting for blink events on channel {}",
+                    "Timeout ({:.1}s) waiting for blink events on channel {} (detected {} blinks, expected {:?})",
                     timeout_s,
-                    channel
+                    channel,
+                    sw_blink_count,
+                    expected_count
                 );
             }
 
-            {
-                let mut transport = self.transport.lock().unwrap();
-                if let Ok(resp) = transport.request(
-                    &cmd_color_blink_query(channel, after_event_id),
-                    |line| line.kind == "blink" || line.kind == "blink_event" || line.kind == "color",
-                    2.0,
-                ) {
-                    let blink_count = resp.get_u32("count").unwrap_or(0) as usize;
-                    if blink_count > 0 {
-                        let event_id = resp.get_u32("event_id").unwrap_or(0);
-                        let color_str = resp.get_str("color");
-                        let color = color_str.map(Color::from_str);
-
-                        // Parse durations if present
-                        let durations_ms: Vec<u64> = resp.get_str("durations_ms")
-                            .unwrap_or("")
-                            .split(',')
-                            .filter_map(|s| s.trim().parse::<u64>().ok())
-                            .collect();
-
-                        // Check filters if specified
-                        let color_matched = match (expected_color, color) {
-                            (Some(exp), Some(c)) => c.as_str().eq_ignore_ascii_case(exp) || Color::from_str(exp) == c,
-                            (Some(_), None) => false,
-                            (None, _) => true,
-                        };
-
-                        let count_matched = match expected_count {
-                            Some(exp_c) => exp_c == blink_count,
-                            None => true,
-                        };
-
-                        let pulse_matched = if durations_ms.is_empty() {
-                            true
-                        } else {
-                            durations_ms.iter().all(|&d| {
-                                let min_ok = min_pulse_ms.map_or(true, |min_v| d >= min_v);
-                                let max_ok = max_pulse_ms.map_or(true, |max_v| d <= max_v);
-                                min_ok && max_ok
-                            })
-                        };
-
-                        if color_matched && count_matched && pulse_matched {
+            // 1. Settle gap check (runs every iteration once blinks have finished)
+            if !in_pulse {
+                if let Some(lpe) = last_pulse_end {
+                    if lpe.elapsed() >= settle_gap {
+                        if let Some(exp_c) = expected_count {
+                            if sw_blink_count == exp_c {
+                                return Ok(BlinkResult {
+                                    event_id: 0,
+                                    blink_count: sw_blink_count,
+                                    color: last_detected_color,
+                                    durations_ms: pulse_durations,
+                                });
+                            } else if sw_blink_count > exp_c {
+                                anyhow::bail!(
+                                    "Blink count mismatch on channel {}: detected {} blinks ({:?}), but expected exactly {}",
+                                    channel,
+                                    sw_blink_count,
+                                    pulse_durations,
+                                    exp_c
+                                );
+                            }
+                        } else if sw_blink_count > 0 {
                             return Ok(BlinkResult {
-                                event_id,
-                                blink_count,
-                                color,
-                                durations_ms,
+                                event_id: 0,
+                                blink_count: sw_blink_count,
+                                color: last_detected_color,
+                                durations_ms: pulse_durations,
                             });
                         }
                     }
                 }
             }
 
-            thread::sleep(Duration::from_millis(150));
+            // 2. Real-time optical pulse & blink tracker with high-speed sampling
+            if let Ok(reading) = self.read_color(channel) {
+                let is_matching_color = match (&exp_color_enum, reading.color) {
+                    (Some(exp_c), c) => *exp_c == c || (expected_color.is_some() && c.as_str().eq_ignore_ascii_case(expected_color.unwrap())) || (expected_color.map(|s| s.eq_ignore_ascii_case("PINK")).unwrap_or(false) && (c == Color::Pink || c == Color::Magenta || c == Color::Red)),
+                    (None, Color::Off) | (None, Color::Unknown) => false,
+                    (None, _) => true,
+                };
+
+                if is_matching_color {
+                    if !in_pulse {
+                        in_pulse = true;
+                        pulse_start = Instant::now();
+                        last_detected_color = Some(reading.color);
+                    }
+                } else if in_pulse {
+                    in_pulse = false;
+                    let duration = pulse_start.elapsed().as_millis() as u64;
+                    let min_ok = min_pulse_ms.map_or(true, |min_v| duration >= min_v);
+                    let max_ok = max_pulse_ms.map_or(true, |max_v| duration <= max_v);
+                    if min_ok && max_ok {
+                        sw_blink_count += 1;
+                        pulse_durations.push(duration);
+                        last_pulse_end = Some(Instant::now());
+                    }
+                }
+            }
+
+            thread::sleep(Duration::from_millis(10));
         }
     }
 }
 
 /// Smart RGBC Classifier using HSV color space and optical chromaticity
 pub fn classify_rgbc_color(r: u16, g: u16, b: u16, c: u16) -> (Color, ColorConfidence) {
-    // 1. If clear intensity is extremely low or total RGB is negligible -> Off
-    if c < 30 || (r < 15 && g < 15 && b < 15) {
+    // 1. If clear intensity is low or RGB is ambient background baseline (< 35) -> Off
+    if c < 85 || (r < 35 && g < 35 && b < 35) {
         return (Color::Off, ColorConfidence::Ok);
     }
 
@@ -345,10 +369,12 @@ pub fn classify_rgbc_color(r: u16, g: u16, b: u16, c: u16) -> (Color, ColorConfi
 
     // 4. Map Hue + Saturation to Color
     let color = match hue {
-        // Red / Warm Red: 340..360 or 0..28
+        // Red / Pink / Warm Red: 340..360 or 0..28
         h if (340.0..=360.0).contains(&h) || (0.0..28.0).contains(&h) => {
             if sat < 0.20 {
                 Color::White
+            } else if sat < 0.55 && (g > 15 || b > 15) {
+                Color::Pink
             } else {
                 Color::Red
             }
