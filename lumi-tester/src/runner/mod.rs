@@ -264,6 +264,12 @@ async fn run_on_device(
         _ => anyhow::bail!("Unknown platform: {}", platform_clean),
     };
 
+    let target_name = if base_path.is_file() {
+        base_path.file_stem().map(|s| s.to_string_lossy().to_string())
+    } else {
+        base_path.file_name().map(|s| s.to_string_lossy().to_string())
+    };
+
     let mut executor = executor::TestExecutor::new_with_events(
         driver,
         output,
@@ -273,7 +279,8 @@ async fn run_on_device(
         report,
         tags,
         events_jsonl,
-    );
+    )
+    .with_target_name(target_name.as_deref());
     let base_dir = if base_path.is_dir() {
         base_path
     } else {

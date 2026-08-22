@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.21] - 2026-08-22
+
+### 🚀 Highlights & Improvements
+
+#### 1. Human-Readable Session IDs & Timestamped Folder Organization
+- **Replaced Random UUIDs with ISO Timestamps**: Session directories and IDs are now structured as `session_<target_or_flow>_YYYY-MM-DD_HH-MM-SS` (e.g. `session_slider_2026-08-22_10-40-44`).
+- **Easy Sorting & Identification**: Multiple test runs no longer create confusing random UUID folders; users can instantly sort, filter, and identify sessions chronologically by flow name.
+
+#### 2. Test Sessions History Dashboard (`output/index.html`)
+- **Centralized Overview Hub**: Automatically generates and updates `output/index.html` and `output/sessions/index.html` across all historical sessions.
+- **Interactive Metrics**: Live filtering by status (All, Passed, Failed), instant text search, and direct links (`View Report ↗`) to open individual session reports.
+- **Flow Reliability & Stability Breakdown**: Aggregates statistics per test flow across all recorded sessions to highlight `STABLE`, `FLAKY`, or `FAILING` test suites.
+
+#### 3. Rich Failure Inspector & Evidence Viewer in HTML Reports
+- **Inline Failure Screenshot**: Embeds failure screenshot thumbnails with full-size click-to-zoom modal support.
+- **Interactive UI Hierarchy XML Viewer**: Collapsible `<details>` container rendering the raw UI hierarchy XML at the exact step of failure.
+- **Device System Logs**: Embeds recent device crash and system logcat snippets at failure points.
+- **Retry Count Badge**: Displays explicit `↻ Retried N time(s)` indicators for commands configured with automatic retries.
+- **Flow Execution & Stability Matrix**: Real-time pass rate and flakiness metrics across multi-run / `--repeat` flows.
+
+#### 4. Clickable Terminal Output Links
+- **1-Click Browser Opening**: Final executor output prints absolute `file://` scheme URLs to JSON reports, latest HTML report, individual session reports, and the Sessions Dashboard for direct Cmd+Click / Ctrl+Click opening.
+
+---
+
 ## [v0.1.20] - 2026-08-22
 
 ### 🚀 Highlights & Improvements

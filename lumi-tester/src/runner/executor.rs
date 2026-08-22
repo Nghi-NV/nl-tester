@@ -179,7 +179,7 @@ impl TestExecutor {
             });
         }
 
-        let session_id = Uuid::new_v4().to_string();
+        let session_id = format!("session_{}", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S"));
         let mut session = TestSessionState::new(&session_id);
         session.start();
         emitter.emit(TestEvent::SessionStarted { session_id });
@@ -211,6 +211,27 @@ impl TestExecutor {
             hardware_controller: None,
             auto_power_off: false,
         }
+    }
+
+    /// Set session name prefix with the flow or test suite name
+    pub fn with_target_name(mut self, target_name: Option<&str>) -> Self {
+        if let Some(target) = target_name {
+            let safe: String = target
+                .chars()
+                .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+                .collect();
+            let clean = safe.trim_matches('_');
+            if !clean.is_empty() {
+                let session_id = format!(
+                    "session_{}_{}",
+                    clean,
+                    chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")
+                );
+                self.session.session_id = session_id.clone();
+                self.emitter.emit(TestEvent::SessionStarted { session_id });
+            }
+        }
+        self
     }
 
     /// Subscribe to test execution events
@@ -514,11 +535,7 @@ impl TestExecutor {
             let filename = format!(
                 "video_{}_{}.mp4",
                 safe_name,
-                Uuid::new_v4()
-                    .to_string()
-                    .chars()
-                    .take(8)
-                    .collect::<String>()
+                chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")
             );
 
             let abs_path = out_dir.join(&filename);
@@ -5246,12 +5263,6 @@ impl TestExecutor {
         let json = serde_json::to_string_pretty(&report_data)?;
         std::fs::write(&report_path, json)?;
 
-        println!(
-            "\n{} JSON report saved to: {}",
-            "📄".to_string().blue(),
-            report_path.display().to_string().cyan()
-        );
-
         // Generate and save HTML report
         let html_path = self.context.output_path("report.html");
         // Convert TestSessionReport to TestResults for HTML generator
@@ -5297,18 +5308,12 @@ impl TestExecutor {
         let platform_str = self.driver.platform_name();
         let app_id_str = self.context.app_id.as_deref();
         let session_result_path = report_dir.join("session-result.json");
-        if let Ok(_) = crate::report::json::generate_standard_session_report(
+        let _ = crate::report::json::generate_standard_session_report(
             &report_data,
             app_id_str,
             Some(&platform_str),
             &session_result_path,
-        ) {
-            println!(
-                "{} Standardized JSON report saved to: {}",
-                "📋".to_string().blue(),
-                session_result_path.display().to_string().cyan()
-            );
-        }
+        );
 
         let runs_json_path = report_dir.join("runs.json");
         if let Ok(runs_json) = serde_json::to_string_pretty(&report_data.flows) {
@@ -5318,10 +5323,40 @@ impl TestExecutor {
         let session_html_path = report_dir.join("report.html");
         let _ = crate::report::html::generate(&test_results, Some(&session_html_path)).await;
 
+        // Generate and update Sessions History Dashboard (index.html)
+        let _ = crate::report::html::generate_sessions_dashboard(&self.context.output_dir);
+        let dashboard_path = self.context.output_path("index.html");
+
+        let to_file_url = |p: &std::path::Path| -> String {
+            if let Ok(abs) = std::fs::canonicalize(p) {
+                format!("file://{}", abs.display().to_string().replace('\\', "/"))
+            } else if let Ok(cwd) = std::env::current_dir() {
+                let abs = cwd.join(p);
+                format!("file://{}", abs.display().to_string().replace('\\', "/"))
+            } else {
+                p.display().to_string()
+            }
+        };
+
         println!(
-            "{} HTML report saved to: {}",
-            "📊".to_string().blue(),
-            html_path.display().to_string().cyan()
+            "\n{} JSON report: {}",
+            "📄".blue(),
+            to_file_url(&report_path).cyan()
+        );
+        println!(
+            "{} HTML report (Latest): {}",
+            "📊".blue(),
+            to_file_url(&html_path).cyan()
+        );
+        println!(
+            "{} Session report: {}",
+            "📋".blue(),
+            to_file_url(&session_html_path).cyan()
+        );
+        println!(
+            "{} Sessions Dashboard: {}",
+            "🗂️ ".blue(),
+            to_file_url(&dashboard_path).cyan()
         );
 
         // Generate and save JUnit report
