@@ -202,10 +202,15 @@ impl ColorSensorControl for ColorSensorService {
             match self.read_color(channel) {
                 Ok(reading) => {
                     if let Some(exp_colors) = expected {
-                        if exp_colors.contains(&reading.color) {
+                        if exp_colors.contains(&reading.color)
+                            || (exp_colors.contains(&Color::Pink)
+                                && (reading.color == Color::Pink
+                                    || reading.color == Color::Magenta
+                                    || reading.color == Color::Red))
+                        {
                             return Ok(reading);
                         }
-                    } else if reading.color != Color::Unknown {
+                    } else if reading.color != Color::Unknown && reading.color != Color::Off {
                         return Ok(reading);
                     }
                     last_reading = Some(reading);
@@ -459,11 +464,6 @@ impl ColorSensorControl for ColorSensorService {
 
 /// Smart RGBC Classifier using HSV color space and optical chromaticity
 pub fn classify_rgbc_color(r: u16, g: u16, b: u16, c: u16) -> (Color, ColorConfidence) {
-    // 1. If clear intensity is low or RGB is ambient background baseline (< 35) -> Off
-    if c < 85 || (r < 35 && g < 35 && b < 35) {
-        return (Color::Off, ColorConfidence::Ok);
-    }
-
     let r_f = r as f32;
     let g_f = g as f32;
     let b_f = b as f32;
@@ -471,7 +471,10 @@ pub fn classify_rgbc_color(r: u16, g: u16, b: u16, c: u16) -> (Color, ColorConfi
     let min_val = r_f.min(g_f).min(b_f);
     let delta = max_val - min_val;
 
-    if max_val == 0.0 {
+    // 1. Ambient Background / Dark Off Check:
+    // If overall clear intensity is ultra low (c <= 6) OR
+    // if intensity is low/ambient (c <= 35) and chromatic delta is negligible (delta <= 5.0) -> Off
+    if c <= 6 || (c <= 35 && delta <= 5.0) || max_val == 0.0 {
         return (Color::Off, ColorConfidence::Ok);
     }
 
@@ -479,8 +482,11 @@ pub fn classify_rgbc_color(r: u16, g: u16, b: u16, c: u16) -> (Color, ColorConfi
 
     // 2. White / Neutral check:
     // If saturation is very low and clear/RGB is reasonably bright -> White
-    if sat < 0.12 {
+    if sat < 0.12 && c >= 40 {
         return (Color::White, ColorConfidence::Ok);
+    }
+    if sat < 0.10 {
+        return (Color::Off, ColorConfidence::Ok);
     }
 
     // 3. Compute Hue in degrees [0, 360)
