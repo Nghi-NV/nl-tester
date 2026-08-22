@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.20] - 2026-08-22
+
+### 🚀 Highlights & Improvements
+
+#### 1. Dynamic Screen Resolution & Robust Android Relative Selectors (`above`, `below`, `rightOf`, `leftOf`)
+- **Dynamic Screen Resolution Resolution**: Fixed hardcoded screen dimensions in UIAutomator relative search by passing the device's actual screen resolution (`self.screen_size`) retrieved dynamically via ADB.
+- **Support for High-DPI & Wide-Screen Devices**: Prevents elements on 1440p (QHD+) or large-screen Android devices from being falsely flagged and filtered as oversized background containers.
+- **Refined Container Filtering**: Preserves thin, full-width UI components (e.g. Sliders, SeekBars, ProgressBars) whose width spans across the display (`width > 95%`) while maintaining protection against actual background layout containers (`height > 25%`).
+
+---
+
 ## [v0.1.19] / [extension-v0.1.31] - 2026-08-20
 
 ### 🚀 Highlights & Features

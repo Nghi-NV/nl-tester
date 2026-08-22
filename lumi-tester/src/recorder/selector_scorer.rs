@@ -719,7 +719,7 @@ impl SelectorScorer {
                 }
 
                 // Call uiautomator::find_relative to rank elements exactly like runtime driver
-                let ranked = crate::driver::android::uiautomator::find_relative(filtered_class_elements.clone(), anchor, rel_dir, Some(1000));
+                let ranked = crate::driver::android::uiautomator::find_relative(filtered_class_elements.clone(), anchor, rel_dir, Some(1000), None);
                 if let Some(pos) = ranked.iter().position(|e| e.bounds.left == element.bounds.left && e.bounds.top == element.bounds.top && e.bounds.right == element.bounds.right && e.bounds.bottom == element.bounds.bottom) {
                     let index = if pos > 0 { Some(pos) } else { None };
 

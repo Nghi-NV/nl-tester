@@ -610,8 +610,13 @@ impl AndroidDriver {
                 // Find anchor
                 let (anchor_elem, _) = self.find_element_impl(anchor, elements)?;
 
-                let sorted_matches =
-                    uiautomator::find_relative(candidates, anchor_elem, *direction, *max_dist);
+                let sorted_matches = uiautomator::find_relative(
+                    candidates,
+                    anchor_elem,
+                    *direction,
+                    *max_dist,
+                    Some(self.screen_size),
+                );
 
                 // Get index from target selector
                 let target_index = match target.as_ref() {

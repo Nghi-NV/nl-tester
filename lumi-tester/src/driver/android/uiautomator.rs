@@ -381,29 +381,32 @@ pub fn find_relative<'a>(
     anchor: &UiElement,
     direction: RelativeDirection,
     max_dist: Option<u32>,
+    screen_size: Option<(u32, u32)>,
 ) -> Vec<&'a UiElement> {
     // Use i32::MAX as default limit to avoid overflow when casting u32::MAX to i32
     let limit = max_dist.map(|d| d as i32).unwrap_or(i32::MAX);
+
+    let (screen_width, screen_height) = screen_size.unwrap_or((1080, 2340));
+    let screen_width = if screen_width > 0 { screen_width } else { 1080 };
+    let screen_height = if screen_height > 0 { screen_height } else { 2340 };
 
     let mut scored_candidates: Vec<(&UiElement, bool, f64, f64)> = candidates
         .into_iter()
         .filter_map(|candidate| {
             // Filter out large container elements (>80% of screen area)
-            // Screen size assumption: 1080x2340 (common Android), area = 2,527,200
-            // Using simpler heuristic: width covers >80% AND height covers >50%
-            let screen_width = 1080;
-            let screen_height = 2340;
             let candidate_width = candidate.bounds.right - candidate.bounds.left;
             let candidate_height = candidate.bounds.bottom - candidate.bounds.top;
 
             let width_ratio = candidate_width as f64 / screen_width as f64;
             let height_ratio = candidate_height as f64 / screen_height as f64;
 
-            // Skip if element:
+            // Skip if element is a background / section container:
             // 1. Covers >80% width AND >50% height (large container)
-            // 2. OR covers >95% width (full-width container like HorizontalScrollView)
+            // 2. OR covers >95% width AND >25% height (full-width section container, but preserves thin bars like Slider)
             // 3. OR covers >80% height (full-height container)
-            if (width_ratio > 0.8 && height_ratio > 0.5) || width_ratio > 0.95 || height_ratio > 0.8
+            if (width_ratio > 0.8 && height_ratio > 0.5)
+                || (width_ratio > 0.95 && height_ratio > 0.25)
+                || height_ratio > 0.8
             {
                 return None;
             }
@@ -686,5 +689,105 @@ mod tests {
         let elements = parse_hierarchy(xml).unwrap();
         assert_eq!(elements.len(), 1);
         assert_eq!(elements[0].text, "Security\nSafe");
+    }
+
+    #[test]
+    fn test_find_relative_dynamic_screen_size_1440p() {
+        let anchor = UiElement {
+            class: "android.widget.TextView".to_string(),
+            text: "LED strong brightness".to_string(),
+            resource_id: "".to_string(),
+            content_desc: "".to_string(),
+            bounds: Bounds { left: 50, top: 200, right: 800, bottom: 260 },
+            clickable: false,
+            enabled: true,
+            focusable: false,
+            focused: false,
+            hint: "".to_string(),
+            scrollable: false,
+            password: false,
+            index: "0".to_string(),
+            package: "".to_string(),
+        };
+
+        // Slider on a 1440x3120 screen (width = 1380px, height = 80px)
+        let slider = UiElement {
+            class: "android.view.View".to_string(),
+            text: "".to_string(),
+            resource_id: "slider_view".to_string(),
+            content_desc: "".to_string(),
+            bounds: Bounds { left: 30, top: 280, right: 1410, bottom: 360 },
+            clickable: true,
+            enabled: true,
+            focusable: false,
+            focused: false,
+            hint: "".to_string(),
+            scrollable: false,
+            password: false,
+            index: "1".to_string(),
+            package: "".to_string(),
+        };
+
+        let candidates = vec![&slider];
+        let matches = find_relative(
+            candidates,
+            &anchor,
+            RelativeDirection::Below,
+            Some(500),
+            Some((1440, 3120)),
+        );
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].resource_id, "slider_view");
+    }
+
+    #[test]
+    fn test_find_relative_preserves_full_width_thin_slider() {
+        let anchor = UiElement {
+            class: "android.widget.TextView".to_string(),
+            text: "The weak brightness setting".to_string(),
+            resource_id: "".to_string(),
+            content_desc: "".to_string(),
+            bounds: Bounds { left: 50, top: 500, right: 1000, bottom: 560 },
+            clickable: false,
+            enabled: true,
+            focusable: false,
+            focused: false,
+            hint: "".to_string(),
+            scrollable: false,
+            password: false,
+            index: "0".to_string(),
+            package: "".to_string(),
+        };
+
+        // Slider above anchor (width = 1040/1080 = 96.3%, height = 60/2340 = 2.5%)
+        let slider_above = UiElement {
+            class: "android.view.View".to_string(),
+            text: "".to_string(),
+            resource_id: "weak_slider".to_string(),
+            content_desc: "".to_string(),
+            bounds: Bounds { left: 20, top: 400, right: 1060, bottom: 460 },
+            clickable: true,
+            enabled: true,
+            focusable: false,
+            focused: false,
+            hint: "".to_string(),
+            scrollable: false,
+            password: false,
+            index: "1".to_string(),
+            package: "".to_string(),
+        };
+
+        let candidates = vec![&slider_above];
+        let matches = find_relative(
+            candidates,
+            &anchor,
+            RelativeDirection::Above,
+            Some(500),
+            Some((1080, 2340)),
+        );
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].resource_id, "weak_slider");
     }
 }
