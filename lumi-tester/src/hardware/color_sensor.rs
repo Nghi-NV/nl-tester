@@ -238,7 +238,14 @@ impl ColorSensorControl for ColorSensorService {
         let mut pulse_durations = Vec::new();
         let mut last_detected_color = None;
         let mut last_pulse_end: Option<Instant> = None;
+        let mut last_reading: Option<ColorReading> = None;
         let settle_gap = Duration::from_millis(450);
+
+        // Dynamic Ambient Baseline Tracker (auto-adapts to ambient light, dark boxes, and external fixtures)
+        let mut r_base: Option<u16> = None;
+        let mut g_base: Option<u16> = None;
+        let mut b_base: Option<u16> = None;
+        let mut c_base: Option<u16> = None;
 
         loop {
             if start.elapsed() > timeout {
@@ -252,12 +259,30 @@ impl ColorSensorControl for ColorSensorService {
                         });
                     }
                 }
+                let last_info = match last_reading {
+                    Some(ref r) => format!(
+                        "last sensor reading: Color={} (Conf={:?}, RGBC=[R:{} G:{} B:{} C:{}], Baseline=[R:{} G:{} B:{} C:{}])",
+                        r.color.as_str(),
+                        r.confidence,
+                        r.sample.red,
+                        r.sample.green,
+                        r.sample.blue,
+                        r.sample.clear,
+                        r_base.unwrap_or(0),
+                        g_base.unwrap_or(0),
+                        b_base.unwrap_or(0),
+                        c_base.unwrap_or(0)
+                    ),
+                    None => "no sensor readings received".to_string(),
+                };
                 anyhow::bail!(
-                    "Timeout ({:.1}s) waiting for blink events on channel {} (detected {} blinks, expected {:?})",
+                    "Timeout ({:.1}s) waiting for blink events on channel {} (detected {} blinks, expected {:?}, durations: {:?}, {})",
                     timeout_s,
                     channel,
                     sw_blink_count,
-                    expected_count
+                    expected_count,
+                    pulse_durations,
+                    last_info
                 );
             }
 
@@ -294,11 +319,72 @@ impl ColorSensorControl for ColorSensorService {
                 }
             }
 
-            // 2. Real-time optical pulse & blink tracker with high-speed sampling
+            // 2. Real-time optical pulse & blink tracker with dynamic ambient cancellation
             if let Ok(reading) = self.read_color(channel) {
+                last_reading = Some(reading.clone());
+
+                // Continuously track minimum observed optical noise floor as ambient baseline
+                let rb = match r_base {
+                    Some(b) => {
+                        let new_b = b.min(reading.sample.red);
+                        r_base = Some(new_b);
+                        new_b
+                    }
+                    None => {
+                        r_base = Some(reading.sample.red);
+                        reading.sample.red
+                    }
+                };
+                let gb = match g_base {
+                    Some(b) => {
+                        let new_b = b.min(reading.sample.green);
+                        g_base = Some(new_b);
+                        new_b
+                    }
+                    None => {
+                        g_base = Some(reading.sample.green);
+                        reading.sample.green
+                    }
+                };
+                let bb = match b_base {
+                    Some(b) => {
+                        let new_b = b.min(reading.sample.blue);
+                        b_base = Some(new_b);
+                        new_b
+                    }
+                    None => {
+                        b_base = Some(reading.sample.blue);
+                        reading.sample.blue
+                    }
+                };
+                let cb = match c_base {
+                    Some(b) => {
+                        let new_b = b.min(reading.sample.clear);
+                        c_base = Some(new_b);
+                        new_b
+                    }
+                    None => {
+                        c_base = Some(reading.sample.clear);
+                        reading.sample.clear
+                    }
+                };
+
+                // Delta from ambient baseline (pure optical emission of the LED)
+                let delta_r = reading.sample.red.saturating_sub(rb);
+                let delta_g = reading.sample.green.saturating_sub(gb);
+                let delta_b = reading.sample.blue.saturating_sub(bb);
+                let delta_c = reading.sample.clear.saturating_sub(cb);
+
+                // Pulse threshold: Intensity jump >= 8 count or delta RGB sum >= 12
+                let pulse_active = delta_c >= 8.max(cb / 4) || (delta_r + delta_g + delta_b) >= 12;
+
+                // Color matching using pure delta optical emission:
                 let is_pink_match = expected_color.map(|s| s.eq_ignore_ascii_case("PINK") || s.to_uppercase().contains("PINK")).unwrap_or(false)
-                    && (reading.color == Color::Pink || reading.color == Color::Magenta || reading.color == Color::Red
-                        || (reading.sample.red >= 25 && reading.sample.blue >= 35 && (reading.sample.red as f32 / reading.sample.blue as f32) >= 0.5 && reading.sample.clear >= 65));
+                    && pulse_active
+                    && (reading.color == Color::Pink
+                        || reading.color == Color::Magenta
+                        || reading.color == Color::Red
+                        || (delta_r >= 6 && delta_b >= 8 && (delta_r as f32 / delta_b.max(1) as f32) >= 0.25));
 
                 let is_matching_color = match (&exp_color_enum, reading.color) {
                     (Some(exp_c), c) => {
@@ -310,10 +396,10 @@ impl ColorSensorControl for ColorSensorService {
                         } else {
                             false
                         };
-                        *exp_c == c || is_pink_match || matches_any
+                        (*exp_c == c && pulse_active) || is_pink_match || matches_any
                     }
                     (None, Color::Off) | (None, Color::Unknown) => false,
-                    (None, _) => true,
+                    (None, _) => pulse_active,
                 };
 
                 let matched_color = if is_matching_color {

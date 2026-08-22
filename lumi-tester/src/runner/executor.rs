@@ -3498,7 +3498,17 @@ impl TestExecutor {
                     None
                 };
                 let reading = ctrl.color_sensor.wait_for_color(ch, exp_colors.as_deref(), timeout_s)?;
-                println!("  {} Matched LED color {}: {}", "🎨".green(), label, reading.color.as_str());
+                println!(
+                    "  {} Matched LED color {}: {} (Conf={:?}, RGBC=[R:{} G:{} B:{} C:{}])",
+                    "🎨".green(),
+                    label,
+                    reading.color.as_str().cyan().bold(),
+                    reading.confidence,
+                    reading.sample.red,
+                    reading.sample.green,
+                    reading.sample.blue,
+                    reading.sample.clear
+                );
                 Ok(())
             }
 
@@ -3573,7 +3583,17 @@ impl TestExecutor {
                 let timeout_s = params.timeout_ms.unwrap_or(5000) as f64 / 1000.0;
                 let exp_colors = vec![crate::hardware::Color::Off, crate::hardware::Color::Unknown];
                 let reading = ctrl.color_sensor.wait_for_color(ch, Some(&exp_colors), timeout_s)?;
-                println!("  {} LED is OFF {}: {}", "🌑".green(), label, reading.color.as_str());
+                println!(
+                    "  {} LED is OFF {}: {} (Conf={:?}, RGBC=[R:{} G:{} B:{} C:{}])",
+                    "🌑".green(),
+                    label,
+                    reading.color.as_str().yellow(),
+                    reading.confidence,
+                    reading.sample.red,
+                    reading.sample.green,
+                    reading.sample.blue,
+                    reading.sample.clear
+                );
                 Ok(())
             }
 
