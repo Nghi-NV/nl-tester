@@ -17,6 +17,45 @@ pub async fn generate(results: &TestResults, output: Option<&Path>) -> Result<()
     Ok(())
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct UiElementBox {
+    pub left: i32,
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub text: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub class: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub desc: String,
+    pub clickable: bool,
+}
+
+fn extract_ui_elements(xml: &str) -> Vec<UiElementBox> {
+    let mut list = Vec::new();
+    if let Ok(elements) = crate::driver::android::uiautomator::parse_hierarchy(xml) {
+        for el in elements {
+            if el.bounds.right > el.bounds.left && el.bounds.bottom > el.bounds.top {
+                list.push(UiElementBox {
+                    left: el.bounds.left,
+                    top: el.bounds.top,
+                    right: el.bounds.right,
+                    bottom: el.bounds.bottom,
+                    text: el.text,
+                    id: el.resource_id,
+                    class: el.class,
+                    desc: el.content_desc,
+                    clickable: el.clickable,
+                });
+            }
+        }
+    }
+    list
+}
+
 fn generate_html(results: &TestResults) -> String {
     let summary = &results.summary;
     let pass_rate = if summary.total_commands > 0 {
@@ -136,9 +175,23 @@ fn generate_html(results: &TestResults) -> String {
             // Rich failure inspector with inline thumbnail, XML hierarchy and recent logs
             let error_html = match &cmd.status {
                 CommandStatus::Failed { error } => {
+                    let mut ui_elements = Vec::new();
+                    let mut hierarchy_content = String::new();
+
+                    if let Some(path) = &cmd.ui_hierarchy_path {
+                        if let Ok(content) = std::fs::read_to_string(path) {
+                            ui_elements = extract_ui_elements(&content);
+                            hierarchy_content = content;
+                        }
+                    }
+
+                    use base64::{engine::general_purpose::STANDARD, Engine};
+                    let elements_json = serde_json::to_string(&ui_elements).unwrap_or_else(|_| "[]".to_string());
+                    let elements_b64 = STANDARD.encode(elements_json.as_bytes());
+                    let element_count = ui_elements.len();
+
                     let screenshot_box = if let Some(path) = &cmd.screenshot_path {
                         let img_src = if let Ok(bytes) = std::fs::read(path) {
-                            use base64::{engine::general_purpose::STANDARD, Engine};
                             format!("data:image/png;base64,{}", STANDARD.encode(&bytes))
                         } else {
                             std::path::Path::new(path)
@@ -148,35 +201,43 @@ fn generate_html(results: &TestResults) -> String {
                                 .to_string()
                         };
 
+                        let count_badge = if element_count > 0 {
+                            format!(r#"<div class="elem-badge">🎯 {} UI boxes</div>"#, element_count)
+                        } else {
+                            String::new()
+                        };
+
                         format!(
-                            r#"<div class="evidence-thumb-box" onclick="showScreenshot(this.querySelector('img').src)">
+                            r#"<div class="evidence-thumb-box" data-elements="{elements_b64}" onclick="showScreenshot(this.querySelector('img').src, this.getAttribute('data-elements'))">
                                 <img src="{img_src}" alt="Failure Snapshot" />
-                                <div class="zoom-label">🔍 Zoom Screenshot</div>
+                                <div class="zoom-label">🔍 Inspect UI Bounding Boxes</div>
+                                {count_badge}
                             </div>"#,
-                            img_src = img_src
+                            img_src = img_src,
+                            elements_b64 = elements_b64,
+                            count_badge = count_badge
                         )
                     } else {
                         String::new()
                     };
 
                     let hierarchy_box = if let Some(path) = &cmd.ui_hierarchy_path {
-                        let snippet = match std::fs::read_to_string(path) {
-                            Ok(content) => {
-                                let lines: Vec<&str> = content.lines().collect();
-                                if lines.len() > 60 {
-                                    format!("{}\n<!-- ... ({} more lines) ... -->", lines[..60].join("\n"), lines.len() - 60)
-                                } else {
-                                    content
-                                }
+                        let snippet = if !hierarchy_content.is_empty() {
+                            let lines: Vec<&str> = hierarchy_content.lines().collect();
+                            if lines.len() > 60 {
+                                format!("{}\n<!-- ... ({} more lines) ... -->", lines[..60].join("\n"), lines.len() - 60)
+                            } else {
+                                hierarchy_content.clone()
                             }
-                            Err(_) => format!("Path: {}", path),
+                        } else {
+                            format!("Path: {}", path)
                         };
                         format!(
                             r#"<details class="evidence-details">
-                                <summary>📄 View UI Hierarchy XML ({path})</summary>
+                                <summary>📄 View UI Hierarchy XML ({} elements detected)</summary>
                                 <pre><code>{snippet}</code></pre>
                             </details>"#,
-                            path = path,
+                            element_count,
                             snippet = html_escape(&snippet)
                         )
                     } else {
@@ -657,11 +718,25 @@ fn generate_html(results: &TestResults) -> String {
             bottom: 0;
             left: 0;
             right: 0;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.75);
             color: #fff;
             font-size: 0.6875rem;
-            padding: 0.2rem;
+            padding: 0.25rem;
             text-align: center;
+            font-weight: 600;
+        }}
+
+        .elem-badge {{
+            position: absolute;
+            top: 0.35rem;
+            right: 0.35rem;
+            background: rgba(16, 185, 129, 0.95);
+            color: #000;
+            font-size: 0.625rem;
+            font-weight: 800;
+            padding: 0.15rem 0.4rem;
+            border-radius: 9999px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
         }}
 
         .evidence-texts {{
@@ -713,30 +788,252 @@ fn generate_html(results: &TestResults) -> String {
             gap: 2rem;
         }}
         
-        /* Modal */
+        /* Interactive Visual Inspector Modal */
         #modal {{
             display: none;
             position: fixed;
-            z-index: 100;
+            z-index: 1000;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(8px);
+            padding: 1.5rem;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+        }}
+
+        #modal.active {{
+            display: flex;
+        }}
+
+        .modal-card {{
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            width: 95vw;
+            max-width: 1300px;
+            height: 90vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+            overflow: hidden;
+        }}
+
+        .modal-header {{
+            padding: 0.875rem 1.5rem;
+            background: var(--glass);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+
+        .modal-title {{
+            font-size: 1.125rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }}
+
+        .modal-controls {{
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }}
+
+        .toggle-btn {{
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: #1e293b;
+            border: 1px solid var(--border);
+            color: #f8fafc;
+            padding: 0.35rem 0.75rem;
+            border-radius: 0.375rem;
+            font-size: 0.8125rem;
+            cursor: pointer;
+            user-select: none;
+        }}
+
+        .toggle-btn input {{
+            cursor: pointer;
+        }}
+
+        .modal-close-btn {{
+            background: #ef4444;
+            color: #fff;
+            border: none;
+            padding: 0.4rem 0.85rem;
+            border-radius: 0.375rem;
+            font-size: 0.8125rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }}
+        .modal-close-btn:hover {{
+            opacity: 0.9;
+        }}
+
+        .modal-body {{
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            padding: 1rem;
+            gap: 1rem;
+        }}
+
+        .modal-viewport {{
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #090d16;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border);
+            overflow: auto;
+            position: relative;
+            padding: 0.5rem;
+        }}
+
+        .screen-container {{
+            position: relative;
+            display: inline-block;
+            max-height: 100%;
+        }}
+
+        #modal-img {{
+            max-height: calc(90vh - 130px);
+            max-width: 100%;
+            height: auto;
+            display: block;
+            border-radius: 0.375rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+            background: #000;
+        }}
+
+        .bbox-overlay {{
+            position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.9);
-            padding: 2rem;
-            align-items: center;
-            justify-content: center;
+            pointer-events: auto;
         }}
-        
-        #modal img {{
-            max-width: 100%;
-            max-height: 100%;
+
+        .bbox-box {{
+            position: absolute;
+            box-sizing: border-box;
+            border: 1.5px solid rgba(139, 92, 246, 0.7);
+            background: rgba(139, 92, 246, 0.08);
+            border-radius: 2px;
+            cursor: crosshair;
+            transition: all 0.15s;
+        }}
+
+        .bbox-box.has-text {{
+            border-color: rgba(16, 185, 129, 0.85);
+            background: rgba(16, 185, 129, 0.12);
+        }}
+
+        .bbox-box.clickable {{
+            border-color: rgba(59, 130, 246, 0.85);
+            background: rgba(59, 130, 246, 0.12);
+        }}
+
+        .bbox-box:hover, .bbox-box.selected {{
+            border: 2.5px solid #facc15 !important;
+            background: rgba(250, 204, 21, 0.35) !important;
+            z-index: 50 !important;
+            box-shadow: 0 0 12px rgba(250, 204, 21, 0.8);
+        }}
+
+        .modal-sidebar {{
+            width: 360px;
+            min-width: 300px;
+            background: #141b2d;
+            border: 1px solid var(--border);
             border-radius: 0.5rem;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-        }}
-        
-        #modal.active {{
             display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }}
+
+        .sidebar-header {{
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--glass);
+        }}
+
+        .sidebar-search {{
+            width: 100%;
+            background: #0f172a;
+            border: 1px solid var(--border);
+            border-radius: 0.375rem;
+            color: #f8fafc;
+            padding: 0.4rem 0.6rem;
+            font-size: 0.8125rem;
+            margin-top: 0.5rem;
+            outline: none;
+            box-sizing: border-box;
+        }}
+
+        .elem-list {{
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.5rem;
+        }}
+
+        .elem-card {{
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 0.375rem;
+            padding: 0.5rem;
+            margin-bottom: 0.4rem;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }}
+
+        .elem-card:hover, .elem-card.selected {{
+            border-color: #facc15;
+            background: #283548;
+            transform: translateX(2px);
+        }}
+
+        .elem-card-title {{
+            font-weight: 700;
+            color: #f8fafc;
+            margin-bottom: 0.2rem;
+            word-break: break-all;
+        }}
+
+        .elem-card-meta {{
+            color: #94a3b8;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            line-height: 1.3;
+        }}
+
+        #bbox-tooltip {{
+            position: fixed;
+            z-index: 2000;
+            background: #0f172a;
+            border: 1px solid #3b82f6;
+            border-radius: 0.5rem;
+            padding: 0.6rem 0.8rem;
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.8);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: #f8fafc;
+            pointer-events: none;
+            display: none;
+            max-width: 350px;
+            word-break: break-all;
+            line-height: 1.4;
         }}
         
         .video-details {{
@@ -842,22 +1139,233 @@ fn generate_html(results: &TestResults) -> String {
         </div>
     </div>
 
-    <div id="modal" onclick="this.classList.remove('active')">
-        <div style="position: relative; max-width: 90vw; max-height: 90vh; display: flex; flex-direction: column; align-items: center;" onclick="event.stopPropagation()">
-            <img id="modal-img" src="" alt="Screenshot" style="max-width: 100%; max-height: 80vh; object-fit: contain; border-radius: 0.5rem; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);">
-            <div style="margin-top: 0.75rem; color: #94a3b8; font-size: 0.8125rem; background: rgba(0,0,0,0.6); padding: 0.25rem 0.75rem; border-radius: 9999px; cursor: pointer;" onclick="document.getElementById('modal').classList.remove('active')">✕ Close Preview</div>
+    <div id="modal" onclick="closeModal(event)">
+        <div class="modal-card" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>🔍 UI Hierarchy Visual Inspector</span>
+                    <span id="modal-elem-count-badge" style="font-size: 0.75rem; background: rgba(139, 92, 246, 0.2); color: var(--purple); padding: 0.2rem 0.5rem; border-radius: 9999px; font-weight: 700;">0 Elements</span>
+                </div>
+                <div class="modal-controls">
+                    <label class="toggle-btn">
+                        <input type="checkbox" id="bboxToggle" checked onchange="toggleBboxes(this.checked)">
+                        <span>👁️ Bounding Boxes</span>
+                    </label>
+                    <button class="modal-close-btn" onclick="document.getElementById('modal').classList.remove('active')">✕ Close</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="modal-viewport">
+                    <div class="screen-container" id="screenContainer">
+                        <img id="modal-img" src="" alt="Screenshot" onload="renderVisualInspector()">
+                        <div id="modal-bbox-overlay" class="bbox-overlay"></div>
+                    </div>
+                </div>
+                <div class="modal-sidebar">
+                    <div class="sidebar-header">
+                        <div style="font-size: 0.8125rem; font-weight: 700; color: #f8fafc;">Detected UI Elements</div>
+                        <input type="text" id="elemSearch" class="sidebar-search" placeholder="Search by text, id, class..." onkeyup="filterElementsList()">
+                    </div>
+                    <div id="elemList" class="elem-list"></div>
+                </div>
+            </div>
         </div>
     </div>
+    <div id="bbox-tooltip"></div>
 
     <script>
-        function showScreenshot(src) {{
+        let currentElements = [];
+        let showBboxes = true;
+        let selectedElementIndex = -1;
+
+        function showScreenshot(src, elementsB64) {{
             const modal = document.getElementById('modal');
             const img = document.getElementById('modal-img');
+            
+            try {{
+                currentElements = elementsB64 ? JSON.parse(atob(elementsB64)) : [];
+            }} catch(e) {{
+                console.error('Failed to parse elements:', e);
+                currentElements = [];
+            }}
+
+            selectedElementIndex = -1;
+            document.getElementById('elemSearch').value = '';
+            document.getElementById('modal-elem-count-badge').textContent = currentElements.length + ' Elements';
+
             img.src = src;
             modal.classList.add('active');
+            if (img.complete) {{
+                renderVisualInspector();
+            }}
             if (window.event) {{
                 window.event.stopPropagation();
             }}
+        }}
+
+        function closeModal(event) {{
+            const modal = document.getElementById('modal');
+            modal.classList.remove('active');
+            hideBboxTooltip();
+        }}
+
+        document.addEventListener('keydown', (e) => {{
+            if (e.key === 'Escape') {{
+                closeModal();
+            }}
+        }});
+
+        function toggleBboxes(checked) {{
+            showBboxes = checked;
+            const overlay = document.getElementById('modal-bbox-overlay');
+            overlay.style.display = showBboxes ? 'block' : 'none';
+        }}
+
+        function renderVisualInspector() {{
+            const img = document.getElementById('modal-img');
+            const overlay = document.getElementById('modal-bbox-overlay');
+            const elemList = document.getElementById('elemList');
+            
+            overlay.innerHTML = '';
+            elemList.innerHTML = '';
+
+            const naturalWidth = img.naturalWidth || 1080;
+            const naturalHeight = img.naturalHeight || 1920;
+
+            currentElements.forEach((el, idx) => {{
+                const w = el.right - el.left;
+                const h = el.bottom - el.top;
+                if (w <= 0 || h <= 0) return;
+
+                const leftPct = (el.left / naturalWidth) * 100;
+                const topPct = (el.top / naturalHeight) * 100;
+                const widthPct = (w / naturalWidth) * 100;
+                const heightPct = (h / naturalHeight) * 100;
+
+                // Create Overlay Box
+                const box = document.createElement('div');
+                box.className = 'bbox-box' + (el.clickable ? ' clickable' : '') + (el.text ? ' has-text' : '');
+                box.id = 'bbox-box-' + idx;
+                box.style.left = leftPct + '%';
+                box.style.top = topPct + '%';
+                box.style.width = widthPct + '%';
+                box.style.height = heightPct + '%';
+
+                box.onmouseenter = (e) => {{
+                    highlightElement(idx, true);
+                    showBboxTooltip(e, el);
+                }};
+                box.onmousemove = (e) => {{
+                    moveBboxTooltip(e);
+                }};
+                box.onmouseleave = () => {{
+                    highlightElement(-1, false);
+                    hideBboxTooltip();
+                }};
+                box.onclick = (e) => {{
+                    selectElement(idx);
+                    e.stopPropagation();
+                }};
+
+                overlay.appendChild(box);
+
+                // Create Sidebar Card
+                const card = document.createElement('div');
+                card.className = 'elem-card';
+                card.id = 'elem-card-' + idx;
+                card.setAttribute('data-search', (el.text + ' ' + el.id + ' ' + el.class + ' ' + el.desc).toLowerCase());
+
+                const label = el.text ? ('🔤 ' + el.text) : (el.desc ? ('💬 ' + el.desc) : (el.id ? ('🆔 ' + el.id.split('/').pop()) : ('📦 ' + el.class.split('.').pop())));
+                const idText = el.id ? el.id : (el.class ? el.class : '');
+                const boundsText = `[${{el.left}}, ${{el.top}}][${{el.right}}, ${{el.bottom}}] (${{w}}x${{h}})`;
+
+                card.innerHTML = `
+                    <div class="elem-card-title">${{escapeHtml(label)}}</div>
+                    <div class="elem-card-meta">
+                        ${{el.id ? `<div><strong>ID:</strong> ${{escapeHtml(el.id)}}</div>` : ''}}
+                        <div><strong>Class:</strong> ${{escapeHtml(el.class)}}</div>
+                        <div><strong>Bounds:</strong> ${{boundsText}}</div>
+                        ${{el.clickable ? '<span style="color: var(--blue); font-weight: 700;">• Clickable</span>' : ''}}
+                    </div>
+                `;
+
+                card.onmouseenter = () => highlightElement(idx, true);
+                card.onmouseleave = () => highlightElement(-1, false);
+                card.onclick = (e) => {{
+                    selectElement(idx);
+                    e.stopPropagation();
+                }};
+
+                elemList.appendChild(card);
+            }});
+        }}
+
+        function highlightElement(idx, active) {{
+            document.querySelectorAll('.bbox-box').forEach(b => b.classList.remove('selected'));
+            document.querySelectorAll('.elem-card').forEach(c => c.classList.remove('selected'));
+
+            if (active && idx >= 0) {{
+                const box = document.getElementById('bbox-box-' + idx);
+                if (box) box.classList.add('selected');
+
+                const card = document.getElementById('elem-card-' + idx);
+                if (card) {{
+                    card.classList.add('selected');
+                    card.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
+                }}
+            }}
+        }}
+
+        function selectElement(idx) {{
+            selectedElementIndex = idx;
+            highlightElement(idx, true);
+        }}
+
+        function showBboxTooltip(e, el) {{
+            const tooltip = document.getElementById('bbox-tooltip');
+            const w = el.right - el.left;
+            const h = el.bottom - el.top;
+
+            tooltip.innerHTML = `
+                <div style="font-weight: 700; color: #facc15; margin-bottom: 0.25rem;">
+                    ${{el.text ? `"${{escapeHtml(el.text)}}"` : (el.desc ? `[${{escapeHtml(el.desc)}}]` : escapeHtml(el.class.split('.').pop()))}}
+                </div>
+                ${{el.id ? `<div><strong style="color: #93c5fd;">ID:</strong> ${{escapeHtml(el.id)}}</div>` : ''}}
+                <div><strong style="color: #93c5fd;">Class:</strong> ${{escapeHtml(el.class)}}</div>
+                <div><strong style="color: #93c5fd;">Bounds:</strong> [${{el.left}}, ${{el.top}}][${{el.right}}, ${{el.bottom}}] (${{w}}x${{h}}px)</div>
+                ${{el.clickable ? '<div style="color: #34d399; font-weight: 700; margin-top: 0.2rem;">✓ Clickable Element</div>' : ''}}
+            `;
+            tooltip.style.display = 'block';
+            moveBboxTooltip(e);
+        }}
+
+        function moveBboxTooltip(e) {{
+            const tooltip = document.getElementById('bbox-tooltip');
+            let x = e.clientX + 15;
+            let y = e.clientY + 15;
+            if (x + 320 > window.innerWidth) x = e.clientX - 330;
+            if (y + 150 > window.innerHeight) y = e.clientY - 160;
+            tooltip.style.left = x + 'px';
+            tooltip.style.top = y + 'px';
+        }}
+
+        function hideBboxTooltip() {{
+            const tooltip = document.getElementById('bbox-tooltip');
+            tooltip.style.display = 'none';
+        }}
+
+        function filterElementsList() {{
+            const search = document.getElementById('elemSearch').value.toLowerCase();
+            const cards = document.querySelectorAll('.elem-card');
+            cards.forEach(card => {{
+                const text = card.getAttribute('data-search');
+                card.style.display = text.includes(search) ? '' : 'none';
+            }});
+        }}
+
+        function escapeHtml(s) {{
+            if (!s) return '';
+            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }}
     </script>
 </body>
