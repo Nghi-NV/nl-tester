@@ -1,7 +1,7 @@
 pub mod adb;
 pub mod audio_service;
 pub mod driver;
-pub mod mirror_service;
+pub mod agent_service;
 pub mod uiautomator;
 
 pub use driver::AndroidDriver;

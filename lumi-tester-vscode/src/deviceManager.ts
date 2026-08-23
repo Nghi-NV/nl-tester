@@ -177,7 +177,16 @@ export class DeviceManager {
     });
   }
 
+  // The adb path doesn't change during the extension's lifetime, but `resolveAdb()` was
+  // being called on every device refresh and doing a blocking `execFileSync('which'/...)`
+  // each time. Resolve once and reuse.
+  private resolvedAdbPath: string | undefined | null = null;
+
   private resolveAdb(): string | undefined {
+    if (this.resolvedAdbPath !== null) {
+      return this.resolvedAdbPath;
+    }
+
     const pathLookup = (name: string): string | undefined => {
       const executable = process.platform === 'win32' ? 'where.exe' : 'which';
       try {
@@ -197,7 +206,8 @@ export class DeviceManager {
       isFile: value => fs.existsSync(value) && fs.statSync(value).isFile(),
       isLumiSourceDirectory: () => false
     };
-    return resolveAdbExecutable(options);
+    this.resolvedAdbPath = resolveAdbExecutable(options);
+    return this.resolvedAdbPath;
   }
 
   private fetchIOSDevices(): Promise<Device[]> {

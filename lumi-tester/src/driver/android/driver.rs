@@ -150,11 +150,28 @@ pub struct AndroidDriver {
     /// Cached Android SDK version (API level) - used to determine feature support
     /// -d flag for input command requires API 29+ (Android 10+)
     sdk_version: u32,
+    /// Persistent socket connection to the lm-android-tester agent's fast UI-hierarchy-dump path
+    /// (a long-lived UiAutomation connection on-device, ~10-20ms/dump vs ~2s for a fresh
+    /// `adb shell uiautomator dump`). `None` when not connected or dropped after an error.
+    agent_stream: Arc<Mutex<Option<tokio::net::TcpStream>>>,
+    /// Tri-state: `None` = not yet attempted this session, `Some(true)` = agent confirmed
+    /// available and preferred, `Some(false)` = agent unavailable, don't retry (falls back
+    /// to the shell-based `uiautomator dump` for the rest of the run).
+    agent_available: Arc<Mutex<Option<bool>>>,
 }
 
 impl AndroidDriver {
-    /// Create a new Android driver
+    /// Create a new Android driver.
+    ///
+    /// `flow_speed` is the `speed:` field from the YAML flow header (e.g. "fast", "turbo"),
+    /// used when the `LUMI_SPEED` env var is not set. The env var always wins when present,
+    /// since it's an explicit per-invocation override.
     pub async fn new(serial: Option<&str>) -> Result<Self> {
+        Self::new_with_speed(serial, None).await
+    }
+
+    /// Same as [`Self::new`] but also accepts a flow-level speed profile fallback.
+    pub async fn new_with_speed(serial: Option<&str>, flow_speed: Option<&str>) -> Result<Self> {
         let selected_serial = if let Some(s) = serial {
             Some(s.to_string())
         } else {
@@ -168,28 +185,31 @@ impl AndroidDriver {
             }
         };
 
-        // Get screen size
-        let screen_size = adb::get_screen_size(selected_serial.as_deref()).await?;
-
-        // Check environment variable for speed profile
+        // Speed profile precedence: LUMI_SPEED env var (explicit per-invocation override)
+        // > flow YAML `speed:` field > default (Normal).
         let speed_profile = std::env::var("LUMI_SPEED")
+            .ok()
+            .or_else(|| flow_speed.map(|s| s.to_string()))
             .map(|s| SpeedProfile::from_str(&s))
             .unwrap_or_default();
 
+        // These 4 startup queries are independent of each other - run them concurrently
+        // instead of paying 4 sequential adb round-trips.
+        let serial_ref = selected_serial.as_deref();
+        let (screen_size_res, original_ime_raw, ime_list_raw, sdk_version_raw) = tokio::join!(
+            adb::get_screen_size(serial_ref),
+            adb::shell(serial_ref, "settings get secure default_input_method"),
+            adb::shell(serial_ref, "ime list -s"),
+            adb::shell(serial_ref, "getprop ro.build.version.sdk"),
+        );
+
+        let screen_size = screen_size_res?;
+
         // Cache original IME for text input
-        let original_ime = adb::shell(
-            selected_serial.as_deref(),
-            "settings get secure default_input_method",
-        )
-        .await
-        .unwrap_or_default()
-        .trim()
-        .to_string();
+        let original_ime = original_ime_raw.unwrap_or_default().trim().to_string();
 
         // Check if ADBKeyBoard is available, auto-install/enable if not
-        let ime_list = adb::shell(selected_serial.as_deref(), "ime list -s")
-            .await
-            .unwrap_or_default();
+        let ime_list = ime_list_raw.unwrap_or_default();
         let mut adbkeyboard_available = ime_list.contains("com.android.adbkeyboard");
 
         if !adbkeyboard_available {
@@ -256,9 +276,8 @@ impl AndroidDriver {
             println!("  {} Unicode input mode enabled (ADBKeyBoard)", "✓".green());
         }
 
-        // Get Android SDK version for feature detection
-        let sdk_version = adb::shell(selected_serial.as_deref(), "getprop ro.build.version.sdk")
-            .await
+        // Android SDK version for feature detection (fetched concurrently above)
+        let sdk_version = sdk_version_raw
             .unwrap_or_default()
             .trim()
             .parse::<u32>()
@@ -278,6 +297,8 @@ impl AndroidDriver {
             support_unicode,
             ocr_engine: Arc::new(OnceCell::new()),
             sdk_version,
+            agent_stream: Arc::new(Mutex::new(None)),
+            agent_available: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -301,6 +322,23 @@ impl AndroidDriver {
     /// Wait for UI to become idle (no animations)
     async fn wait_for_ui_idle(&self) -> Result<()> {
         let max_wait = self.speed_profile.ui_idle_max_wait_ms();
+
+        // Fast path: ask the lm-android-tester agent to call UiAutomation.waitForIdle() - the
+        // same accessibility-event-quiet-period primitive UiAutomator itself uses - over
+        // the already-open socket. A single in-process call instead of a poll loop of
+        // `adb shell dumpsys window` round-trips. Falls back to that poll loop below on
+        // any failure (agent unavailable, or it reported an unexpected error).
+        let idle_ms = (max_wait / 2).clamp(50, 150);
+        let request = format!(
+            "{{\"cmd\":\"wait_idle\",\"idleMs\":{},\"timeoutMs\":{}}}\n",
+            idle_ms, max_wait
+        );
+        if let Some(outer) = self.send_mirror_command(request.as_bytes()).await {
+            if outer.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+                return Ok(());
+            }
+        }
+
         let start = Instant::now();
         let poll_interval = 30; // Quick polls
 
@@ -354,19 +392,29 @@ impl AndroidDriver {
             }
         }
 
-        // Cache miss or expired, dump fresh UI
-        // Optimization: Use exec-out with /dev/stdout to avoid file I/O
-        // This is faster than writing to /sdcard and reading back
-        let xml = match adb::exec_out(self.serial.as_deref(), "uiautomator dump /dev/stdout").await
-        {
-            Ok(output) if output.contains("<?xml") => output,
-            _ => {
-                // Fallback to file-based method for older Android versions
-                adb::shell(
-                    self.serial.as_deref(),
-                    "uiautomator dump /sdcard/window_dump.xml > /dev/null && cat /sdcard/window_dump.xml",
-                )
-                .await?
+        // Fast path: lm-android-tester agent holds a persistent UiAutomation connection on-device,
+        // so a dump is a single in-process tree read (~10-20ms) instead of spawning a fresh
+        // `uiautomator dump` process (~2s cold start on real devices, confirmed by
+        // measurement). Falls back to the shell-based dump below if the agent isn't
+        // deployed/reachable.
+        let xml = match self.try_fast_hierarchy_dump().await {
+            Some(xml) => xml,
+            None => {
+                // Cache miss or expired, dump fresh UI
+                // Optimization: Use exec-out with /dev/stdout to avoid file I/O
+                // This is faster than writing to /sdcard and reading back
+                match adb::exec_out(self.serial.as_deref(), "uiautomator dump /dev/stdout").await
+                {
+                    Ok(output) if output.contains("<?xml") => output,
+                    _ => {
+                        // Fallback to file-based method for older Android versions
+                        adb::shell(
+                            self.serial.as_deref(),
+                            "uiautomator dump /sdcard/window_dump.xml > /dev/null && cat /sdcard/window_dump.xml",
+                        )
+                        .await?
+                    }
+                }
             }
         };
 
@@ -379,6 +427,145 @@ impl AndroidDriver {
         }
 
         Ok(elements)
+    }
+
+    /// Try to get the current UI hierarchy XML from the lm-android-tester agent's persistent
+    /// UiAutomation connection. Returns `None` on any failure (agent not deployed, port
+    /// unreachable, malformed response) so the caller falls back to the shell-based dump.
+    async fn try_fast_hierarchy_dump(&self) -> Option<String> {
+        let outer = self.send_mirror_command(b"{\"cmd\":\"hierarchy\"}\n").await?;
+        let inner_raw = outer.get("data")?;
+        let inner: serde_json::Value = match inner_raw {
+            serde_json::Value::String(s) => serde_json::from_str(s).ok()?,
+            other => other.clone(),
+        };
+        let xml = inner.get("data")?.as_str()?.to_string();
+        if xml.is_empty() {
+            None
+        } else {
+            Some(xml)
+        }
+    }
+
+    /// Try to perform a tap at (x, y) via the lm-android-tester agent's `InputController`
+    /// over the same persistent socket, instead of spawning `adb shell input tap`. Returns
+    /// `true` only on a confirmed `{"success":true}` response; any failure (agent
+    /// unavailable, disconnected, device rejected the gesture) returns `false` so the
+    /// caller falls back to the adb-based tap.
+    ///
+    /// Coordinates are sent as raw device pixels, matching `adb shell input tap`. This is
+    /// correct because the agent has no screen-mirroring capability at all (unlike the
+    /// separate, general-purpose `nl-mirror` screen-mirroring app it was forked from) -
+    /// `TouchScaler` always stays at its identity default (1.0/1.0) since nothing in this
+    /// agent ever calls `TouchScaler.configure()` with a different scale.
+    async fn try_mirror_tap(&self, x: i32, y: i32) -> bool {
+        let request = format!("{{\"cmd\":\"tap\",\"x\":{},\"y\":{}}}\n", x, y);
+        let Some(outer) = self.send_mirror_command(request.as_bytes()).await else {
+            return false;
+        };
+        outer.get("success").and_then(|v| v.as_bool()).unwrap_or(false)
+    }
+
+    /// Try to set the currently-focused input field's text via the agent's `set_text`
+    /// command (`AccessibilityNodeInfo.ACTION_SET_TEXT`). Returns `false` on any failure
+    /// (agent unavailable, no focused field, action rejected) so the caller falls back to
+    /// the adb/ADBKeyBoard-based paths.
+    async fn try_mirror_set_text(&self, text: &str) -> bool {
+        // Use serde_json to build the request so arbitrary text (quotes, backslashes,
+        // newlines, any Unicode) is escaped correctly - unlike the tap/wait_idle commands
+        // above, this payload isn't just numbers.
+        let payload = serde_json::json!({ "cmd": "set_text", "text": text });
+        let Ok(mut request) = serde_json::to_vec(&payload) else {
+            return false;
+        };
+        request.push(b'\n');
+        let Some(outer) = self.send_mirror_command(&request).await else {
+            return false;
+        };
+        outer.get("success").and_then(|v| v.as_bool()).unwrap_or(false)
+    }
+
+    /// Ensure the lm-android-tester agent is deployed/running (once per driver lifetime), send a
+    /// single line-delimited JSON request over the persistent socket, and return the
+    /// parsed `data`/response envelope. Returns `None` on any failure - callers must treat
+    /// that as "fall back to the adb-based path", never as an error to propagate.
+    async fn send_mirror_command(&self, request: &[u8]) -> Option<serde_json::Value> {
+        {
+            let avail = self.agent_available.lock().await;
+            if *avail == Some(false) {
+                return None;
+            }
+        }
+
+        // Only pay the deploy/start/port-forward cost once per driver lifetime.
+        let already_confirmed = *self.agent_available.lock().await == Some(true);
+        if !already_confirmed
+            && super::agent_service::AgentService::init_session(self.serial.as_deref())
+                .await
+                .is_err()
+        {
+            *self.agent_available.lock().await = Some(false);
+            return None;
+        }
+
+        match self.send_mirror_request_raw(request).await {
+            Some(value) => {
+                *self.agent_available.lock().await = Some(true);
+                Some(value)
+            }
+            None => {
+                // Drop the stale stream so the next call reconnects fresh; a single
+                // transient failure shouldn't permanently disable the fast path.
+                *self.agent_stream.lock().await = None;
+                None
+            }
+        }
+    }
+
+    /// Send a raw line-delimited JSON request over the persistent socket to the lm-android-tester
+    /// agent and return the parsed response. Reconnects lazily if there's no live stream.
+    async fn send_mirror_request_raw(&self, request: &[u8]) -> Option<serde_json::Value> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let mut stream_guard = self.agent_stream.lock().await;
+        if stream_guard.is_none() {
+            let stream = tokio::time::timeout(
+                Duration::from_millis(1000),
+                tokio::net::TcpStream::connect("127.0.0.1:7899"),
+            )
+            .await
+            .ok()?
+            .ok()?;
+            *stream_guard = Some(stream);
+        }
+        let stream = stream_guard.as_mut()?;
+
+        tokio::time::timeout(Duration::from_millis(3000), stream.write_all(request))
+            .await
+            .ok()?
+            .ok()?;
+
+        let mut buf: Vec<u8> = Vec::with_capacity(16 * 1024);
+        let mut chunk = [0u8; 16 * 1024];
+        loop {
+            let n = tokio::time::timeout(Duration::from_millis(5000), stream.read(&mut chunk))
+                .await
+                .ok()?
+                .ok()?;
+            if n == 0 {
+                return None; // Connection closed mid-response.
+            }
+            buf.extend_from_slice(&chunk[..n]);
+            if buf.ends_with(b"\n") {
+                break;
+            }
+            if buf.len() > 64 * 1024 * 1024 {
+                return None; // Safety cap against a runaway/malformed stream.
+            }
+        }
+
+        let text = std::str::from_utf8(&buf).ok()?.trim();
+        serde_json::from_str(text).ok()
     }
 
     /// Find element by selector
@@ -1266,11 +1453,17 @@ impl PlatformDriver for AndroidDriver {
 
         log::debug!("Tap coordinates: ({}, {}), selector: {:?}", x, y, selector);
 
-        adb::shell(
-            self.serial.as_deref(),
-            &format!("{} tap {} {}", self.input_prefix(), x, y),
-        )
-        .await?;
+        // Fast path: the lm-android-tester agent's InputController injects the touch event
+        // in-process over the already-open socket (~10-30ms) instead of spawning
+        // `adb shell input tap` (~50-300ms per call). Falls back to the adb path on any
+        // failure - same safety pattern as the hierarchy dump fast path.
+        if !self.try_mirror_tap(x, y).await {
+            adb::shell(
+                self.serial.as_deref(),
+                &format!("{} tap {} {}", self.input_prefix(), x, y),
+            )
+            .await?;
+        }
 
         // Smart delay after tap (adaptive based on speed profile)
         self.smart_delay_after_action().await;
@@ -1360,6 +1553,19 @@ impl PlatformDriver for AndroidDriver {
 
     async fn input_text(&self, text: &str, unicode: bool) -> Result<()> {
         const ADBKEYBOARD_IME: &str = "com.android.adbkeyboard/.AdbIME";
+
+        // Fast path: set the focused field's text directly via the agent's
+        // AccessibilityNodeInfo.ACTION_SET_TEXT (public API, no reflection) over the
+        // already-open socket. Fully Unicode-safe (Java Strings are UTF-16) and doesn't
+        // touch the IME at all, so it replaces both the plain `adb shell input text`
+        // path (ASCII-only, escaping-fragile) AND the much slower ADBKeyBoard dance
+        // below (switch IME + poll to confirm + broadcast + poll again + switch IME
+        // back + poll again - each step a separate adb round-trip, ~1-1.5s measured).
+        // Falls back to the existing paths on any failure (agent unavailable, no
+        // focused field, action rejected by the target app).
+        if self.try_mirror_set_text(text).await {
+            return Ok(());
+        }
 
         // Fast path: when unicode is false, use direct input (no ADBKeyBoard overhead)
         if !unicode {
@@ -1763,10 +1969,22 @@ impl PlatformDriver for AndroidDriver {
         let base_interval = self.speed_profile.poll_interval_ms();
         let mut interval = base_interval;
         const MAX_INTERVAL: u64 = 500;
+        let mut first_check = true;
 
         while start.elapsed() < timeout {
-            // Invalidate cache to get fresh UI state
-            self.invalidate_cache().await;
+            // Every UI-mutating action (tap/swipe/input/etc.) already invalidates the
+            // cache right after it runs, so the first check here can safely reuse
+            // whatever hierarchy is already cached (real dump if the cache was empty
+            // or stale, no-op if a preceding action just invalidated it). This avoids
+            // paying for a fresh `uiautomator dump` (~2s on real devices) on every
+            // consecutive assertVisible/waitUntilVisible when nothing changed the UI
+            // in between. From the 2nd iteration on, we're specifically retrying
+            // because the element wasn't there yet, so we do need a fresh dump to
+            // detect a real state change.
+            if !first_check {
+                self.invalidate_cache().await;
+            }
+            first_check = false;
 
             if self.is_visible(selector).await? {
                 return Ok(true);
@@ -1787,10 +2005,15 @@ impl PlatformDriver for AndroidDriver {
         let base_interval = self.speed_profile.poll_interval_ms();
         let mut interval = base_interval;
         const MAX_INTERVAL: u64 = 500;
+        let mut first_check = true;
 
         while start.elapsed() < timeout {
-            // Invalidate cache to get fresh UI state
-            self.invalidate_cache().await;
+            // See wait_for_element above for why the first check can reuse the
+            // existing cache instead of forcing a fresh dump.
+            if !first_check {
+                self.invalidate_cache().await;
+            }
+            first_check = false;
 
             if !self.is_visible(selector).await? {
                 return Ok(true);
@@ -2040,12 +2263,12 @@ impl PlatformDriver for AndroidDriver {
             );
         }
 
-        // Initialize nl-mirror service (auto-deploy and start if needed)
+        // Initialize lm-android-tester service (auto-deploy and start if needed)
         let mirror_result =
-            super::mirror_service::MirrorService::init_session(serial.as_deref()).await;
+            super::agent_service::AgentService::init_session(serial.as_deref()).await;
         let mirror_active = if let Err(e) = &mirror_result {
             eprintln!(
-                "  ⚠️ nl-mirror init failed: {}. Speed may not be accurate.",
+                "  ⚠️ lm-android-tester init failed: {}. Speed may not be accurate.",
                 e
             );
             false
@@ -2152,10 +2375,10 @@ impl PlatformDriver for AndroidDriver {
                         for cmd in &refresh_cmds {
                             let _ = adb::shell(serial.as_deref(), cmd).await;
                         }
-                        // Also send start_mock_location to nl-mirror to re-register from app side
+                        // Also send start_mock_location to lm-android-tester to re-register from app side
                         if mirror_active_local {
                             if let Ok(mut stream) = std::net::TcpStream::connect_timeout(
-                                &"127.0.0.1:8889".parse().unwrap(),
+                                &"127.0.0.1:7899".parse().unwrap(),
                                 std::time::Duration::from_millis(200),
                             ) {
                                 use std::io::Write;
@@ -2246,7 +2469,7 @@ impl PlatformDriver for AndroidDriver {
                     };
                     let speed_ms = effective_speed_kmh / 3.6; // Convert km/h to m/s
 
-                    // Method 1: Use nl-android (nl-mirror) via socket - FULL SPEED SUPPORT
+                    // Method 1: Use lm-android-tester agent via socket - FULL SPEED SUPPORT
                     let nl_cmd = format!(
                         r#"{{"cmd":"set_location","lat":{},"lon":{},"alt":{},"bearing":{:.2},"speed":{:.2}}}"#,
                         lat,
@@ -2256,11 +2479,11 @@ impl PlatformDriver for AndroidDriver {
                         speed_ms
                     );
 
-                    // Try to send to nl-mirror synchronously with better timeout
+                    // Try to send to lm-android-tester synchronously with better timeout
                     // Auto-reconnect if too many consecutive failures
                     let nl_success = if mirror_active_local {
                         match std::net::TcpStream::connect_timeout(
-                            &"127.0.0.1:8889".parse().unwrap(),
+                            &"127.0.0.1:7899".parse().unwrap(),
                             std::time::Duration::from_millis(200),
                         ) {
                             Ok(mut stream) => {
@@ -2299,17 +2522,17 @@ impl PlatformDriver for AndroidDriver {
 
                                 // Auto-reconnect: re-establish port forward and restart service
                                 if consecutive_failures >= MAX_FAILURES_BEFORE_RECONNECT {
-                                    eprintln!("  🔄 nl-mirror connection lost. Re-establishing port forward...");
+                                    eprintln!("  🔄 lm-android-tester connection lost. Re-establishing port forward...");
 
                                     // Re-establish port forward
                                     if let Ok(_) =
-                                        super::mirror_service::MirrorService::setup_port_forward(
+                                        super::agent_service::AgentService::setup_port_forward(
                                             serial.as_deref(),
                                         )
                                         .await
                                     {
                                         // Also try to restart service
-                                        let _ = super::mirror_service::MirrorService::start(
+                                        let _ = super::agent_service::AgentService::start(
                                             serial.as_deref(),
                                         )
                                         .await;
@@ -2317,14 +2540,14 @@ impl PlatformDriver for AndroidDriver {
                                             .await;
 
                                         // Verify connection
-                                        if super::mirror_service::MirrorService::verify_connection()
+                                        if super::agent_service::AgentService::verify_connection()
                                             .await
                                         {
-                                            eprintln!("  ✅ nl-mirror reconnected successfully");
+                                            eprintln!("  ✅ lm-android-tester reconnected successfully");
                                             consecutive_failures = 0;
                                             mirror_active_local = true;
                                         } else {
-                                            eprintln!("  ⚠️ nl-mirror reconnect failed. Using fallback method.");
+                                            eprintln!("  ⚠️ lm-android-tester reconnect failed. Using fallback method.");
                                             mirror_active_local = false;
                                         }
                                     }
@@ -2336,7 +2559,7 @@ impl PlatformDriver for AndroidDriver {
                         false
                     };
 
-                    // Only use fallback if nl-mirror failed
+                    // Only use fallback if lm-android-tester failed
                     if !nl_success {
                         // Method 2: Standard cmd location (fallback, no bearing support)
                         let providers = vec!["gps", "network", "fused"];
@@ -2407,7 +2630,7 @@ impl PlatformDriver for AndroidDriver {
 
                                 if mirror_active_local {
                                     if let Ok(mut stream) = std::net::TcpStream::connect_timeout(
-                                        &"127.0.0.1:8889".parse().unwrap(),
+                                        &"127.0.0.1:7899".parse().unwrap(),
                                         std::time::Duration::from_millis(100),
                                     ) {
                                         let _ = stream.set_write_timeout(Some(

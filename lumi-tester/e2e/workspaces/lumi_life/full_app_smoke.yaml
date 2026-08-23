@@ -18,10 +18,14 @@ env:
 - runFlow: "screens/main_menu.yaml"
 - runFlow: "screens/menu_devices.yaml"
 - back
-- runFlow: "screens/main_menu.yaml"
+# Note: no re-navigation to main_menu.yaml needed here - verified on-device that
+# "back" from menu_devices returns directly to the menu grid where Scenes/Rules
+# are already visible (unlike after menu_rules, see below).
 - runFlow: "screens/menu_scenes.yaml"
 - runFlow: "screens/menu_rules.yaml"
 - back
+# Do NOT remove this one - verified on-device that "back" from menu_rules does
+# NOT land on the menu grid; Home settings is not visible without re-navigating here.
 - runFlow: "screens/main_menu.yaml"
 - runFlow: "screens/home_settings.yaml"
 - takeScreenshot: "lumi_life_full_app_smoke.png"

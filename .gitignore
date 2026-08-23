@@ -57,12 +57,39 @@ my_testing/*
 .shared/*
 .specify/*
 
+# Local Companion Repos & Mobile Harnesses
 WebDriverAgent/
 nl-android/
 nl-mock-hook/
+lm-android-mirror/
+lm-android-tester/
+lm-android-*/
 
+# Android / Gradle Build Artifacts
+.gradle/
+build/
+local.properties
+.cxx/
+.externalNativeBuild/
+captures/
+
+# Tauri & Desktop Build Artifacts
+src-tauri/target/
+src-tauri/gen/
 app_desktop/
 app_desktop/**
+
+# Python & Node Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+coverage/
+.nyc_output/
+.turbo/
+.svelte-kit/
 
 .runtime/
 *.vsix

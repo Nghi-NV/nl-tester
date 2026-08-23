@@ -35,7 +35,7 @@ impl IosFrame {
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct IosElement {
     /// Accessibility label
-    #[serde(default, alias = "AXLabel")]
+    #[serde(default, alias = "AXLabel", alias = "name")]
     pub label: Option<String>,
 
     /// Accessibility identifier
@@ -46,8 +46,9 @@ pub struct IosElement {
     #[serde(rename = "type", default)]
     pub element_type: Option<String>,
 
-    /// Element frame/bounds
-    #[serde(default)]
+    /// Element frame/bounds. `idb ui describe-all` uses the key "frame"; WDA's JSON
+    /// source (`?format=json`) uses "rect" for the same {x,y,width,height} shape.
+    #[serde(default, alias = "rect")]
     pub frame: IosFrame,
 
     /// Accessibility value
@@ -403,5 +404,43 @@ mod tests {
         assert!(element.matches_text("Login"));
         assert!(element.matches_text("Button"));
         assert!(!element.matches_text("Logout"));
+    }
+
+    /// WDA's `?format=json` source is a single nested root object using "rect"/"name"
+    /// instead of idb's "frame"/"label" keys - verify `parse_ui_hierarchy` (unchanged)
+    /// and the field aliases correctly turn it into a searchable tree via
+    /// `flatten_elements`. This can't substitute for a real-device check (no iOS
+    /// device was available this session) but guards the parsing contract.
+    #[test]
+    fn parses_wda_json_source_format() {
+        let wda_json = r#"{
+            "type": "Application",
+            "name": "MyApp",
+            "value": null,
+            "rect": {"x": 0.0, "y": 0.0, "width": 390.0, "height": 844.0},
+            "enabled": true,
+            "visible": true,
+            "children": [
+                {
+                    "type": "Button",
+                    "name": "Login",
+                    "value": null,
+                    "rect": {"x": 10.0, "y": 20.0, "width": 100.0, "height": 40.0},
+                    "enabled": true,
+                    "visible": true,
+                    "children": []
+                }
+            ]
+        }"#;
+
+        let elements = parse_ui_hierarchy(wda_json).expect("should parse WDA JSON source");
+        assert_eq!(elements.len(), 1, "single root element, children stay nested");
+        assert_eq!(elements[0].label.as_deref(), Some("MyApp"));
+        assert_eq!(elements[0].frame.width, 390.0);
+
+        let flat = flatten_elements(&elements);
+        assert_eq!(flat.len(), 2, "root + 1 child once flattened");
+        let login = find_by_text(&elements, "Login", 0).expect("should find nested Login button");
+        assert_eq!(login.frame.center(), (60, 40));
     }
 }

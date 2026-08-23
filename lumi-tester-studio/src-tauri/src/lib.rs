@@ -286,43 +286,57 @@ async fn list_devices(platform: String) -> Result<Vec<DeviceInfo>, String> {
                 .await
                 .map_err(|e| e.to_string())?;
 
+            // Resolve each device's display name concurrently instead of one device at
+            // a time - each is 1-2 `adb shell getprop` round-trips (~50-300ms each),
+            // and this call runs on a 5s poll timer, so N devices used to cost N x that
+            // sequentially.
+            let tasks: Vec<_> = devices
+                .into_iter()
+                .map(|device| {
+                    tokio::spawn(async move {
+                        let serial = device.serial;
+
+                        // Get device name using adb shell getprop
+                        let name = lumi_tester::driver::android::adb::shell(
+                            Some(&serial),
+                            "getprop ro.product.model",
+                        )
+                        .await
+                        .unwrap_or_else(|_| String::new())
+                        .trim()
+                        .to_string();
+
+                        // Fallback to ro.product.name if model is empty
+                        let name = if name.is_empty() {
+                            lumi_tester::driver::android::adb::shell(
+                                Some(&serial),
+                                "getprop ro.product.name",
+                            )
+                            .await
+                            .unwrap_or_else(|_| serial.clone())
+                            .trim()
+                            .to_string()
+                        } else {
+                            name
+                        };
+
+                        // If still empty, use serial as name
+                        let name = if name.is_empty() {
+                            serial.clone()
+                        } else {
+                            format!("{} ({})", name, serial)
+                        };
+
+                        DeviceInfo { id: serial, name }
+                    })
+                })
+                .collect();
+
             let mut device_infos = Vec::new();
-            for device in devices {
-                // Get device name using adb shell getprop
-                let name = lumi_tester::driver::android::adb::shell(
-                    Some(&device.serial),
-                    "getprop ro.product.model",
-                )
-                .await
-                .unwrap_or_else(|_| String::new())
-                .trim()
-                .to_string();
-
-                // Fallback to ro.product.name if model is empty
-                let name = if name.is_empty() {
-                    lumi_tester::driver::android::adb::shell(
-                        Some(&device.serial),
-                        "getprop ro.product.name",
-                    )
-                    .await
-                    .unwrap_or_else(|_| device.serial.clone())
-                    .trim()
-                    .to_string()
-                } else {
-                    name
-                };
-
-                // If still empty, use serial as name
-                let name = if name.is_empty() {
-                    device.serial.clone()
-                } else {
-                    format!("{} ({})", name, device.serial)
-                };
-
-                device_infos.push(DeviceInfo {
-                    id: device.serial,
-                    name,
-                });
+            for task in tasks {
+                if let Ok(info) = task.await {
+                    device_infos.push(info);
+                }
             }
             Ok(device_infos)
         }

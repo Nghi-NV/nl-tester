@@ -1,10 +1,31 @@
 use anyhow::Result;
 use dirs;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
+
+/// Cache của các binary đã resolve, key theo tên binary.
+/// Đường dẫn binary không đổi trong suốt vòng đời process, nên chỉ cần resolve 1 lần
+/// thay vì stat lại filesystem trên mỗi lệnh adb/idb/ffmpeg (được gọi hàng trăm lần/run).
+static BINARY_CACHE: OnceLock<Mutex<HashMap<String, PathBuf>>> = OnceLock::new();
 
 /// Tìm binary từ bundled resources hoặc install directory (chỉ dùng static file, không dùng system PATH)
 pub fn find_binary(name: &str) -> Result<PathBuf> {
+    let cache = BINARY_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(cached) = cache.lock().unwrap().get(name) {
+        return Ok(cached.clone());
+    }
+
+    let resolved = find_binary_uncached(name)?;
+    cache
+        .lock()
+        .unwrap()
+        .insert(name.to_string(), resolved.clone());
+    Ok(resolved)
+}
+
+fn find_binary_uncached(name: &str) -> Result<PathBuf> {
     let mut checked_paths = Vec::new();
 
     // 1. Tìm từ bundled resources (trong app bundle)

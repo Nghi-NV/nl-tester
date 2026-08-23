@@ -184,8 +184,18 @@ impl IosDriver {
         }
         drop(cache_time);
 
-        // Fetch fresh hierarchy
-        let json_output = idb::describe_ui(&self.udid).await?;
+        // Fast path: real devices already keep a persistent WebDriverAgent HTTP session
+        // open (used for tap/swipe/etc.) - reuse it for hierarchy reads too instead of
+        // spawning a fresh `idb` process (idb is Python-based; each invocation pays
+        // interpreter startup + gRPC client setup on top of the actual query, easily
+        // several hundred ms to 1s+). Falls back to the existing idb-based dump on any
+        // failure (WDA unavailable, request error, unexpected response shape) - simulators
+        // never get a wda_client in the first place (see `AndroidDriver::new`) so they
+        // always take this fallback, unchanged from before.
+        let json_output = match self.try_fast_hierarchy_dump().await {
+            Some(json) => json,
+            None => idb::describe_ui(&self.udid).await?,
+        };
         let elements = accessibility::parse_ui_hierarchy(&json_output)?;
 
         // Update cache
@@ -195,6 +205,15 @@ impl IosDriver {
         *time = Some(Instant::now());
 
         Ok(elements)
+    }
+
+    /// Try to fetch the UI hierarchy JSON via the already-connected WebDriverAgent
+    /// session. Returns `None` if there's no WDA client (simulator, or WDA failed to
+    /// start) or the request fails for any reason.
+    async fn try_fast_hierarchy_dump(&self) -> Option<String> {
+        let mut guard = self.wda_client.lock().await;
+        let wda = guard.as_mut()?;
+        wda.get_source().await.ok()
     }
 
     /// Get OCR engine (lazy-initialized)

@@ -49,6 +49,9 @@ pub struct TestExecutor {
     camera_observe_next_port: u16,
     hardware_controller: Option<crate::hardware::HardwareController>,
     pub auto_power_off: bool,
+    /// Cache of parsed subflow YAML by resolved path, so a subflow invoked repeatedly
+    /// (e.g. inside a `repeat` loop) is only read and parsed from disk once per run.
+    flow_cache: HashMap<std::path::PathBuf, crate::parser::types::TestFlow>,
 }
 
 /// Resolve `align` and `offset` from TapParams into (x_pct, y_pct) as 0.0..1.0.
@@ -210,6 +213,7 @@ impl TestExecutor {
             camera_observe_next_port: 9444,
             hardware_controller: None,
             auto_power_off: false,
+            flow_cache: HashMap::new(),
         }
     }
 
@@ -2088,8 +2092,24 @@ impl TestExecutor {
             }
 
             TestCommand::WaitForAnimationToEnd => {
-                // Wait a fixed amount of time for animations
-                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                // Poll UI hierarchy for changes instead of a blind fixed sleep, capped at
+                // the previous fixed 1000ms so this can only finish earlier, never later.
+                const MAX_WAIT_MS: u64 = 1000;
+                const POLL_INTERVAL_MS: u64 = 100;
+                let start = std::time::Instant::now();
+                let mut last_hierarchy = self.driver.dump_ui_hierarchy().await.ok();
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(POLL_INTERVAL_MS)).await;
+                    if start.elapsed().as_millis() as u64 >= MAX_WAIT_MS {
+                        break;
+                    }
+                    let current = self.driver.dump_ui_hierarchy().await.ok();
+                    if current == last_hierarchy {
+                        // UI stable across two consecutive polls: animation likely done.
+                        break;
+                    }
+                    last_hierarchy = current;
+                }
                 Ok(())
             }
 
@@ -2193,8 +2213,15 @@ impl TestExecutor {
                     Some(cmds.clone())
                 } else if let Some(ref path_str) = params.path {
                     let flow_path = self.context.resolve_path(path_str);
-                    let sub_flow = parse_test_file(&flow_path)?;
-                    Some(sub_flow.commands)
+                    let commands = if let Some(cached) = self.flow_cache.get(&flow_path) {
+                        cached.commands.clone()
+                    } else {
+                        let sub_flow = parse_test_file(&flow_path)?;
+                        let commands = sub_flow.commands.clone();
+                        self.flow_cache.insert(flow_path, sub_flow);
+                        commands
+                    };
+                    Some(commands)
                 } else {
                     None
                 };

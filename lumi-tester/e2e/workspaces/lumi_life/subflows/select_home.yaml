@@ -8,6 +8,16 @@ defaultTimeout: 10000
 ---
 - waitUntilVisible:
     regex: "(Select home|Chọn nhà|Chọn Home)"
+# The screen title/search box render immediately, but the home list itself comes from a
+# separate API call - confirmed on-device (timed screenshots): a loading spinner is still
+# showing at 200-400ms after the title appears, with the list rendered by ~700ms. Typing
+# into the search box before that call returns means the app's search/filter runs against
+# an empty/not-yet-loaded list and never re-applies once the real data arrives, so the
+# expected "Online ... <name>" result never shows up even after a long wait (reproduced:
+# 15s timeout with no match). Waiting for the first "Online" badge here confirms the list
+# has actual data before searching it.
+- waitUntilVisible:
+    regex: "Online"
 - tap:
     type: "input"
     index: 0

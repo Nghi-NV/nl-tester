@@ -212,6 +212,16 @@ async fn run_on_device(
     command_name: Option<String>,
     repeat: u32,
 ) -> Result<()> {
+    // Pre-parse first file's `speed:` header field (e.g. "fast", "turbo") so the driver
+    // can honor a flow-level speed profile when LUMI_SPEED isn't set.
+    let flow_speed: Option<String> = if !files.is_empty() {
+        crate::parser::yaml::parse_test_file(&files[0])
+            .ok()
+            .and_then(|flow| flow.speed)
+    } else {
+        None
+    };
+
     // Pre-parse first file to extract web driver config (for close_when_finish support)
     let web_config = if platform == "web" && !files.is_empty() {
         use crate::parser::yaml::parse_test_file;
@@ -249,7 +259,13 @@ async fn run_on_device(
         .to_ascii_lowercase();
 
     let driver: Box<dyn crate::driver::traits::PlatformDriver> = match platform_clean.as_str() {
-        "android" => Box::new(crate::driver::android::AndroidDriver::new(device).await?),
+        "android" => Box::new(
+            crate::driver::android::AndroidDriver::new_with_speed(
+                device,
+                flow_speed.as_deref(),
+            )
+            .await?,
+        ),
         "android_auto" => {
             Box::new(crate::driver::android_auto::AndroidAutoDriver::new(device, true).await?)
         }

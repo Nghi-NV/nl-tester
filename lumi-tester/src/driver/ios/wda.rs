@@ -296,10 +296,15 @@ impl WdaClient {
         Ok(())
     }
 
-    /// Get UI hierarchy (source)
+    /// Get UI hierarchy (source) as JSON - WDA's `?format=json` variant, structurally
+    /// compatible with `accessibility::parse_ui_hierarchy` (a single root element with a
+    /// nested `children` tree, matched via `IosFrame`'s `rect` alias).
     pub async fn get_source(&mut self) -> Result<String> {
         let session_id = self.ensure_session().await?;
-        let url = format!("{}/session/{}/source", self.base_url, session_id);
+        let url = format!(
+            "{}/session/{}/source?format=json",
+            self.base_url, session_id
+        );
 
         let resp = self
             .client
@@ -308,8 +313,10 @@ impl WdaClient {
             .await
             .context("Failed to get source")?;
 
-        let body = resp.text().await?;
-        Ok(body)
+        // WDA wraps every response as {"value": <payload>, "sessionId": "..."} per the
+        // WebDriver protocol - unwrap "value" so callers get the bare hierarchy JSON.
+        let wrapped: WdaResponse<serde_json::Value> = resp.json().await?;
+        Ok(serde_json::to_string(&wrapped.value)?)
     }
 
     /// Take screenshot (returns base64 encoded PNG)
