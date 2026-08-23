@@ -308,15 +308,26 @@ impl AgentService {
             false
         };
 
-        // 5. If not reachable, try to re-establish port forward first
+        // 5. If not reachable, try to re-establish port forward first. This is far
+        // cheaper than a full restart below (~200-400ms vs ~1-2s: stop+start+poll) and is
+        // the actual fix for the common case - `adb forward` mappings can go stale
+        // between separate `lumi-tester run` invocations (confirmed on-device: the same
+        // still-running, perfectly healthy agent process answered instantly once the
+        // forward was simply re-established) without the agent process itself being
+        // affected at all. Retries a couple of times before falling back to a full
+        // restart, in case the forward needs a moment to actually take effect.
         if !is_reachable {
             eprintln!("  🔄 Setting up port forward...");
-            if let Err(e) = Self::setup_port_forward(serial).await {
-                eprintln!("  ⚠️ Port forward failed: {}", e);
-            } else {
-                // Check again after port forward
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            for attempt in 0..3 {
+                if let Err(e) = Self::setup_port_forward(serial).await {
+                    eprintln!("  ⚠️ Port forward failed: {}", e);
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
                 is_reachable = Self::verify_connection().await;
+                if is_reachable || attempt == 2 {
+                    break;
+                }
             }
         }
 

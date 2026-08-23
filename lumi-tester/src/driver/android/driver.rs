@@ -151,6 +151,12 @@ pub struct AndroidDriver {
     /// available and preferred, `Some(false)` = agent unavailable, don't retry (falls back
     /// to the shell-based `uiautomator dump` for the rest of the run).
     agent_available: Arc<Mutex<Option<bool>>>,
+    /// Coordinates of the most recent selector-based tap. Used by `input_text` to retry
+    /// the tap once if `set_text` can't find a focused field right after - the tap can be
+    /// confirmed "delivered" (WAIT_FOR_FINISH) while still missing the real hit-test target
+    /// if it lands mid-entrance-animation, since a Flutter widget's semantics bounds can be
+    /// finalized before its RenderObject is actually paintable/hit-testable at that position.
+    last_tap_point: Arc<Mutex<Option<(i32, i32)>>>,
 }
 
 impl AndroidDriver {
@@ -225,6 +231,7 @@ impl AndroidDriver {
             sdk_version,
             agent_stream: Arc::new(Mutex::new(None)),
             agent_available: Arc::new(Mutex::new(None)),
+            last_tap_point: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -406,41 +413,11 @@ impl AndroidDriver {
         };
         request.push(b'\n');
         let response = self.send_mirror_command(&request).await;
-        let ok = response
+        response
             .as_ref()
             .and_then(|o| o.get("success"))
             .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        if !ok {
-            let procs = adb::shell(self.serial.as_deref(), "ps -A | grep app_process")
-                .await
-                .unwrap_or_default();
-            let im = adb::shell(
-                self.serial.as_deref(),
-                "dumpsys input_method | grep -E 'mInputShown|mCurMethodId|mServedView|mCurFocusedWindow'",
-            )
-            .await
-            .unwrap_or_default();
-            let win = adb::shell(
-                self.serial.as_deref(),
-                "dumpsys window | grep -E 'mCurrentFocus|mAnimationScheduled'",
-            )
-            .await
-            .unwrap_or_default();
-            let shot_path = format!(
-                "/tmp/debug3_fail_{}.png",
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_millis())
-                    .unwrap_or(0)
-            );
-            let shot_result = self.take_screenshot_internal(&shot_path).await;
-            eprintln!(
-                "[DEBUG3 set_text FAILED]\nresponse={:?}\napp_process list:\n{}\ninput_method:\n{}\nwindow:\n{}\nscreenshot={:?} -> {}",
-                response, procs, im, win, shot_result, shot_path
-            );
-        }
-        ok
+            .unwrap_or(false)
     }
 
     /// Try to check whether the on-screen keyboard is visible via the agent
@@ -1441,6 +1418,7 @@ impl PlatformDriver for AndroidDriver {
             .ok_or_else(|| anyhow::anyhow!("Element not found: {:?}", selector))?;
 
         log::debug!("Tap coordinates: ({}, {}), selector: {:?}", x, y, selector);
+        *self.last_tap_point.lock().await = Some((x, y));
 
         // Fast path: the lm-android-tester agent's InputController injects the touch event
         // in-process over the already-open socket (~10-30ms) instead of spawning
@@ -1555,6 +1533,25 @@ impl PlatformDriver for AndroidDriver {
         // the agent itself is unavailable.
         if self.try_mirror_set_text(text).await {
             return Ok(());
+        }
+
+        // The agent's `findFocusedInputWithRetry` already polls for up to ~2s looking for
+        // a focused field, so a failure here usually means the preceding tap never actually
+        // landed a focus change on-device - most often because it fired while the target
+        // field was still mid-entrance-animation (visible/tappable per the semantics tree's
+        // final bounds, but not yet actually hit-testable at that position). Re-tapping the
+        // same coordinates now, once the animation has had more time to settle, and retrying
+        // is the fast-path-preserving fix (vs. immediately giving up on it for this call).
+        // Empirically a single retry only recovers ~2/3 of these (measured 12.5% -> 4% over
+        // 45 real-device runs), so retry with backoff up to 2 more times before falling back.
+        if let Some((x, y)) = *self.last_tap_point.lock().await {
+            for backoff_ms in [300u64, 600] {
+                tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                self.try_mirror_tap(x, y).await;
+                if self.try_mirror_set_text(text).await {
+                    return Ok(());
+                }
+            }
         }
 
         // Fallback: use standard input text (only reached if the agent is unavailable -

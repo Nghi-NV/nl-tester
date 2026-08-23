@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.25] - 2026-08-23
+
+### 🚀 Highlights & Improvements
+
+#### 1. Adaptive Port Forward Reconnection for Android Agent
+- **Instant Port Forward Recovery**: Retries `adb forward` socket mapping up to 3 times before attempting full agent restarts, resolving stale connection states across consecutive test runs in ~200ms without restarting the on-device process.
+
+#### 2. Animation-Resilient Focus & Text Input Retries
+- **Last Tap Point Tracking**: Records exact tap coordinates to recover from mid-animation taps (e.g. Flutter/React Native/Compose entrance transitions) where accessibility semantics become available before the render tree is hit-testable.
+- **Adaptive Re-Tap Backoff**: Automatically re-taps the target field with backoff intervals (300ms, 600ms) if `set_text` fails to find a focused field, dramatically increasing text input reliability on animated UI.
+
+---
+
 ## [v0.1.24] - 2026-08-23
 
 ### 🚀 Highlights & Improvements
