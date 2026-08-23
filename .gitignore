@@ -61,9 +61,10 @@ my_testing/*
 WebDriverAgent/
 nl-android/
 nl-mock-hook/
-lm-android-mirror/
-lm-android-tester/
-lm-android-*/
+# lm-android-tester/ is intentionally NOT ignored - unlike nl-android above, its source
+# is the actual maintained agent lumi-tester deploys (fast hierarchy dump / tap / text
+# input), not a scratch copy of another project, so it needs to be git-tracked. Its
+# build/ output is still excluded by the generic "build/" rule below.
 
 # Android / Gradle Build Artifacts
 .gradle/

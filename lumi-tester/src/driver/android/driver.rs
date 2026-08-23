@@ -138,13 +138,6 @@ pub struct AndroidDriver {
     display_id: AtomicU64,
     /// Speed profile for adaptive delays
     speed_profile: SpeedProfile,
-    /// Cached: whether ADBKeyBoard is available for text input
-    adbkeyboard_available: bool,
-    /// Cached: original IME to restore after using ADBKeyBoard
-    original_ime: String,
-    /// Whether to use Unicode input support (ADBKeyBoard) - default: false for speed
-    #[allow(dead_code)]
-    support_unicode: bool,
     /// Lazy-loaded OCR engine
     ocr_engine: Arc<OnceCell<OcrEngine>>,
     /// Cached Android SDK version (API level) - used to determine feature support
@@ -193,88 +186,24 @@ impl AndroidDriver {
             .map(|s| SpeedProfile::from_str(&s))
             .unwrap_or_default();
 
-        // These 4 startup queries are independent of each other - run them concurrently
-        // instead of paying 4 sequential adb round-trips.
+        // These 2 startup queries are independent of each other - run them concurrently
+        // instead of paying 2 sequential adb round-trips. (Used to also fetch the current
+        // IME and IME list here for the ADBKeyBoard-based unicode text input fallback -
+        // removed: the agent's `set_text` fast path already handles Unicode natively via
+        // `ACTION_SET_TEXT`, no IME involved at all, and it's now the primary path. The
+        // ADBKeyBoard/IME-switching fallback it replaced was also a genuine on-device
+        // reliability hazard: switching the system IME and failing partway (an early
+        // `bail!`/`?`) used to skip restoring it, permanently stranding the device on
+        // ADBKeyBoard as its default keyboard - confirmed on-device after heavy testing.
+        // Removing the whole mechanism removes that failure class entirely rather than
+        // just patching the restore step.)
         let serial_ref = selected_serial.as_deref();
-        let (screen_size_res, original_ime_raw, ime_list_raw, sdk_version_raw) = tokio::join!(
+        let (screen_size_res, sdk_version_raw) = tokio::join!(
             adb::get_screen_size(serial_ref),
-            adb::shell(serial_ref, "settings get secure default_input_method"),
-            adb::shell(serial_ref, "ime list -s"),
             adb::shell(serial_ref, "getprop ro.build.version.sdk"),
         );
 
         let screen_size = screen_size_res?;
-
-        // Cache original IME for text input
-        let original_ime = original_ime_raw.unwrap_or_default().trim().to_string();
-
-        // Check if ADBKeyBoard is available, auto-install/enable if not
-        let ime_list = ime_list_raw.unwrap_or_default();
-        let mut adbkeyboard_available = ime_list.contains("com.android.adbkeyboard");
-
-        if !adbkeyboard_available {
-            let package_installed = adb::shell(
-                selected_serial.as_deref(),
-                "pm list packages com.android.adbkeyboard",
-            )
-            .await
-            .unwrap_or_default()
-            .contains("com.android.adbkeyboard");
-
-            if package_installed {
-                let _ = adb::shell(
-                    selected_serial.as_deref(),
-                    "ime enable com.android.adbkeyboard/.AdbIME",
-                )
-                .await;
-            } else if let Some(apk_path) = crate::utils::binary_resolver::find_apk("ADBKeyboard.apk")
-            {
-                println!(
-                    "  {} Installing ADBKeyBoard for Unicode input support...",
-                    "⏳".yellow()
-                );
-
-                let install_result = adb::install(
-                    selected_serial.as_deref(),
-                    apk_path.to_string_lossy().as_ref(),
-                )
-                .await;
-
-                if install_result.is_ok() {
-                    let _ = adb::shell(
-                        selected_serial.as_deref(),
-                        "ime enable com.android.adbkeyboard/.AdbIME",
-                    )
-                    .await;
-                    println!("  {} ADBKeyBoard installed successfully", "✓".green());
-                } else {
-                    println!(
-                        "  {} Failed to install ADBKeyBoard: {:?}",
-                        "⚠".yellow(),
-                        install_result.err()
-                    );
-                }
-            }
-
-            let ime_list = adb::shell(selected_serial.as_deref(), "ime list -s")
-                .await
-                .unwrap_or_default();
-            adbkeyboard_available = ime_list.contains("com.android.adbkeyboard");
-        } else {
-            println!(
-                "  {} ADBKeyBoard detected, Unicode input enabled",
-                "✓".green()
-            );
-        }
-
-        // Check LUMI_UNICODE env var for Unicode input support (default: false for speed)
-        let support_unicode = std::env::var("LUMI_UNICODE")
-            .map(|s| s.to_lowercase() == "true" || s == "1")
-            .unwrap_or(false);
-
-        if support_unicode && adbkeyboard_available {
-            println!("  {} Unicode input mode enabled (ADBKeyBoard)", "✓".green());
-        }
 
         // Android SDK version for feature detection (fetched concurrently above)
         let sdk_version = sdk_version_raw
@@ -292,9 +221,6 @@ impl AndroidDriver {
             mock_states: Arc::new(Mutex::new(HashMap::new())),
             display_id: AtomicU64::new(0),
             speed_profile,
-            adbkeyboard_available,
-            original_ime,
-            support_unicode,
             ocr_engine: Arc::new(OnceCell::new()),
             sdk_version,
             agent_stream: Arc::new(Mutex::new(None)),
@@ -469,7 +395,7 @@ impl AndroidDriver {
     /// Try to set the currently-focused input field's text via the agent's `set_text`
     /// command (`AccessibilityNodeInfo.ACTION_SET_TEXT`). Returns `false` on any failure
     /// (agent unavailable, no focused field, action rejected) so the caller falls back to
-    /// the adb/ADBKeyBoard-based paths.
+    /// the plain `adb shell input text` path (ASCII only).
     async fn try_mirror_set_text(&self, text: &str) -> bool {
         // Use serde_json to build the request so arbitrary text (quotes, backslashes,
         // newlines, any Unicode) is escaped correctly - unlike the tap/wait_idle commands
@@ -479,10 +405,104 @@ impl AndroidDriver {
             return false;
         };
         request.push(b'\n');
-        let Some(outer) = self.send_mirror_command(&request).await else {
+        let response = self.send_mirror_command(&request).await;
+        let ok = response
+            .as_ref()
+            .and_then(|o| o.get("success"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if !ok {
+            let procs = adb::shell(self.serial.as_deref(), "ps -A | grep app_process")
+                .await
+                .unwrap_or_default();
+            let im = adb::shell(
+                self.serial.as_deref(),
+                "dumpsys input_method | grep -E 'mInputShown|mCurMethodId|mServedView|mCurFocusedWindow'",
+            )
+            .await
+            .unwrap_or_default();
+            let win = adb::shell(
+                self.serial.as_deref(),
+                "dumpsys window | grep -E 'mCurrentFocus|mAnimationScheduled'",
+            )
+            .await
+            .unwrap_or_default();
+            let shot_path = format!(
+                "/tmp/debug3_fail_{}.png",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis())
+                    .unwrap_or(0)
+            );
+            let shot_result = self.take_screenshot_internal(&shot_path).await;
+            eprintln!(
+                "[DEBUG3 set_text FAILED]\nresponse={:?}\napp_process list:\n{}\ninput_method:\n{}\nwindow:\n{}\nscreenshot={:?} -> {}",
+                response, procs, im, win, shot_result, shot_path
+            );
+        }
+        ok
+    }
+
+    /// Try to check whether the on-screen keyboard is visible via the agent
+    /// (`UiAutomation.getWindows()`, checking for a `TYPE_INPUT_METHOD` window). Returns
+    /// `None` (not `false`) on any failure - callers must fall back to the adb-based
+    /// `dumpsys input_method` check rather than assume "not visible", since incorrectly
+    /// skipping a needed hide-keyboard action is a real (if minor) correctness gap, while
+    /// incorrectly assuming "visible" when it's not just costs one extra no-op check.
+    async fn try_mirror_is_keyboard_visible(&self) -> Option<bool> {
+        let outer = self
+            .send_mirror_command(b"{\"cmd\":\"is_keyboard_visible\"}\n")
+            .await?;
+        if !outer.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+            return None;
+        }
+        outer.get("visible").and_then(|v| v.as_bool())
+    }
+
+    /// Try to press a key via the agent's `InputController` over the persistent socket.
+    async fn try_mirror_key(&self, keycode: i32) -> bool {
+        let request = format!("{{\"cmd\":\"key\",\"keyCode\":{}}}\n", keycode);
+        let Some(outer) = self.send_mirror_command(request.as_bytes()).await else {
             return false;
         };
         outer.get("success").and_then(|v| v.as_bool()).unwrap_or(false)
+    }
+
+    /// Try to erase all text in the currently-focused field via the agent's `erase_text`
+    /// command (an empty `ACTION_SET_TEXT`, reusing the same retry/verify-hardened path as
+    /// `set_text`). Only handles "erase everything"; a specific `char_count` still goes
+    /// through the DEL-key fallback in `erase_text` below.
+    async fn try_mirror_erase_text(&self) -> bool {
+        let Some(outer) = self.send_mirror_command(b"{\"cmd\":\"erase_text\"}\n").await else {
+            return false;
+        };
+        outer.get("success").and_then(|v| v.as_bool()).unwrap_or(false)
+    }
+
+    /// Try to capture a screenshot via the agent's `UiAutomation.takeScreenshot()` and
+    /// write it to `path`. Returns `false` on any failure (agent unavailable, decode
+    /// error, write error) so the caller falls back to `adb exec-out screencap`.
+    async fn try_mirror_screenshot(&self, path: &str) -> bool {
+        use base64::Engine;
+
+        let Some(outer) = self.send_mirror_command(b"{\"cmd\":\"screenshot\"}\n").await else {
+            return false;
+        };
+        if !outer.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+            return false;
+        }
+        let Some(b64) = outer.get("data").and_then(|v| v.as_str()) else {
+            return false;
+        };
+        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(b64) else {
+            return false;
+        };
+        if let Some(parent) = Path::new(path).parent() {
+            if !parent.as_os_str().is_empty() && !parent.exists() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+        }
+        std::fs::write(path, bytes).is_ok()
     }
 
     /// Ensure the lm-android-tester agent is deployed/running (once per driver lifetime), send a
@@ -1086,6 +1106,16 @@ impl AndroidDriver {
 
         let display_id = self.display_id.load(Ordering::Relaxed);
 
+        // 0. Fast path: UiAutomation.takeScreenshot() over the agent's persistent
+        // connection instead of spawning `adb exec-out screencap` (measured: ~165ms vs
+        // ~350-450ms, after a one-time ~460ms warm-up on the very first call). Only for
+        // the default display - the public UiAutomation screenshot API doesn't take a
+        // display selector, so any non-default `display_id` (multi-display / Android
+        // Auto setups) keeps using the adb-based paths below, which do support it.
+        if display_id == 0 && self.try_mirror_screenshot(path).await {
+            return Ok(());
+        }
+
         // 1. Try fast path: exec-out screencap with binary output
         let exec_cmd = if display_id == 0 {
             "screencap -p".to_string()
@@ -1211,47 +1241,6 @@ impl AndroidDriver {
         Ok(())
     }
 
-    async fn focused_text_delivery_state(&self, expected: &str) -> Result<Option<bool>> {
-        self.invalidate_cache().await;
-        let elements = self.get_ui_hierarchy().await?;
-
-        if let Some(focused) = elements.iter().find(|e| {
-            e.focused
-                && (e.class.contains("EditText")
-                    || e.class.contains("TextField")
-                    || e.class.contains("TextInput"))
-        }) {
-            if focused.password {
-                return Ok(None);
-            }
-
-            let actual_text = focused.text.trim();
-            let actual_desc = focused.content_desc.trim();
-            return Ok(Some(actual_text == expected || actual_desc == expected));
-        }
-
-        Ok(None)
-    }
-
-    async fn wait_for_focused_text_delivery(
-        &self,
-        expected: &str,
-        timeout: Duration,
-    ) -> Result<Option<bool>> {
-        let start = Instant::now();
-        let mut saw_verifiable_field = false;
-
-        while start.elapsed() < timeout {
-            match self.focused_text_delivery_state(expected).await? {
-                Some(true) => return Ok(Some(true)),
-                Some(false) => saw_verifiable_field = true,
-                None => {}
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-
-        Ok(if saw_verifiable_field { Some(false) } else { None })
-    }
 }
 
 #[async_trait]
@@ -1551,187 +1540,31 @@ impl PlatformDriver for AndroidDriver {
         Err(anyhow::anyhow!("Right click is not supported on Android"))
     }
 
-    async fn input_text(&self, text: &str, unicode: bool) -> Result<()> {
-        const ADBKEYBOARD_IME: &str = "com.android.adbkeyboard/.AdbIME";
-
+    async fn input_text(&self, text: &str, _unicode: bool) -> Result<()> {
         // Fast path: set the focused field's text directly via the agent's
         // AccessibilityNodeInfo.ACTION_SET_TEXT (public API, no reflection) over the
-        // already-open socket. Fully Unicode-safe (Java Strings are UTF-16) and doesn't
-        // touch the IME at all, so it replaces both the plain `adb shell input text`
-        // path (ASCII-only, escaping-fragile) AND the much slower ADBKeyBoard dance
-        // below (switch IME + poll to confirm + broadcast + poll again + switch IME
-        // back + poll again - each step a separate adb round-trip, ~1-1.5s measured).
-        // Falls back to the existing paths on any failure (agent unavailable, no
-        // focused field, action rejected by the target app).
+        // already-open socket. Fully Unicode-safe (Java Strings are UTF-16) regardless of
+        // the `unicode` flag, so it replaces both the plain `adb shell input text` path
+        // below (ASCII-only, escaping-fragile) and the ADBKeyBoard IME-switching dance
+        // this used to fall back to for unicode text. That ADBKeyBoard path was removed
+        // entirely (not just patched) after it was confirmed to be a genuine on-device
+        // reliability hazard: switching the system IME and failing partway used to skip
+        // restoring it, permanently stranding the device on ADBKeyBoard as its default
+        // keyboard for every subsequent run until manually fixed. The remaining fallback
+        // below (adb shell input text, converting non-ASCII to ASCII) only ever runs when
+        // the agent itself is unavailable.
         if self.try_mirror_set_text(text).await {
             return Ok(());
         }
 
-        // Fast path: when unicode is false, use direct input (no ADBKeyBoard overhead)
-        if !unicode {
-            // Simple direct input - fastest but may have issues with Vietnamese keyboard
-            let escaped = text
-                .replace("\\", "\\\\")
-                .replace(" ", "%s")
-                .replace("\"", "\\\"")
-                .replace("'", "\\'")
-                .replace("&", "\\&")
-                .replace("<", "\\<")
-                .replace(">", "\\>")
-                .replace("|", "\\|")
-                .replace(";", "\\;");
-
-            adb::shell(
-                self.serial.as_deref(),
-                &format!("{} text '{}'", self.input_prefix(), escaped),
-            )
-            .await?;
-
-            return Ok(());
-        }
-
-        // Unicode path: use ADBKeyBoard for reliable input (slower but handles all keyboards)
-        if unicode {
-            if !self.adbkeyboard_available {
-                anyhow::bail!(
-                    "unicode input requested but ADBKeyBoard IME is unavailable or disabled"
-                );
-            }
-
-            // Switch to ADBKeyBoard
-            let _ = adb::shell(
-                self.serial.as_deref(),
-                &format!("ime set {}", ADBKEYBOARD_IME),
-            )
-            .await;
-
-            // Wait and verify IME is active (poll up to 500ms)
-            let mut ime_ready = false;
-            for _ in 0..5 {
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                let current_ime = adb::shell(
-                    self.serial.as_deref(),
-                    "settings get secure default_input_method",
-                )
-                .await
-                .unwrap_or_default();
-                if current_ime.contains("adbkeyboard") {
-                    ime_ready = true;
-                    break;
-                }
-            }
-
-            if !ime_ready {
-                anyhow::bail!("failed to switch to ADBKeyBoard IME for unicode input");
-            }
-
-            // Escape text for broadcast
-            let escaped = text
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("$", "\\$")
-                .replace("`", "\\`");
-
-            // Send text via broadcast (retry once on failure)
-            let mut result = adb::shell(
-                self.serial.as_deref(),
-                &format!("am broadcast -a ADB_INPUT_TEXT --es msg \"{}\"", escaped),
-            )
-            .await;
-
-            if result.is_err() {
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                result = adb::shell(
-                    self.serial.as_deref(),
-                    &format!("am broadcast -a ADB_INPUT_TEXT --es msg \"{}\"", escaped),
-                )
-                .await;
-            }
-            result?;
-
-            match self
-                .wait_for_focused_text_delivery(text, Duration::from_millis(900))
-                .await?
-            {
-                Some(true) | None => {}
-                Some(false) => {
-                    result = adb::shell(
-                        self.serial.as_deref(),
-                        &format!("am broadcast -a ADB_INPUT_TEXT --es msg \"{}\"", escaped),
-                    )
-                    .await;
-                    result?;
-
-                    if self
-                        .wait_for_focused_text_delivery(text, Duration::from_millis(900))
-                        .await?
-                        == Some(false)
-                    {
-                        anyhow::bail!("unicode input broadcast completed but focused field text did not update");
-                    }
-                }
-            }
-
-            // Restore original IME (using cached value)
-            if !self.original_ime.is_empty() && self.original_ime != "null" {
-                let _ = adb::shell(
-                    self.serial.as_deref(),
-                    &format!("ime set {}", self.original_ime),
-                )
-                .await;
-
-                // Wait for keyboard to appear (poll up to 2000ms) with robust check
-                // ADBKeyBoard might leave mInputShown=true, so we also check if current IME matches original
-                println!(
-                    "    {} Restoring keyboard {}...",
-                    "\u{2328}".blue(),
-                    self.original_ime
-                );
-                let mut restored = false;
-                for _ in 0..10 {
-                    // 2 seconds
-                    tokio::time::sleep(Duration::from_millis(200)).await;
-                    let dumpsys = adb::shell(self.serial.as_deref(), "dumpsys input_method")
-                        .await
-                        .unwrap_or_default();
-
-                    let is_shown = dumpsys.contains("mInputShown=true")
-                        || dumpsys.contains("mIsInputViewShown=true");
-                    let is_correct_ime =
-                        dumpsys.contains(&format!("mCurMethodId={}", self.original_ime));
-
-                    if is_shown && is_correct_ime {
-                        restored = true;
-                        break;
-                    }
-                }
-
-                if !restored {
-                    println!(
-                        "    {} Failed to restore keyboard, trying to force it...",
-                        "\u{26A0}".yellow()
-                    );
-                    // Try to nudge it? Tapping the screen might help if we knew where.
-                    // Sending a non-destructive key event?
-                    // input keyevent 111 (ESC) hides it.
-                    // Let's just warn for now, as sending keyevents blindly is risky.
-                    // But user asked to "make sure".
-                    // Maybe it's just slow?
-                    tokio::time::sleep(Duration::from_millis(500)).await;
-                } else {
-                    println!("    {} Keyboard restored successfully", "\u{2705}".green());
-                }
-            }
-
-            return Ok(());
-        }
-
-        // Fallback: use standard input text
+        // Fallback: use standard input text (only reached if the agent is unavailable -
+        // converts non-ASCII to ASCII since this path can't do real Unicode input; see
+        // the fast path above for why that's rarely a problem in practice).
         let mut final_text = text.to_string();
 
         if text.chars().any(|c| !c.is_ascii()) {
             println!(
-                "  {} ADBKeyBoard not available, converting to ASCII.",
+                "  {} lm-android-tester agent unavailable, converting to ASCII.",
                 "⚠".yellow()
             );
             final_text = self.to_ascii_fallback(text);
@@ -1758,54 +1591,11 @@ impl PlatformDriver for AndroidDriver {
     }
 
     async fn erase_text(&self, char_count: Option<u32>) -> Result<()> {
-        const ADBKEYBOARD_IME: &str = "com.android.adbkeyboard/.AdbIME";
-
-        if char_count.is_none() && self.adbkeyboard_available {
-            let _ = adb::shell(
-                self.serial.as_deref(),
-                &format!("ime set {}", ADBKEYBOARD_IME),
-            )
-            .await;
-
-            let mut ime_ready = false;
-            for _ in 0..5 {
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                let current_ime = adb::shell(
-                    self.serial.as_deref(),
-                    "settings get secure default_input_method",
-                )
-                .await
-                .unwrap_or_default();
-                if current_ime.contains("adbkeyboard") {
-                    ime_ready = true;
-                    break;
-                }
-            }
-
-            if ime_ready {
-                let clear_result =
-                    adb::shell(self.serial.as_deref(), "am broadcast -a ADB_CLEAR_TEXT").await;
-                let clear_verified = if clear_result.is_ok() {
-                    self.wait_for_focused_text_delivery("", Duration::from_millis(900))
-                        .await?
-                        != Some(false)
-                } else {
-                    false
-                };
-
-                if !self.original_ime.is_empty() && self.original_ime != "null" {
-                    let _ = adb::shell(
-                        self.serial.as_deref(),
-                        &format!("ime set {}", self.original_ime),
-                    )
-                    .await;
-                }
-
-                if clear_verified {
-                    self.invalidate_cache().await;
-                    return Ok(());
-                }
-            }
+        // Fast path: only handles "erase everything" (char_count is None). Falls back to
+        // the DEL-key loop below on any failure (agent unavailable, no focused field).
+        if char_count.is_none() && self.try_mirror_erase_text().await {
+            self.invalidate_cache().await;
+            return Ok(());
         }
 
         let count = char_count.unwrap_or(100);
@@ -1822,17 +1612,29 @@ impl PlatformDriver for AndroidDriver {
     }
 
     async fn hide_keyboard(&self) -> Result<()> {
-        // Check if keyboard is currently visible (no delay needed since input_text waits for keyboard)
-        let dumpsys = adb::shell(self.serial.as_deref(), "dumpsys input_method")
-            .await
-            .unwrap_or_default();
-
-        let keyboard_visible =
-            dumpsys.contains("mInputShown=true") || dumpsys.contains("mIsInputViewShown=true");
+        // Check if keyboard is currently visible. Fast path via the agent
+        // (UiAutomation.getWindows(), no adb round-trip); falls back to the adb-based
+        // `dumpsys input_method` check on any failure. Never assume "not visible" just
+        // because the fast check failed - that would risk silently skipping a needed
+        // hide-keyboard action, whereas a wrong "visible" guess only costs one harmless
+        // extra BACK press below (still gated on this same check, so it can't misfire
+        // into an actual back-navigation when the keyboard is genuinely already closed).
+        let keyboard_visible = match self.try_mirror_is_keyboard_visible().await {
+            Some(visible) => visible,
+            None => {
+                let dumpsys = adb::shell(self.serial.as_deref(), "dumpsys input_method")
+                    .await
+                    .unwrap_or_default();
+                dumpsys.contains("mInputShown=true") || dumpsys.contains("mIsInputViewShown=true")
+            }
+        };
 
         if keyboard_visible {
-            // Keyboard is shown, use BACK to hide it
-            adb::shell(self.serial.as_deref(), "input keyevent 4").await?;
+            // Keyboard is shown, use BACK to hide it - fast path via the agent, falling
+            // back to `adb shell input keyevent` on failure.
+            if !self.try_mirror_key(4).await {
+                adb::shell(self.serial.as_deref(), "input keyevent 4").await?;
+            }
 
             // Wait for keyboard to hide
             tokio::time::sleep(Duration::from_millis(100)).await;

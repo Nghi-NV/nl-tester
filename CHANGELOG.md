@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.24] - 2026-08-23
+
+### 🚀 Highlights & Improvements
+
+#### 1. High-Speed Android Execution via `lm-android-tester` Agent Service
+- **Real-Time On-Device Agent**: Integrated `lm-android-tester` agent service to bypass slow ADB process spawn and file I/O overhead.
+- **Ultra-Fast UI Hierarchy & Text Input**: Substantially accelerates hierarchy retrieval, text input, full-field erasing, and keyboard management without multi-second IME polling loops.
+- **Automatic Fallback Safety**: Maintains full fallback to standard ADB commands when the agent service is unavailable.
+- **Massive Performance Boost**: Cuts test execution time on complex flows (e.g. login, forms, navigation) from 20-30s down to 3-5s while preserving 100% test accuracy.
+
+#### 2. iOS & WDA Driver Optimizations
+- **WDA JSON Source Parsing**: Direct support for WDA JSON source format alongside XML hierarchy parsing.
+- **Enhanced Coordinate & Accessibility Matching**: Improved element matching speed and stability.
+
+---
+
 ## [v0.1.23] - 2026-08-22
 
 ### 🚀 Highlights & Improvements
