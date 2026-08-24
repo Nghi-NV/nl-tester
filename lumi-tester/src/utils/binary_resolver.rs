@@ -287,9 +287,21 @@ pub fn find_apk(name: &str) -> Option<PathBuf> {
         #[cfg(target_os = "windows")]
         {
             if let Some(exe_dir) = exe_path.parent() {
+                // Standard: exe_dir/resources/apk/[name]
                 let apk_path = exe_dir.join("resources").join("apk").join(name);
                 if apk_path.exists() {
                     return Some(apk_path);
+                }
+                // Nested (Tauri v2 bundles with broad glob patterns can produce this -
+                // see the analogous case in find_bundled_binary_with_logs above):
+                // exe_dir/resources/resources/apk/[name]
+                let nested_path = exe_dir
+                    .join("resources")
+                    .join("resources")
+                    .join("apk")
+                    .join(name);
+                if nested_path.exists() {
+                    return Some(nested_path);
                 }
             }
         }

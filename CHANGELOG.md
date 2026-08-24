@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.27] - 2026-08-24
+
+### 🚀 Highlights & Improvements
+
+#### 1. Embedded Android Agent APK & Binary Resolution
+- **Embedded Agent APK**: Bundled `lm-android-tester.apk` directly inside the CLI binary using compile-time embedding (`include_bytes!`), ensuring reliable fast UI automation on machines installed via official packaging without relying on loose source files.
+- **Nested APK Discovery for Windows**: Added support for nested Tauri bundle resource directories (`resources/resources/apk/`).
+
+#### 2. Enhanced Upgrade CLI with Progress Indicators & Multi-IDE Extension Installer
+- **Real-Time Progress Bars**: Added percentage, speed, and elapsed time indicators for CLI binary download and VSIX extension download/installation.
+- **Multi-IDE Auto-Discovery & Installation**: Automatically detects and installs the Lumi Tester extension into all available IDEs (VS Code, Antigravity IDE, Cursor, Windsurf, VSCodium, VS Code Insiders) across Windows, macOS, and Linux.
+
+---
+
 ## [v0.1.26] - 2026-08-24
 
 ### 🚀 Highlights & Improvements

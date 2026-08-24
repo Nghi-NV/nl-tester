@@ -23,9 +23,44 @@ async fn install_components(_all: bool) -> Result<()> {
     // 1. Check and install ADB
     install_adb(&install_dir).await?;
 
+    // 2. Install the lm-android-tester agent APK (fast UI-automation path for
+    // Android). Unlike ADB this isn't downloaded - the release installer (Windows
+    // .iss / macOS .pkg) never bundles `resources/apk/`, so without this step the
+    // APK was never reachable on a machine that installed via the official
+    // installer instead of running from the source checkout. The APK is small and
+    // changes rarely, so it's embedded directly in the CLI binary and just written
+    // out here - see AgentService::find_apk_path / binary_resolver::find_apk for
+    // where it's looked up afterwards.
+    install_agent_apk(&install_dir)?;
+
     println!("\n{}", "All system components are ready!".green().bold());
     println!("Installation directory: {}", install_dir.display());
 
+    Ok(())
+}
+
+/// Bytes of the lm-android-tester agent APK, embedded at compile time from the
+/// tracked `resources/apk/lm-android-tester.apk`. Rebuild+recommit that file
+/// whenever `lm-android-tester`'s source changes; nothing else needs to change.
+const AGENT_APK_BYTES: &[u8] = include_bytes!("../../resources/apk/lm-android-tester.apk");
+
+fn install_agent_apk(install_dir: &Path) -> Result<()> {
+    let apk_dir = install_dir.join("apk");
+    let apk_path = apk_dir.join("lm-android-tester.apk");
+
+    if apk_path.exists() {
+        if let Ok(metadata) = fs::metadata(&apk_path) {
+            if metadata.len() == AGENT_APK_BYTES.len() as u64 {
+                println!("{} lm-android-tester agent APK is already installed.", "✓".green());
+                return Ok(());
+            }
+        }
+    }
+
+    println!("{} Installing lm-android-tester agent APK...", "⬇️".yellow());
+    fs::create_dir_all(&apk_dir)?;
+    fs::write(&apk_path, AGENT_APK_BYTES).context("Failed to write agent APK")?;
+    println!("{} Agent APK installed successfully.", "✓".green());
     Ok(())
 }
 
