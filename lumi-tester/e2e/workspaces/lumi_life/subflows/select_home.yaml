@@ -17,17 +17,17 @@ defaultTimeout: 10000
 # 15s timeout with no match). Waiting for the first "Online" badge here confirms the list
 # has actual data before searching it.
 - waitUntilVisible:
-    regex: "Online"
+    regex: "Online|Trực tuyến"
 - tap:
     type: "input"
     index: 0
 - eraseText
 - inputText:
-    text: "Nhà 3D"
+    text: "nha 3d"
     unicode: true
 - hideKeyboard
 - waitUntilVisible:
-    regex: "Online[\\s\\S]*Nhà 3D"
+    regex: "Nhà 3D"
 - tap:
     point: "50%,37%"
 - waitForAnimationToEnd

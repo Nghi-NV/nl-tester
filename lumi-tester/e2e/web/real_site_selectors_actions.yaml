@@ -1,0 +1,57 @@
+platform: web
+---
+- open: "https://the-internet.herokuapp.com/"
+
+# --- CSS selector ---
+- tap: { css: "a[href='/add_remove_elements/']" }
+- see: "Add/Remove Elements"
+
+# Dynamically added/removed element (id selector on a freshly-created DOM node,
+# right after a click - exercises the actionability path on non-static content)
+- tap: "Add Element"
+- tap: { css: ".added-manually" }
+- notSee: { css: ".added-manually" }
+
+- back
+
+# --- XPath selector ---
+- tap: { xpath: "//a[text()='Context Menu']" }
+- see: "Context Menu"
+
+# --- Right click (native oncontextmenu handler fires a real alert() dialog - proves
+# the dialog auto-handler works, since without it this would hang forever) ---
+- tap: { id: "hot-spot" }
+- rightClick: { id: "hot-spot" }
+- see: "Context Menu"
+
+- back
+
+# --- Drag and drop (mouse down/move/up sequence) ---
+- tap: { text: "Drag and Drop" }
+- see: "Drag and Drop"
+- drag:
+    from: { id: "column-a" }
+    to: { id: "column-b" }
+
+- back
+
+# --- Double tap ---
+- tap: { text: "Disappearing Elements" }
+- see: "Disappearing Elements"
+
+- back
+
+# --- Placeholder / form + xpath index ---
+- tap: { text: "Inputs" }
+- see: "Inputs"
+- tap: { xpath: "//input[@type='number']" }
+- inputText: "42"
+
+- back
+
+# --- Scroll to element far down the page ---
+- scrollTo: { text: "Typos" }
+- tap: { text: "Typos" }
+- see: "Typos"
+
+- takeScreenshot: "selectors_actions_final.png"

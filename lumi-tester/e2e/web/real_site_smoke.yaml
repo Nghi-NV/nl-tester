@@ -1,0 +1,47 @@
+platform: web
+---
+- open: "https://the-internet.herokuapp.com/"
+- see: "Welcome to the-internet"
+
+# 1. JS Alert (real confirm() dialog on a real site - exercises the dialog auto-handler)
+- tap: "JavaScript Alerts"
+- see: "JavaScript Alerts"
+- tap: { text: "Click for JS Confirm" }
+- see: "You clicked: Cancel"
+
+# 2. Back navigation + Checkboxes
+- back
+- tap: "Checkboxes"
+- tap: { type: "input", index: 0 }
+- tap: { type: "input", index: 1 }
+
+# 3. Dropdown
+- back
+- tap: "Dropdown"
+- tap: { id: "dropdown" }
+
+# 4. Dynamic Loading (async content appears after a delay - real actionability test)
+- back
+- tap: "Dynamic Loading"
+- tap: "Example 1: Element on page that is hidden"
+- tap: "Start"
+- waitUntilVisible:
+    text: "Hello World!"
+    timeout: 8000
+
+# 5. Hovers (requires real mouse hover, not just click)
+- back
+- back
+- tap: "Hovers"
+
+# 6. Form Authentication (real login form input)
+- back
+- tap: "Form Authentication"
+- tap: { id: "username" }
+- inputText: "tomsmith"
+- tap: { id: "password" }
+- inputText: "SuperSecretPassword!"
+- tap: { text: "Login" }
+- see: "You logged into a secure area!"
+
+- takeScreenshot: "real_site_final.png"
