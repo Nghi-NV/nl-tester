@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.29] - 2026-08-24
+
+### 🚀 Highlights & Improvements
+
+#### 1. Real-Time Download Progress Indicator Reliability
+- **Explicit Stdout Progress Rendering**: Configured `ProgressBar` with `ProgressDrawTarget::stdout()` and enabled steady ticking (`80ms`), ensuring streaming progress bars render smoothly on all terminals (Windows CMD, PowerShell, Git Bash, macOS zsh, Linux bash).
+- **Dual TTY & Non-TTY Fallback Logging**: Automatically outputs periodic percentage checkpoints (`[25%]`, `[50%]`, `[75%]`, `[100%]`) when running in redirected streams, CI environments, or background jobs.
+- **Paced Installation Transition**: Added visual pacing across permissions, binary swap, and completion steps so processing percentage indicators remain clearly readable.
+
+---
+
 ## [v0.1.28] - 2026-08-24
 
 ### 🚀 Highlights & Improvements
