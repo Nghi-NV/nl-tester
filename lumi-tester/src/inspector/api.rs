@@ -215,39 +215,40 @@ async fn get_screenshot(
         cur.clone().or_else(|| state.device_serial.clone())
     };
     let target_app_clone = target_app.clone();
-    let screenshot_future = state.screen_capture.capture_base64_with_target(target_app_clone.as_deref());
-    let serial = target_app.clone();
+    let target = match platform.as_str() {
+        "macos" => target_app.clone(),
+        _ => state.device_serial.clone(),
+    };
 
     // If skipping hierarchy, use a dummy future that returns "skipped" immediately
     let hierarchy_future = async move {
         if skip_hierarchy {
             Err("Skipped".to_string())
-        } else if platform == "macos" {
-            screen_capture::get_hierarchy_macos(serial.as_deref())
-                .await
-                .map_err(|e| e.to_string())
         } else {
-            screen_capture::get_hierarchy_android(serial.as_deref())
+            screen_capture::get_hierarchy_for_platform(&platform, target.as_deref())
                 .await
                 .map_err(|e| e.to_string())
         }
     };
 
+    let screenshot_future =
+        state.screen_capture.capture_base64_with_target(target_app_clone.as_deref());
+
     // Capture in parallel (if not skipped)
     let (screenshot_result, hierarchy_result) = tokio::join!(screenshot_future, hierarchy_future);
 
     // Update cache if we got new hierarchy
-    if let Ok(hierarchy_xml) = hierarchy_result {
-        let elements_res = if state.screen_capture.platform() == "macos" {
-            Ok(screen_capture::parse_macos_hierarchy_to_ui_elements(
-                &hierarchy_xml,
-                target_app.as_deref().unwrap_or(""),
-            ))
-        } else {
-            uiautomator::parse_hierarchy(&hierarchy_xml)
-        };
+    if let Ok(hierarchy_data) = hierarchy_result {
+        let (dim_w, dim_h) = state.screen_capture.dimensions();
+        let elements = screen_capture::parse_hierarchy_for_platform(
+            state.screen_capture.platform(),
+            &hierarchy_data,
+            target_app.as_deref().unwrap_or(""),
+            dim_w,
+            dim_h,
+        );
 
-        if let Ok(elements) = elements_res {
+        if !elements.is_empty() {
             let mut cache = state.cached_hierarchy.lock().unwrap();
             *cache = Some(CachedHierarchy { elements });
         }
@@ -287,62 +288,54 @@ async fn get_element_at(
         Some(e) => e,
         None => {
             // No cache, need to dump (first time)
-            if state.screen_capture.platform() == "macos" {
-                let hierarchy = match screen_capture::get_hierarchy_macos(target_app.as_deref()).await {
+            let platform = state.screen_capture.platform();
+            let target = match platform {
+                "macos" => target_app.clone(),
+                _ => state.device_serial.clone(),
+            };
+            let raw_hierarchy =
+                match screen_capture::get_hierarchy_for_platform(platform, target.as_deref())
+                    .await
+                {
                     Ok(h) => h,
                     Err(_) => {
-                            return Json(ElementResponse {
-                                found: false,
-                                selectors: vec![],
-                                element_class: None,
-                                element_text: None,
-                                bounds: None,
-                                app_id: None,
-                                supported_commands: vec![],
-                                hierarchy: vec![],
-                                attributes: std::collections::HashMap::new(),
-                            });
+                        return Json(ElementResponse {
+                            found: false,
+                            selectors: vec![],
+                            element_class: None,
+                            element_text: None,
+                            bounds: None,
+                            app_id: None,
+                            supported_commands: vec![],
+                            hierarchy: vec![],
+                            attributes: std::collections::HashMap::new(),
+                        });
                     }
                 };
-                screen_capture::parse_macos_hierarchy_to_ui_elements(
-                    &hierarchy,
-                    target_app.as_deref().unwrap_or(""),
-                )
-            } else {
-                let hierarchy =
-                    match screen_capture::get_hierarchy_android(target_app.as_deref()).await {
-                        Ok(h) => h,
-                        Err(_e) => {
-                            return Json(ElementResponse {
-                                found: false,
-                                selectors: vec![],
-                                element_class: None,
-                                element_text: None,
-                                bounds: None,
-                                app_id: None,
-                                supported_commands: vec![],
-                                hierarchy: vec![],
-                                attributes: std::collections::HashMap::new(),
-                            });
-                        }
-                    };
-                match uiautomator::parse_hierarchy(&hierarchy) {
-                    Ok(e) => e,
-                    Err(_) => {
-                            return Json(ElementResponse {
-                                found: false,
-                                selectors: vec![],
-                                element_class: None,
-                                element_text: None,
-                                bounds: None,
-                                app_id: None,
-                                supported_commands: vec![],
-                                hierarchy: vec![],
-                                attributes: std::collections::HashMap::new(),
-                            });
-                    }
-                }
+
+            let (dim_w, dim_h) = state.screen_capture.dimensions();
+            let parsed = screen_capture::parse_hierarchy_for_platform(
+                platform,
+                &raw_hierarchy,
+                target_app.as_deref().unwrap_or(""),
+                dim_w,
+                dim_h,
+            );
+
+            if parsed.is_empty() {
+                return Json(ElementResponse {
+                    found: false,
+                    selectors: vec![],
+                    element_class: None,
+                    element_text: None,
+                    bounds: None,
+                    app_id: None,
+                    supported_commands: vec![],
+                    hierarchy: vec![],
+                    attributes: std::collections::HashMap::new(),
+                });
             }
+            parsed
         }
     };
 
@@ -650,12 +643,24 @@ async fn get_hierarchy(State(state): State<Arc<AppState>>) -> impl IntoResponse 
     let elements = if let Some(e) = cached {
         e
     } else {
-        // Fetch fresh
-        match screen_capture::get_hierarchy_android(state.device_serial.as_deref()).await {
-            Ok(xml) => match uiautomator::parse_hierarchy(&xml) {
-                Ok(e) => e,
-                Err(_) => vec![],
-            },
+        let platform = state.screen_capture.platform();
+        let target_app = {
+            let cur = state.current_target_app.lock().unwrap();
+            cur.clone().or_else(|| state.device_serial.clone())
+        };
+        let target = match platform {
+            "macos" => target_app.clone(),
+            _ => state.device_serial.clone(),
+        };
+        let (dim_w, dim_h) = state.screen_capture.dimensions();
+        match screen_capture::get_hierarchy_for_platform(platform, target.as_deref()).await {
+            Ok(raw) => screen_capture::parse_hierarchy_for_platform(
+                platform,
+                &raw,
+                target_app.as_deref().unwrap_or(""),
+                dim_w,
+                dim_h,
+            ),
             Err(_) => vec![],
         }
     };

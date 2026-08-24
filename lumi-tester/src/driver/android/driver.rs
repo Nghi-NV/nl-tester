@@ -1991,12 +1991,21 @@ impl PlatformDriver for AndroidDriver {
     }
 
     async fn dump_ui_hierarchy(&self) -> Result<String> {
+        if let Some(xml) = self.try_fast_hierarchy_dump().await {
+            return Ok(xml);
+        }
+
+        if let Ok(output) = adb::exec_out(self.serial.as_deref(), "uiautomator dump /dev/stdout").await {
+            if output.contains("<?xml") {
+                return Ok(output);
+            }
+        }
+
         adb::shell(
             self.serial.as_deref(),
-            "uiautomator dump /sdcard/window_dump.xml",
+            "uiautomator dump /sdcard/window_dump.xml > /dev/null && cat /sdcard/window_dump.xml",
         )
-        .await?;
-        adb::shell(self.serial.as_deref(), "cat /sdcard/window_dump.xml").await
+        .await
     }
 
     async fn tap_by_type_index(&self, element_type: &str, index: u32) -> Result<()> {

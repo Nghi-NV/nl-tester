@@ -139,15 +139,19 @@ if !appParam.isEmpty {
         }
     }
 }
+
 if targetApp == nil {
     targetApp = NSWorkspace.shared.frontmostApplication
 }
+
 guard let app = targetApp else {
     print("<hierarchy platform=\"macos\"/>")
     exit(0)
 }
 
 let appElement = AXUIElementCreateApplication(app.processIdentifier)
+_ = AXUIElementSetAttributeValue(appElement, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+_ = AXUIElementSetAttributeValue(appElement, "AXManualAccessibility" as CFString, kCFBooleanTrue)
 
 func xmlEscape(_ text: String) -> String {
     return text
@@ -158,7 +162,10 @@ func xmlEscape(_ text: String) -> String {
         .replacingOccurrences(of: "'", with: "&apos;")
 }
 
+var dumpedCount = 0
 func dumpNode(_ element: AXUIElement, depth: Int) {
+    if depth > 12 { return }
+
     var roleVal: CFTypeRef?
     var titleVal: CFTypeRef?
     var descVal: CFTypeRef?
@@ -189,8 +196,11 @@ func dumpNode(_ element: AXUIElement, depth: Int) {
     let ident = idVal != nil ? "\(idVal!)" : ""
     let placeholder = placeholderVal != nil ? "\(placeholderVal!)" : ""
 
-    let indent = String(repeating: "  ", count: depth + 1)
-    print("\(indent)<element role=\"\(xmlEscape(role))\" title=\"\(xmlEscape(title))\" description=\"\(xmlEscape(desc))\" value=\"\(xmlEscape(val))\" placeholder=\"\(xmlEscape(placeholder))\" id=\"\(xmlEscape(ident))\" x=\"\(Int(point.x))\" y=\"\(Int(point.y))\" width=\"\(Int(size.width))\" height=\"\(Int(size.height))\"/>")
+    if size.width > 0 && size.height > 0 {
+        dumpedCount += 1
+        let indent = String(repeating: "  ", count: depth + 1)
+        print("\(indent)<element role=\"\(xmlEscape(role))\" title=\"\(xmlEscape(title))\" description=\"\(xmlEscape(desc))\" value=\"\(xmlEscape(val))\" placeholder=\"\(xmlEscape(placeholder))\" id=\"\(xmlEscape(ident))\" x=\"\(Int(point.x))\" y=\"\(Int(point.y))\" width=\"\(Int(size.width))\" height=\"\(Int(size.height))\"/>")
+    }
 
     var childrenVal: CFTypeRef?
     if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenVal) == .success,
@@ -210,6 +220,24 @@ if AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &w
     }
 } else {
     dumpNode(appElement, depth: 0)
+}
+
+if dumpedCount == 0 {
+    let options = CGWindowListOption(arrayLiteral: .excludeDesktopElements, .optionOnScreenOnly)
+    if let windowList = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] {
+        for info in windowList {
+            guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0 else { continue }
+            guard let boundsDict = info[kCGWindowBounds as String] as? [String: Any],
+                  let x = boundsDict["X"] as? Double,
+                  let y = boundsDict["Y"] as? Double,
+                  let w = boundsDict["Width"] as? Double,
+                  let h = boundsDict["Height"] as? Double,
+                  w > 30 && h > 30 else { continue }
+            let owner = (info[kCGWindowOwnerName as String] as? String) ?? ""
+            let name = (info[kCGWindowName as String] as? String) ?? ""
+            print("  <element role=\"AXWindow\" title=\"\(xmlEscape(owner)): \(xmlEscape(name))\" x=\"\(Int(x))\" y=\"\(Int(y))\" width=\"\(Int(w))\" height=\"\(Int(h))\" clickable=\"true\"/>")
+        }
+    }
 }
 print("</hierarchy>")
 "#;

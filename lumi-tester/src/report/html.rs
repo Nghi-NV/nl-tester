@@ -34,25 +34,230 @@ pub struct UiElementBox {
     pub clickable: bool,
 }
 
-fn extract_ui_elements(xml: &str) -> Vec<UiElementBox> {
-    let mut list = Vec::new();
-    if let Ok(elements) = crate::driver::android::uiautomator::parse_hierarchy(xml) {
-        for el in elements {
-            if el.bounds.right > el.bounds.left && el.bounds.bottom > el.bounds.top {
-                list.push(UiElementBox {
-                    left: el.bounds.left,
-                    top: el.bounds.top,
-                    right: el.bounds.right,
-                    bottom: el.bounds.bottom,
-                    text: el.text,
-                    id: el.resource_id,
-                    class: el.class,
-                    desc: el.content_desc,
-                    clickable: el.clickable,
-                });
+fn parse_bounds_str(val: &str) -> Option<(i32, i32, i32, i32)> {
+    let parts: Vec<&str> = val
+        .trim_matches(|c| c == '[' || c == ']')
+        .split("][")
+        .collect();
+    if parts.len() == 2 {
+        let p1: Vec<&str> = parts[0].split(',').collect();
+        let p2: Vec<&str> = parts[1].split(',').collect();
+        if p1.len() == 2 && p2.len() == 2 {
+            let left = p1[0].trim().parse::<i32>().ok()?;
+            let top = p1[1].trim().parse::<i32>().ok()?;
+            let right = p2[0].trim().parse::<i32>().ok()?;
+            let bottom = p2[1].trim().parse::<i32>().ok()?;
+            return Some((left, top, right, bottom));
+        }
+    }
+    None
+}
+
+fn extract_ui_elements(content: &str) -> Vec<UiElementBox> {
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+
+    // 1. Android UIAutomator XML format (<node bounds="[l,t][r,b]" ...)
+    if let Ok(elements) = crate::driver::android::uiautomator::parse_hierarchy(trimmed) {
+        if !elements.is_empty() {
+            let mut list = Vec::new();
+            for el in elements {
+                if el.bounds.right > el.bounds.left && el.bounds.bottom > el.bounds.top {
+                    list.push(UiElementBox {
+                        left: el.bounds.left,
+                        top: el.bounds.top,
+                        right: el.bounds.right,
+                        bottom: el.bounds.bottom,
+                        text: el.text,
+                        id: el.resource_id,
+                        class: el.class,
+                        desc: el.content_desc,
+                        clickable: el.clickable,
+                    });
+                }
+            }
+            if !list.is_empty() {
+                return list;
             }
         }
     }
+
+    // 2. iOS JSON hierarchy format (idb / WDA)
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        if let Ok(elements) = crate::driver::ios::accessibility::parse_ui_hierarchy(trimmed) {
+            let flat = crate::driver::ios::accessibility::flatten_elements(&elements);
+            let mut list = Vec::new();
+            for el in flat {
+                let left = el.frame.x.round() as i32;
+                let top = el.frame.y.round() as i32;
+                let right = (el.frame.x + el.frame.width).round() as i32;
+                let bottom = (el.frame.y + el.frame.height).round() as i32;
+                if right > left && bottom > top {
+                    let text = el
+                        .label
+                        .clone()
+                        .or_else(|| el.value.clone())
+                        .unwrap_or_default();
+                    let id = el.identifier.clone().unwrap_or_default();
+                    let class = el.element_type.clone().unwrap_or_default();
+                    let desc = el.placeholder.clone().unwrap_or_default();
+                    let clickable = el.enabled
+                        && (class.contains("Button")
+                            || class.contains("TextField")
+                            || class.contains("Cell")
+                            || class.contains("Switch")
+                            || class.contains("Link")
+                            || class.contains("SegmentedControl"));
+                    list.push(UiElementBox {
+                        left,
+                        top,
+                        right,
+                        bottom,
+                        text,
+                        id,
+                        class,
+                        desc,
+                        clickable,
+                    });
+                }
+            }
+            if !list.is_empty() {
+                return list;
+            }
+        }
+    }
+
+    // 3. Generic XML format for macOS, Windows, and Web hierarchies
+    // Matches <element x=".." y=".." width=".." height=".." ... /> and similar variants
+    let mut list = Vec::new();
+    let mut reader = quick_xml::Reader::from_str(trimmed);
+    reader.trim_text(true);
+    let mut buf = Vec::new();
+
+    while let Ok(event) = reader.read_event_into(&mut buf) {
+        match event {
+            quick_xml::events::Event::Start(ref e) | quick_xml::events::Event::Empty(ref e) => {
+                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                if tag_name == "element" || tag_name == "node" || tag_name == "item" {
+                    let mut x: Option<i32> = None;
+                    let mut y: Option<i32> = None;
+                    let mut width: Option<i32> = None;
+                    let mut height: Option<i32> = None;
+                    let mut left: Option<i32> = None;
+                    let mut top: Option<i32> = None;
+                    let mut right: Option<i32> = None;
+                    let mut bottom: Option<i32> = None;
+                    let mut text = String::new();
+                    let mut id = String::new();
+                    let mut class = String::new();
+                    let mut desc = String::new();
+                    let mut clickable = false;
+
+                    for attr in e.attributes().flatten() {
+                        let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
+                        let val = String::from_utf8_lossy(&attr.value).to_string();
+
+                        match key.as_str() {
+                            "x" => x = val.parse::<f64>().ok().map(|v| v.round() as i32),
+                            "y" => y = val.parse::<f64>().ok().map(|v| v.round() as i32),
+                            "width" | "w" => {
+                                width = val.parse::<f64>().ok().map(|v| v.round() as i32)
+                            }
+                            "height" | "h" => {
+                                height = val.parse::<f64>().ok().map(|v| v.round() as i32)
+                            }
+                            "left" => left = val.parse::<f64>().ok().map(|v| v.round() as i32),
+                            "top" => top = val.parse::<f64>().ok().map(|v| v.round() as i32),
+                            "right" => right = val.parse::<f64>().ok().map(|v| v.round() as i32),
+                            "bottom" => bottom = val.parse::<f64>().ok().map(|v| v.round() as i32),
+                            "bounds" => {
+                                if let Some((l, t, r, b)) = parse_bounds_str(&val) {
+                                    left = Some(l);
+                                    top = Some(t);
+                                    right = Some(r);
+                                    bottom = Some(b);
+                                }
+                            }
+                            "text" | "name" | "title" | "value" | "label" => {
+                                if text.is_empty() && !val.trim().is_empty() {
+                                    text = val;
+                                }
+                            }
+                            "id" | "resource-id" | "automation_id" | "identifier" => {
+                                if id.is_empty() && !val.trim().is_empty() {
+                                    id = val;
+                                }
+                            }
+                            "class" | "type" | "role" | "tag" | "control_type" => {
+                                if class.is_empty() && !val.trim().is_empty() {
+                                    class = val;
+                                }
+                            }
+                            "description" | "desc" | "content-desc" | "help_text"
+                            | "placeholder" => {
+                                if desc.is_empty() && !val.trim().is_empty() {
+                                    desc = val;
+                                }
+                            }
+                            "clickable" => clickable = val == "true" || val == "1",
+                            "enabled" => {
+                                if val == "true"
+                                    && (class.contains("Button")
+                                        || class.contains("Link")
+                                        || class.contains("Input"))
+                                {
+                                    clickable = true;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    let (final_l, final_t, final_r, final_b) =
+                        match (left, top, right, bottom, x, y, width, height) {
+                            (Some(l), Some(t), Some(r), Some(b), ..) => (l, t, r, b),
+                            (_, _, _, _, Some(px), Some(py), Some(pw), Some(ph)) => {
+                                (px, py, px + pw, py + ph)
+                            }
+                            _ => (0, 0, 0, 0),
+                        };
+
+                    if final_r > final_l && final_b > final_t {
+                        if !clickable {
+                            let lc = class.to_lowercase();
+                            if lc.contains("button")
+                                || lc.contains("input")
+                                || lc.contains("link")
+                                || lc.contains("select")
+                                || lc.contains("checkbox")
+                                || lc.contains("switch")
+                            {
+                                clickable = true;
+                            }
+                        }
+
+                        list.push(UiElementBox {
+                            left: final_l,
+                            top: final_t,
+                            right: final_r,
+                            bottom: final_b,
+                            text,
+                            id,
+                            class,
+                            desc,
+                            clickable,
+                        });
+                    }
+                }
+            }
+            quick_xml::events::Event::Eof => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+
     list
 }
 
@@ -1927,6 +2132,86 @@ mod tests {
         assert!(index_content.contains("1.2s"));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_extract_ui_elements_multi_platform() {
+        // 1. Android XML
+        let android_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <hierarchy rotation="0">
+            <node text="Login" resource-id="com.example:id/login_btn" class="android.widget.Button" package="com.example" content-desc="" bounds="[100,200][300,280]" clickable="true" enabled="true"/>
+        </hierarchy>"#;
+        let android_boxes = extract_ui_elements(android_xml);
+        assert_eq!(android_boxes.len(), 1);
+        assert_eq!(android_boxes[0].left, 100);
+        assert_eq!(android_boxes[0].top, 200);
+        assert_eq!(android_boxes[0].right, 300);
+        assert_eq!(android_boxes[0].bottom, 280);
+        assert_eq!(android_boxes[0].text, "Login");
+        assert_eq!(android_boxes[0].id, "com.example:id/login_btn");
+        assert!(android_boxes[0].clickable);
+
+        // 2. iOS JSON
+        let ios_json = r#"[
+            {
+                "AXLabel": "Submit",
+                "AXUniqueId": "submit_btn",
+                "type": "Button",
+                "frame": { "x": 50.0, "y": 150.0, "width": 200.0, "height": 44.0 },
+                "enabled": true,
+                "visible": true
+            }
+        ]"#;
+        let ios_boxes = extract_ui_elements(ios_json);
+        assert_eq!(ios_boxes.len(), 1);
+        assert_eq!(ios_boxes[0].left, 50);
+        assert_eq!(ios_boxes[0].top, 150);
+        assert_eq!(ios_boxes[0].right, 250);
+        assert_eq!(ios_boxes[0].bottom, 194);
+        assert_eq!(ios_boxes[0].text, "Submit");
+        assert_eq!(ios_boxes[0].id, "submit_btn");
+        assert!(ios_boxes[0].clickable);
+
+        // 3. macOS XML
+        let macos_xml = r#"<hierarchy platform="macos">
+            <element role="AXButton" title="Save" description="Save document" value="" placeholder="" id="save_action" x="80" y="120" width="100" height="30"/>
+        </hierarchy>"#;
+        let macos_boxes = extract_ui_elements(macos_xml);
+        assert_eq!(macos_boxes.len(), 1);
+        assert_eq!(macos_boxes[0].left, 80);
+        assert_eq!(macos_boxes[0].top, 120);
+        assert_eq!(macos_boxes[0].right, 180);
+        assert_eq!(macos_boxes[0].bottom, 150);
+        assert_eq!(macos_boxes[0].text, "Save");
+        assert_eq!(macos_boxes[0].id, "save_action");
+        assert!(macos_boxes[0].clickable);
+
+        // 4. Windows XML
+        let win_xml = r#"<hierarchy platform="windows">
+            <element type="Button" name="OK" id="ok_btn" class="Button" description="" offscreen="false" x="200" y="400" width="120" height="40"/>
+        </hierarchy>"#;
+        let win_boxes = extract_ui_elements(win_xml);
+        assert_eq!(win_boxes.len(), 1);
+        assert_eq!(win_boxes[0].left, 200);
+        assert_eq!(win_boxes[0].top, 400);
+        assert_eq!(win_boxes[0].right, 320);
+        assert_eq!(win_boxes[0].bottom, 440);
+        assert_eq!(win_boxes[0].text, "OK");
+        assert_eq!(win_boxes[0].id, "ok_btn");
+
+        // 5. Web XML
+        let web_xml = r#"<hierarchy platform="web">
+            <element tag="button" id="submit_form" class="btn btn-primary" text="Checkout" x="300" y="500" width="150" height="45" clickable="true"/>
+        </hierarchy>"#;
+        let web_boxes = extract_ui_elements(web_xml);
+        assert_eq!(web_boxes.len(), 1);
+        assert_eq!(web_boxes[0].left, 300);
+        assert_eq!(web_boxes[0].top, 500);
+        assert_eq!(web_boxes[0].right, 450);
+        assert_eq!(web_boxes[0].bottom, 545);
+        assert_eq!(web_boxes[0].text, "Checkout");
+        assert_eq!(web_boxes[0].id, "submit_form");
+        assert!(web_boxes[0].clickable);
     }
 }
 
