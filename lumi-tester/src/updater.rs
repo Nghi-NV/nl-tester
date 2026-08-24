@@ -2,7 +2,8 @@ use anyhow::{anyhow, Context, Result};
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,21 +162,221 @@ pub async fn fetch_version_check(repo: &str) -> Result<VersionCheckReport> {
     })
 }
 
-fn detect_installed_extension_version() -> Option<String> {
-    let output = Command::new("code")
-        .args(["--list-extensions", "--show-versions"])
-        .output()
-        .ok()?;
+#[derive(Debug, Clone)]
+pub struct SupportedIde {
+    pub name: String,
+    pub executable: PathBuf,
+}
 
-    if !output.status.success() {
-        return None;
+pub fn discover_supported_ides() -> Vec<SupportedIde> {
+    let mut ides = Vec::new();
+    let mut seen_paths = HashSet::new();
+
+    #[allow(dead_code)]
+    struct Candidate {
+        name: &'static str,
+        bins: &'static [&'static str],
+        mac_paths: &'static [&'static str],
+        win_env_paths: &'static [(&'static str, &'static str)],
+        linux_paths: &'static [&'static str],
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        if line.contains("lumi-tester") || line.contains("lumijsc.lumi-tester") {
-            if let Some((_, ver)) = line.split_once('@') {
-                return Some(ver.trim().to_string());
+    let candidates = [
+        Candidate {
+            name: "VS Code",
+            bins: &["code", "code.cmd", "code.exe"],
+            mac_paths: &[
+                "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
+                "~/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
+            ],
+            win_env_paths: &[
+                ("LOCALAPPDATA", "Programs\\Microsoft VS Code\\bin\\code.cmd"),
+                ("PROGRAMFILES", "Microsoft VS Code\\bin\\code.cmd"),
+                ("ProgramFiles(x86)", "Microsoft VS Code\\bin\\code.cmd"),
+            ],
+            linux_paths: &["/usr/bin/code", "/usr/share/code/bin/code", "/snap/bin/code"],
+        },
+        Candidate {
+            name: "Antigravity IDE",
+            bins: &["antigravity", "antigravity.cmd", "antigravity.exe"],
+            mac_paths: &[
+                "/Applications/Antigravity.app/Contents/Resources/app/bin/antigravity",
+                "~/Applications/Antigravity.app/Contents/Resources/app/bin/antigravity",
+                "~/.antigravity/antigravity/bin/antigravity",
+            ],
+            win_env_paths: &[
+                ("LOCALAPPDATA", "Programs\\Antigravity\\bin\\antigravity.cmd"),
+                ("LOCALAPPDATA", "Programs\\Antigravity\\Antigravity.exe"),
+                ("PROGRAMFILES", "Antigravity\\bin\\antigravity.cmd"),
+                ("USERPROFILE", ".antigravity\\antigravity\\bin\\antigravity.cmd"),
+            ],
+            linux_paths: &[
+                "/usr/bin/antigravity",
+                "~/.local/share/antigravity/bin/antigravity",
+                "~/.antigravity/antigravity/bin/antigravity",
+            ],
+        },
+        Candidate {
+            name: "Cursor",
+            bins: &["cursor", "cursor.cmd", "cursor.exe"],
+            mac_paths: &[
+                "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
+                "~/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
+            ],
+            win_env_paths: &[
+                ("LOCALAPPDATA", "Programs\\cursor\\bin\\cursor.cmd"),
+                ("LOCALAPPDATA", "cursor\\bin\\cursor.cmd"),
+            ],
+            linux_paths: &["/usr/bin/cursor"],
+        },
+        Candidate {
+            name: "Windsurf",
+            bins: &["windsurf", "windsurf.cmd", "windsurf.exe"],
+            mac_paths: &[
+                "/Applications/Windsurf.app/Contents/Resources/app/bin/windsurf",
+                "~/Applications/Windsurf.app/Contents/Resources/app/bin/windsurf",
+            ],
+            win_env_paths: &[
+                ("LOCALAPPDATA", "Programs\\windsurf\\bin\\windsurf.cmd"),
+            ],
+            linux_paths: &["/usr/bin/windsurf"],
+        },
+        Candidate {
+            name: "VSCodium",
+            bins: &["codium", "codium.cmd", "codium.exe"],
+            mac_paths: &[
+                "/Applications/VSCodium.app/Contents/Resources/app/bin/codium",
+                "~/Applications/VSCodium.app/Contents/Resources/app/bin/codium",
+            ],
+            win_env_paths: &[
+                ("LOCALAPPDATA", "Programs\\VSCodium\\bin\\codium.cmd"),
+            ],
+            linux_paths: &["/usr/bin/codium", "/snap/bin/codium"],
+        },
+        Candidate {
+            name: "VS Code Insiders",
+            bins: &["code-insiders", "code-insiders.cmd"],
+            mac_paths: &[
+                "/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin/code-insiders",
+                "~/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin/code-insiders",
+            ],
+            win_env_paths: &[
+                ("LOCALAPPDATA", "Programs\\Microsoft VS Code Insiders\\bin\\code-insiders.cmd"),
+            ],
+            linux_paths: &["/usr/bin/code-insiders", "/snap/bin/code-insiders"],
+        },
+    ];
+
+    for c in &candidates {
+        let mut found = false;
+
+        // 1. Check in PATH first
+        for bin in c.bins {
+            if let Ok(p) = which::which(bin) {
+                let canonical = p.canonicalize().unwrap_or_else(|_| p.clone());
+                if seen_paths.insert(canonical) {
+                    ides.push(SupportedIde {
+                        name: c.name.to_string(),
+                        executable: p,
+                    });
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        if found {
+            continue;
+        }
+
+        // 2. Check well-known macOS paths
+        #[cfg(target_os = "macos")]
+        for raw in c.mac_paths {
+            let expanded = if raw.starts_with("~/") {
+                if let Some(home) = dirs::home_dir() {
+                    home.join(&raw[2..])
+                } else {
+                    PathBuf::from(raw)
+                }
+            } else {
+                PathBuf::from(raw)
+            };
+
+            if expanded.exists() {
+                let canonical = expanded.canonicalize().unwrap_or_else(|_| expanded.clone());
+                if seen_paths.insert(canonical) {
+                    ides.push(SupportedIde {
+                        name: c.name.to_string(),
+                        executable: expanded,
+                    });
+                    break;
+                }
+            }
+        }
+
+        // 3. Check well-known Windows paths
+        #[cfg(target_os = "windows")]
+        for &(env_var, subpath) in c.win_env_paths {
+            if let Ok(val) = std::env::var(env_var) {
+                let full = PathBuf::from(val).join(subpath);
+                if full.exists() {
+                    let canonical = full.canonicalize().unwrap_or_else(|_| full.clone());
+                    if seen_paths.insert(canonical) {
+                        ides.push(SupportedIde {
+                            name: c.name.to_string(),
+                            executable: full,
+                        });
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 4. Check well-known Linux paths
+        #[cfg(target_os = "linux")]
+        for raw in c.linux_paths {
+            let expanded = if raw.starts_with("~/") {
+                if let Some(home) = dirs::home_dir() {
+                    home.join(&raw[2..])
+                } else {
+                    PathBuf::from(raw)
+                }
+            } else {
+                PathBuf::from(raw)
+            };
+
+            if expanded.exists() {
+                let canonical = expanded.canonicalize().unwrap_or_else(|_| expanded.clone());
+                if seen_paths.insert(canonical) {
+                    ides.push(SupportedIde {
+                        name: c.name.to_string(),
+                        executable: expanded,
+                    });
+                    break;
+                }
+            }
+        }
+    }
+
+    ides
+}
+
+fn detect_installed_extension_version() -> Option<String> {
+    let ides = discover_supported_ides();
+    for ide in &ides {
+        if let Ok(output) = Command::new(&ide.executable)
+            .args(["--list-extensions", "--show-versions"])
+            .output()
+        {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    if line.contains("lumi-tester") || line.contains("lumijsc.lumi-tester") {
+                        if let Some((_, ver)) = line.split_once('@') {
+                            return Some(format!("{} ({})", ver.trim(), ide.name));
+                        }
+                    }
+                }
             }
         }
     }
@@ -206,9 +407,9 @@ pub async fn run_update(options: UpdateOptions) -> Result<()> {
         .extension_current
         .as_deref()
         .map(|v| format!("v{}", v))
-        .unwrap_or_else(|| "Not detected / VS Code CLI not in PATH".to_string());
+        .unwrap_or_else(|| "Not detected in any IDE".to_string());
     println!(
-        "  • VS Code Extension: {} (Latest: {}) -> {}",
+        "  • IDE Extension:     {} (Latest: {}) -> {}",
         ext_cur_display.yellow(),
         report.extension_latest.cyan(),
         if report.extension_update_available {
@@ -273,7 +474,7 @@ pub async fn run_update(options: UpdateOptions) -> Result<()> {
 
     if should_update_ext {
         if let Some(vsix_url) = report.extension_download_url {
-            println!("\n{}", format!("⬇️  Downloading VS Code Extension ({})...", report.extension_latest).cyan());
+            println!("\n{}", format!("⬇️  Downloading IDE Extension ({})...", report.extension_latest).cyan());
             let temp_dir = std::env::temp_dir();
             let vsix_name = format!("lumi-tester-{}.vsix", report.extension_latest);
             let vsix_path = temp_dir.join(&vsix_name);
@@ -285,31 +486,48 @@ pub async fn run_update(options: UpdateOptions) -> Result<()> {
             download_file_with_progress(&client, &vsix_url, &vsix_path, &vsix_name).await?;
             println!("  Saved VSIX to: {}", vsix_path.display().to_string().blue());
 
-            // Check if code CLI is available to install directly
-            let code_check = Command::new("code").arg("--version").output();
-            if code_check.is_ok() {
-                let proc_pb = create_process_progress_bar(100, "Installing extension via 'code --install-extension'...");
-                proc_pb.set_position(30);
+            let ides = discover_supported_ides();
+            if !ides.is_empty() {
+                println!("\n  {} Installing extension across detected IDEs...", "🔌".cyan());
+                for ide in &ides {
+                    let proc_pb = create_process_progress_bar(
+                        100,
+                        &format!("Installing into {} ({}) ...", ide.name, ide.executable.display()),
+                    );
+                    proc_pb.set_position(30);
 
-                let status = Command::new("code")
-                    .args(["--install-extension", &vsix_path.to_string_lossy(), "--force"])
-                    .status();
+                    let status = Command::new(&ide.executable)
+                        .args(["--install-extension", &vsix_path.to_string_lossy(), "--force"])
+                        .status();
 
-                match status {
-                    Ok(s) if s.success() => {
-                        proc_pb.set_position(100);
-                        proc_pb.finish_with_message("VS Code Extension installed ✅");
-                        println!("\n{}", "✅ Successfully installed latest Lumi Tester VS Code Extension!".green().bold());
-                    }
-                    _ => {
-                        proc_pb.abandon_with_message("Automatic install failed ⚠️");
-                        println!("\n  {} Could not install extension automatically. Run manually:", "⚠️".yellow());
-                        println!("    code --install-extension {}", vsix_path.display());
+                    match status {
+                        Ok(s) if s.success() => {
+                            proc_pb.set_position(100);
+                            proc_pb.finish_with_message(format!("Installed into {} ✅", ide.name));
+                            println!(
+                                "  {}",
+                                format!("✅ Successfully installed latest Lumi Tester extension into {}!", ide.name)
+                                    .green()
+                                    .bold()
+                            );
+                        }
+                        _ => {
+                            proc_pb.abandon_with_message(format!("Install into {} failed ⚠️", ide.name));
+                            println!(
+                                "  {} Could not install extension into {} automatically. Run manually:",
+                                "⚠️".yellow(),
+                                ide.name
+                            );
+                            println!("    {} --install-extension {}", ide.executable.display(), vsix_path.display());
+                        }
                     }
                 }
             } else {
-                println!("  {} VS Code CLI 'code' is not in PATH. To install manually, run:", "ℹ️".blue());
-                println!("    code --install-extension {}", vsix_path.display());
+                println!(
+                    "  {} No supported IDE CLI (VS Code, Antigravity, Cursor, Windsurf, VSCodium) found in PATH or standard locations. To install manually, run:",
+                    "ℹ️".blue()
+                );
+                println!("    <ide-cli> --install-extension {}", vsix_path.display());
             }
         } else {
             println!("  {} No VSIX asset found for extension release.", "⚠️".yellow());
