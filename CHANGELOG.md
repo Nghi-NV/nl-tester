@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.28] - 2026-08-24
+
+### 🚀 Highlights & Improvements
+
+#### 1. Zero-Setup Android UI Automation (Automatic Embedded Agent Unpacking)
+- **Automatic On-Demand Agent Extraction**: `find_apk` now automatically extracts the embedded `lm-android-tester.apk` to `~/.lumi-tester/apk/lm-android-tester.apk` (or temp directory) if not already present on disk across Windows, macOS, and Linux. This eliminates the "agent APK not found locally" warning completely on fresh installations.
+- **Drag Point Coordinate Support**: Fully supports percentage and absolute point coordinates (`point: "28%,45%"`) in `from` and `to` selectors of `drag` commands for smooth continuous wheel/slider control.
+- **Automatic macOS Codesigning on Upgrade**: Auto-applies ad-hoc codesign signature (`codesign -s - -f`) when replacing binaries on macOS arm64.
+
+---
+
 ## [v0.1.27] - 2026-08-24
 
 ### 🚀 Highlights & Improvements

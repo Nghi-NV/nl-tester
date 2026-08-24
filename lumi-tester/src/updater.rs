@@ -642,6 +642,13 @@ fn replace_executable(temp_file: &Path, target_exe: &Path) -> Result<()> {
                 Ok::<(), std::io::Error>(())
             })
             .with_context(|| format!("Failed to replace executable at {}", target_exe.display()))?;
+
+        #[cfg(target_os = "macos")]
+        {
+            let _ = Command::new("codesign")
+                .args(["-s", "-", "-f", &target_exe.to_string_lossy()])
+                .output();
+        }
     }
 
     #[cfg(windows)]

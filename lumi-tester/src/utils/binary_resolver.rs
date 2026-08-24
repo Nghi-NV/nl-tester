@@ -325,5 +325,27 @@ pub fn find_apk(name: &str) -> Option<PathBuf> {
         }
     }
 
+    // Automatically extract embedded lm-android-tester.apk on demand if not found on disk
+    if name == "lm-android-tester.apk" {
+        const EMBEDDED_BYTES: &[u8] = include_bytes!("../../resources/apk/lm-android-tester.apk");
+        let target_dir = dirs::home_dir()
+            .map(|h| h.join(".lumi-tester").join("apk"))
+            .unwrap_or_else(std::env::temp_dir);
+        let extracted_path = target_dir.join(name);
+
+        if std::fs::create_dir_all(&target_dir).is_ok() {
+            if extracted_path.exists() {
+                if let Ok(meta) = std::fs::metadata(&extracted_path) {
+                    if meta.len() == EMBEDDED_BYTES.len() as u64 {
+                        return Some(extracted_path);
+                    }
+                }
+            }
+            if std::fs::write(&extracted_path, EMBEDDED_BYTES).is_ok() {
+                return Some(extracted_path);
+            }
+        }
+    }
+
     None
 }
