@@ -162,7 +162,8 @@ jig: "profiles/jig_config.yaml"
 | Câu lệnh YAML | Ý nghĩa tự nhiên | Cú pháp ví dụ |
 | --- | --- | --- |
 | `hwSeeLed` | Kiểm tra màu đèn LED chỉ thị | `- hwSeeLed: "GREEN"` hoặc `- hwSeeLed: { channel: 1, expected: ["BLUE", "CYAN"] }` |
-| `hwSeeLedBlink` | Kiểm tra đèn LED chớp nháy / chớp tắt (hỗ trợ đếm số lần và màu) | `- hwSeeLedBlink: 1` hoặc `- hwSeeLedBlink: { channel: 1, color: "BLUE", count: 2, timeoutMs: 8000 }` |
+| `hwSeeLedBlink` | Kiểm tra đèn LED chớp nháy / chớp tắt (hỗ trợ đếm số lần và màu). Đếm bằng cách PC tự lấy mẫu RGBC liên tục qua serial rồi tự phát hiện cạnh lên/xuống. | `- hwSeeLedBlink: 1` hoặc `- hwSeeLedBlink: { channel: 1, color: "BLUE", count: 2, timeoutMs: 8000 }` |
+| `hwSeeNativeLedBlink` | Giống `hwSeeLedBlink` nhưng đếm bằng chính bộ đếm blink theo thời gian thực trên firmware STM32 (`color blink_cursor?`/`color blink?`) thay vì PC tự lấy mẫu — không bị ảnh hưởng bởi độ trễ/jitter driver COM port của máy host. Khuyến nghị dùng cái này thay `hwSeeLedBlink` khi cần chạy ổn định trên nhiều máy (đặc biệt Windows), vì `hwSeeLedBlink` có thể thỉnh thoảng đếm thiếu 1 nhịp nếu polling bị trễ. `minPulseMs`/`maxPulseMs` không áp dụng (firmware dùng ngưỡng đã calib riêng trong Flash). | `- hwSeeNativeLedBlink: { channel: 1, color: "PINK", count: 3, timeoutMs: 8000 }` |
 | `hwSeeLedOff` | Chờ đèn LED tắt hẳn | `- hwSeeLedOff: 1` |
 | `hwSensorLight` | Bật/Tắt đèn chiếu sáng hỗ trợ cảm biến màu | `- hwSensorLight: "on"` hoặc `- hwSensorLight: false` |
 | `hwSetBrightnessThresholds` | Cấu hình ngưỡng phần trăm độ sáng và khoảng thời gian chớp nháy | `- hwSetBrightnessThresholds: { channel: 1, offBelowPercent: 30, onAbovePercent: 70, minPulseMs: 50, maxPulseMs: 1000 }` |

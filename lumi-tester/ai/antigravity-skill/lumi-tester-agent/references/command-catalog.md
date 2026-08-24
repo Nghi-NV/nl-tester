@@ -295,7 +295,7 @@ Hardware commands (all prefixed with `hw`):
 - `hwClick`, `hwRepeatClick`, `hwPress`, `hwRelease`, `hwReleaseAll`: Servo physical button control.
 - `hwStartRepeatClick`, `hwStopRepeatClick`: Continuous click repeat loop on STM32.
 - `hwConfigureServo`: Set servo angles (`pressAngle`, `releaseAngle`) and durations.
-- `hwSeeLed`, `hwSeeLedBlink`, `hwSeeLedOff`: Color and blink detection via TCS sensor.
+- `hwSeeLed`, `hwSeeLedBlink`, `hwSeeNativeLedBlink`, `hwSeeLedOff`: Color and blink detection via TCS sensor.
 - `hwSensorLight`: Sensor LED illumination (`on` / `off`).
 - `hwSetBrightnessThresholds`, `hwWaitForBrightness`, `hwWaitForCct`: Advanced optical metrics.
 - `hwCalibrateColor`, `hwCalibrateBrightness`, `hwAddCctPoint`: Hardware sensor calibration.
@@ -309,7 +309,7 @@ Hardware commands (all prefixed with `hw`):
     channel: 1
     count: 3
 - hwSeeLed: "GREEN"
-- hwSeeLedBlink:
+- hwSeeNativeLedBlink:
     channel: 1
     color: "BLUE"
     count: 2

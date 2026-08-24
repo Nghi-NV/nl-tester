@@ -994,6 +994,11 @@ pub enum TestCommand {
     HwPowerCycle(PowerCycleParams),
     HwSeeLed(SeeColorParams),
     HwSeeLedBlink(SeeBlinkParams),
+    /// Same params as HwSeeLedBlink, but detection runs on the firmware's own
+    /// hardware-timed blink event log instead of client-side RGBC polling - immune
+    /// to host serial/scheduling jitter. min_pulse_ms/max_pulse_ms are ignored here
+    /// (the firmware uses its own flash-calibrated thresholds).
+    HwSeeNativeLedBlink(SeeBlinkParams),
     HwSeeLedOff(SeeBlinkParams),
 
     HwConfigureServo(ServoConfigParams),
@@ -3469,6 +3474,13 @@ impl TestCommand {
                     format!("hwSeeLedBlink({})", btn.trim())
                 } else {
                     format!("hwSeeLedBlink(channel: {})", p.resolved_channel())
+                }
+            }
+            TestCommand::HwSeeNativeLedBlink(p) => {
+                if let Some(ref btn) = p.button {
+                    format!("hwSeeNativeLedBlink({})", btn.trim())
+                } else {
+                    format!("hwSeeNativeLedBlink(channel: {})", p.resolved_channel())
                 }
             }
             TestCommand::HwSeeLedOff(p) => {

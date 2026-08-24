@@ -379,6 +379,7 @@
         "hwSaveCalibration",
         "hwSeeLed",
         "hwSeeLedBlink",
+        "hwSeeNativeLedBlink",
         "hwSeeLedOff",
         "hwSensorLight",
         "hwSetBrightnessThresholds",

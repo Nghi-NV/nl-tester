@@ -44,7 +44,7 @@ servos:
 | :--- | :--- | :--- |
 | **Relay Power** | `hwPowerOn`, `hwPowerOff`, `hwPowerCycle`, `hwPowerOffAll` | `- hwPowerOn: 1`<br>`- hwPowerCycle: { channel: 1, delayMs: 2000 }` |
 | **Servo Control** | `hwClick`, `hwPress`, `hwRelease`, `hwRotate`, `hwRepeatClick`, `hwStartRepeatClick`, `hwStopRepeatClick`, `hwReleaseAll`, `hwConfigureServo` | `- hwClick: 1`<br>`- hwRepeatClick: { channel: 1, count: 3, intervalMs: 300 }`<br>`- hwRotate: { channel: 1, angle: 90 }` |
-| **Sensor & LED** | `hwSeeLed`, `hwSeeLedBlink`, `hwSeeLedOff`, `hwSensorLight`, `hwCalibrateColor`, `hwCalibrateBrightness`, `hwAddCctPoint`, `hwSaveCalibration`, `hwLoadCalibration`, `hwSetBrightnessThresholds` | `- hwSeeLedBlink: { channel: 1, color: "BLUE", count: 2, minPulseMs: 50, maxPulseMs: 800 }`<br>`- hwSeeLedOff: 1`<br>`- hwSensorLight: "on"` |
+| **Sensor & LED** | `hwSeeLed`, `hwSeeLedBlink`, `hwSeeNativeLedBlink`, `hwSeeLedOff`, `hwSensorLight`, `hwCalibrateColor`, `hwCalibrateBrightness`, `hwAddCctPoint`, `hwSaveCalibration`, `hwLoadCalibration`, `hwSetBrightnessThresholds` | `- hwSeeNativeLedBlink: { channel: 1, color: "BLUE", count: 2 }`<br>`- hwSeeLedOff: 1`<br>`- hwSensorLight: "on"` |
 | **Diagnostics** | `hwReadServo`, `hwReadRelay`, `hwReadColor`, `hwReadSensorLight`, `hwDiagnostics`, `hwSafeState` | `- hwReadColor: 1`<br>`- hwSafeState` |
 
 ## 3. Fast CLI Discovery & Ping Utilities

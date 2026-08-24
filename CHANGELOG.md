@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.26] - 2026-08-24
+
+### 🚀 Highlights & Improvements
+
+#### 1. Hardware-Native Blink Detection (`hwSeeNativeLedBlink`)
+- **STM32 Hardware-Timed Blink Counter**: Implemented `hwSeeNativeLedBlink` polling the firmware's real-time hardware blink event log (`color blink_cursor?` / `color blink?`) instead of sampling RGBC over serial and edge-detecting client-side.
+- **Zero Sycall Jitter / Dropped Pulses**: Eliminates host-side serial polling overhead (especially under Windows COM drivers), ensuring 100% reliable pulse counting using firmware-calibrated Flash thresholds.
+
+#### 2. Cross-Platform Element Inspector & Driver Enhancements
+- **macOS Desktop Inspector**: Added fast active/frontmost window traversal with `CGWindowList` fallback to inspect running apps without deep recursive AX hangs.
+- **Android Inspector Bounding Box Resolution**: Fixed serial/package target mapping ensuring precise element bounds, breadcrumb hierarchy, and selector scoring.
+- **Web & iOS Inspector Support**: Seamless element hierarchy extraction across Web, macOS, Android, and iOS.
+
+#### 3. Serial Transport Throughput Optimization
+- **Chunked Serial Buffer**: Switched serial response reading from byte-by-byte syscalls to chunked buffers (`[0u8; 512]`), significantly reducing read latency and OS overhead.
+
+---
+
 ## [v0.1.25] - 2026-08-23
 
 ### 🚀 Highlights & Improvements

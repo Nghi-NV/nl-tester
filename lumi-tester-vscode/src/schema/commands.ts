@@ -1842,6 +1842,20 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     ]
   },
   {
+    name: 'hwSeeNativeLedBlink',
+    category: 'Hardware Automation',
+    description: 'Assert/Wait for LED blink pattern detection on firmware STM32 native blink counter',
+    hasParams: true,
+    snippet: 'hwSeeNativeLedBlink:\n    channel: ${1:1}\n    color: "${2:BLUE}"\n    count: ${3:2}',
+    params: [
+      { name: 'channel', type: 'number', description: 'Color sensor channel number (1..8)' },
+      { name: 'color', type: 'string', description: 'Expected blink color (e.g. BLUE, RED, PINK)' },
+      { name: 'count', type: 'number', description: 'Expected number of blinks (e.g. 2)' },
+      { name: 'timeoutMs', type: 'number', description: 'Timeout in milliseconds (default: 5000)' },
+      { name: 'afterEventId', type: 'number', description: 'Only count blink events occurring strictly after this event ID' }
+    ]
+  },
+  {
     name: 'hwSeeLedOff',
     category: 'Hardware Automation',
     description: 'Assert/Wait for LED to turn completely OFF',

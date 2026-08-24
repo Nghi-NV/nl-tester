@@ -457,7 +457,131 @@ impl ColorSensorControl for ColorSensorService {
                 }
             }
 
-            thread::sleep(Duration::from_millis(30));
+            // 15ms poll interval (was 30ms) - safe to tighten now that transport.rs
+            // reads response chunks instead of one byte per syscall, so each
+            // `color read` round-trip itself is faster and leaves more of this
+            // budget for actual sampling resolution rather than syscall overhead.
+            thread::sleep(Duration::from_millis(15));
+        }
+    }
+
+    fn wait_for_blinks_native(
+        &self,
+        channel: u8,
+        expected_color: Option<&str>,
+        expected_count: Option<usize>,
+        after_event_id: Option<u32>,
+        timeout_s: f64,
+    ) -> Result<BlinkResult> {
+        let _ = self.select_channel(channel);
+        let start = Instant::now();
+        let timeout = Duration::from_secs_f64(timeout_s);
+
+        // Establish the starting cursor: either a caller-supplied event_id, or the
+        // firmware's current event_id (so only blink clusters that complete from now
+        // on are observed, matching hardware_control_services'
+        // ColorSensorService.wait_for_blinks()).
+        let cursor = match after_event_id {
+            Some(id) => id,
+            None => {
+                let mut transport = self.transport.lock().unwrap();
+                let resp = transport.request(
+                    &crate::hardware::protocol::cmd_color_blink_cursor(channel),
+                    |line| line.kind == "blink_event" || line.kind == "blink" || line.kind == "error",
+                    timeout_s.min(3.0),
+                )?;
+                drop(transport);
+                if resp.kind == "error" {
+                    anyhow::bail!(
+                        "Firmware error getting blink cursor on channel {}: {}",
+                        channel,
+                        resp.get_str("message").unwrap_or(&resp.raw)
+                    );
+                }
+                resp.get_u32("event_id").unwrap_or(0)
+            }
+        };
+
+        loop {
+            let elapsed = start.elapsed();
+            if elapsed > timeout {
+                anyhow::bail!(
+                    "Timeout ({:.1}s) waiting for firmware blink event on channel {} (cursor={})",
+                    timeout_s,
+                    channel,
+                    cursor
+                );
+            }
+            let remaining_s = (timeout - elapsed).as_secs_f64().max(0.05);
+
+            let resp = {
+                let mut transport = self.transport.lock().unwrap();
+                transport.request(
+                    &crate::hardware::protocol::cmd_color_blink_query(channel, Some(cursor)),
+                    |line| line.kind == "blink_event" || line.kind == "blink" || line.kind == "error",
+                    remaining_s.min(3.0),
+                )
+            };
+
+            if let Ok(line) = resp {
+                if line.kind == "error" {
+                    anyhow::bail!(
+                        "Firmware error waiting for blink on channel {}: {}",
+                        channel,
+                        line.get_str("message").unwrap_or(&line.raw)
+                    );
+                }
+                if line.get_str("status") == Some("event") {
+                    let event_id = line.get_u32("event_id").unwrap_or(cursor);
+                    let count = line.get_u32("count").map(|c| c as usize).unwrap_or(0);
+                    let color = line.get_str("color").map(Color::from_str);
+                    let durations_ms: Vec<u64> = line
+                        .get_str("durations_ms")
+                        .unwrap_or("")
+                        .split(',')
+                        .filter(|s| !s.is_empty())
+                        .filter_map(|s| s.parse::<u64>().ok())
+                        .collect();
+
+                    if let Some(exp_c) = expected_color {
+                        let actual = color.as_ref().map(|c| c.as_str()).unwrap_or("UNKNOWN");
+                        let matches = exp_c
+                            .split('|')
+                            .any(|part| actual.eq_ignore_ascii_case(part.trim()));
+                        if !matches {
+                            anyhow::bail!(
+                                "Blink color mismatch on channel {}: firmware reported {} x{} (durations: {:?}), expected {}",
+                                channel,
+                                actual,
+                                count,
+                                durations_ms,
+                                exp_c
+                            );
+                        }
+                    }
+                    if let Some(exp_n) = expected_count {
+                        if count != exp_n {
+                            anyhow::bail!(
+                                "Blink count mismatch on channel {}: firmware reported {} blinks (durations: {:?}), expected exactly {}",
+                                channel,
+                                count,
+                                durations_ms,
+                                exp_n
+                            );
+                        }
+                    }
+
+                    return Ok(BlinkResult {
+                        event_id,
+                        blink_count: count,
+                        color,
+                        durations_ms,
+                        pulses: Vec::new(),
+                    });
+                }
+            }
+
+            thread::sleep(Duration::from_millis(50));
         }
     }
 }

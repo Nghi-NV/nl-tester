@@ -57,6 +57,22 @@ pub trait ColorSensorControl: Send + Sync {
         max_pulse_ms: Option<u64>,
         timeout_s: f64,
     ) -> Result<BlinkResult>;
+
+    /// Firmware-native blink detection: polls the STM32's own hardware-timed blink
+    /// event log (`color blink_cursor?` / `color blink? <channel> <event_id>`)
+    /// instead of sampling RGBC over serial and edge-detecting client-side. The
+    /// firmware already classifies color and counts pulses using its own calibrated
+    /// on/off thresholds, so this is immune to host-side serial/scheduling jitter -
+    /// see `hardware_control_services/color_sensor_service.py::wait_for_blinks` for
+    /// the reference implementation this mirrors.
+    fn wait_for_blinks_native(
+        &self,
+        channel: u8,
+        expected_color: Option<&str>,
+        expected_count: Option<usize>,
+        after_event_id: Option<u32>,
+        timeout_s: f64,
+    ) -> Result<BlinkResult>;
 }
 
 /// Trait tổng quát cho bất kỳ loại phần cứng/thiết bị tự động hóa nào (STM32, Modbus, SCPI, HTTP Relay, BLE, ...)

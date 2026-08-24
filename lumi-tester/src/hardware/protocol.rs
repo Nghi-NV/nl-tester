@@ -206,6 +206,10 @@ pub fn cmd_color_blink_query(channel: u8, after_event_id: Option<u32>) -> String
     format!("color blink? {} {}\n", channel, eid)
 }
 
+pub fn cmd_color_blink_cursor(channel: u8) -> String {
+    format!("color blink_cursor? {}\n", channel)
+}
+
 pub fn cmd_servo_config(
     channel: u8,
     press_angle: u8,

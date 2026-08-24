@@ -1528,6 +1528,59 @@ fn parse_command_with_params(
             TestCommand::HwSeeLedBlink(p)
         }
 
+        "hwSeeNativeLedBlink" => {
+            let p: crate::parser::types::SeeBlinkParams = if params.is_number() {
+                crate::parser::types::SeeBlinkParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                    button: None,
+                    color: None,
+                    count: None,
+                    timeout_ms: None,
+                    min_pulse_ms: None,
+                    max_pulse_ms: None,
+                    max_gap_ms: None,
+                }
+            } else if let Some(s) = params.as_str() {
+                if let Some((btn, col)) = s.split_once(',') {
+                    crate::parser::types::SeeBlinkParams {
+                        channel: crate::parser::types::parse_channel_str(btn),
+                        button: Some(btn.trim().to_string()),
+                        color: Some(col.trim().to_string()),
+                        count: None,
+                        timeout_ms: None,
+                        min_pulse_ms: None,
+                        max_pulse_ms: None,
+                        max_gap_ms: None,
+                    }
+                } else {
+                    crate::parser::types::SeeBlinkParams {
+                        channel: 1,
+                        button: None,
+                        color: Some(s.to_string()),
+                        count: None,
+                        timeout_ms: None,
+                        min_pulse_ms: None,
+                        max_pulse_ms: None,
+                        max_gap_ms: None,
+                    }
+                }
+            } else if params.is_null() {
+                crate::parser::types::SeeBlinkParams {
+                    channel: 1,
+                    button: None,
+                    color: None,
+                    count: None,
+                    timeout_ms: None,
+                    min_pulse_ms: None,
+                    max_pulse_ms: None,
+                    max_gap_ms: None,
+                }
+            } else {
+                serde_yaml::from_value(params.clone())?
+            };
+            TestCommand::HwSeeNativeLedBlink(p)
+        }
+
         "hwSeeLedOff" => {
             let p: crate::parser::types::SeeBlinkParams = if params.is_number() {
                 crate::parser::types::SeeBlinkParams {

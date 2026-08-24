@@ -477,7 +477,7 @@ When testing physical IoT/Smart devices requiring hardware buttons, relays, serv
 2. **Standardized Hardware Commands (`hw*`)**:
    - Relays: `hwPowerOn`, `hwPowerOff`, `hwPowerCycle`, `hwPowerOffAll`
    - Servos: `hwClick`, `hwPress`, `hwRelease`, `hwRotate`, `hwRepeatClick`, `hwStartRepeatClick`, `hwStopRepeatClick`, `hwReleaseAll`, `hwConfigureServo`
-   - Sensors & LED: `hwSeeLed`, `hwSeeLedBlink`, `hwSeeLedOff`, `hwSensorLight`, `hwCalibrateColor`, `hwCalibrateBrightness`, `hwAddCctPoint`, `hwSaveCalibration`, `hwLoadCalibration`, `hwSetBrightnessThresholds`
+   - Sensors & LED: `hwSeeLed`, `hwSeeLedBlink`, `hwSeeNativeLedBlink`, `hwSeeLedOff`, `hwSensorLight`, `hwCalibrateColor`, `hwCalibrateBrightness`, `hwAddCctPoint`, `hwSaveCalibration`, `hwLoadCalibration`, `hwSetBrightnessThresholds`
    - Diagnostics: `hwReadServo`, `hwReadRelay`, `hwReadColor`, `hwReadSensorLight`, `hwDiagnostics`, `hwSafeState`
 3. **Serial Port & Jig CLI Utilities**:
    - `lumi-tester jig ports`: Enumerate all connected COM/Serial ports.

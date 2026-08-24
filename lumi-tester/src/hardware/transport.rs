@@ -147,9 +147,18 @@ impl SerialTransport {
             let start = Instant::now();
             let timeout_duration = Duration::from_secs_f64(timeout_s);
             let mut buffer = Vec::new();
+            // Read in chunks instead of one byte per syscall: a byte-at-a-time read()
+            // issues one OS call per character, and on Windows each COM-port ReadFile
+            // round-trip carries enough driver overhead (vs. POSIX termios on macOS/
+            // Linux) that a ~150-byte response line could add tens of ms of pure
+            // syscall latency - exactly the kind of jitter that made fast LED pulses
+            // get missed by client-side blink polling (see ColorSensorService::
+            // wait_for_blinks). One read() per available chunk removes that overhead
+            // while keeping the exact same line-framing/parsing behavior below.
+            let mut chunk = [0u8; 512];
             let mut retry_needed = false;
 
-            while !retry_needed {
+            'read_loop: while !retry_needed {
                 if start.elapsed() > timeout_duration {
                     let port = self.port.as_mut().unwrap();
                     let _ = port.flush();
@@ -173,39 +182,39 @@ impl SerialTransport {
                     }
                 }
 
-                let mut byte_buf = [0u8; 1];
                 let port_ref = self.port.as_mut().unwrap();
-                match port_ref.read(&mut byte_buf) {
-                    Ok(1) => {
-                        let b = byte_buf[0];
-                        if b == b'\n' {
-                            let line_str = String::from_utf8_lossy(&buffer).trim().to_string();
-                            buffer.clear();
+                match port_ref.read(&mut chunk) {
+                    Ok(0) => {}
+                    Ok(n) => {
+                        for &b in &chunk[..n] {
+                            if b == b'\n' {
+                                let line_str = String::from_utf8_lossy(&buffer).trim().to_string();
+                                buffer.clear();
 
-                            if !line_str.is_empty() {
-                                self.log_event("RX", &line_str);
-                                if let Ok(resp) = ResponseLine::parse(&line_str) {
-                                    if resp.kind == "error" {
-                                        let code = resp.get_str("code").unwrap_or("UNKNOWN");
-                                        let msg = resp.get_str("message").unwrap_or(&line_str);
-                                        // If transient invalid command or noise on first attempt, retry once
-                                        if attempt + 1 < MAX_ATTEMPTS && code == "INVALID_COMMAND" {
-                                            retry_needed = true;
-                                            last_error = Some(anyhow!("Firmware error [{}]: {}", code, msg));
-                                            break;
+                                if !line_str.is_empty() {
+                                    self.log_event("RX", &line_str);
+                                    if let Ok(resp) = ResponseLine::parse(&line_str) {
+                                        if resp.kind == "error" {
+                                            let code = resp.get_str("code").unwrap_or("UNKNOWN");
+                                            let msg = resp.get_str("message").unwrap_or(&line_str);
+                                            // If transient invalid command or noise on first attempt, retry once
+                                            if attempt + 1 < MAX_ATTEMPTS && code == "INVALID_COMMAND" {
+                                                retry_needed = true;
+                                                last_error = Some(anyhow!("Firmware error [{}]: {}", code, msg));
+                                                break 'read_loop;
+                                            }
+                                            anyhow::bail!("Firmware error [{}]: {}", code, msg);
                                         }
-                                        anyhow::bail!("Firmware error [{}]: {}", code, msg);
-                                    }
-                                    if matcher(&resp) {
-                                        return Ok(resp);
+                                        if matcher(&resp) {
+                                            return Ok(resp);
+                                        }
                                     }
                                 }
+                            } else if b != b'\r' {
+                                buffer.push(b);
                             }
-                        } else if b != b'\r' {
-                            buffer.push(b);
                         }
                     }
-                    Ok(_) => {}
                     Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
                         std::thread::sleep(Duration::from_millis(5));
                     }

@@ -3610,6 +3610,54 @@ impl TestExecutor {
                 Ok(())
             }
 
+            TestCommand::HwSeeNativeLedBlink(params) => {
+                let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
+                })?;
+                let ch = params.button.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(params.button.as_deref(), ch);
+                let timeout_s = params.timeout_ms.unwrap_or(5000) as f64 / 1000.0;
+                let blink_res = ctrl.color_sensor.wait_for_blinks_native(
+                    ch,
+                    params.color.as_deref(),
+                    params.count,
+                    None,
+                    timeout_s,
+                )?;
+                let color_name = blink_res.color.as_ref().map(|c| c.as_str()).unwrap_or("UNKNOWN");
+                let durations_str = blink_res
+                    .durations_ms
+                    .iter()
+                    .map(|d| format!("{}ms", d))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let total_duration: u64 = blink_res.durations_ms.iter().sum();
+                let target_cnt = params.count.unwrap_or(1);
+                println!(
+                    "  {} Verified LED Blink (native/firmware) {}: count={} (target={}), color={}, durations=[{}] (total: {}ms, event_id={})",
+                    "💡".green().bold(),
+                    label.cyan().bold(),
+                    blink_res.blink_count.to_string().green().bold(),
+                    target_cnt.to_string().yellow(),
+                    color_name.magenta().bold(),
+                    durations_str.yellow(),
+                    total_duration,
+                    blink_res.event_id
+                );
+                for (i, dur) in blink_res.durations_ms.iter().enumerate() {
+                    let is_last = i + 1 == blink_res.durations_ms.len();
+                    let prefix = if is_last { "└─" } else { "├─" };
+                    println!(
+                        "     {} Pulse #{}: {}ms (color: {})",
+                        prefix.dimmed(),
+                        i + 1,
+                        dur.to_string().yellow().bold(),
+                        color_name.magenta()
+                    );
+                }
+                Ok(())
+            }
+
             TestCommand::HwRepeatClick(params) => {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")

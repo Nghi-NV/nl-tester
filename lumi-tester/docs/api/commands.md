@@ -974,8 +974,10 @@ Ví dụ đầy đủ các tham số:
 
 ## 🎨 Hardware LED & Color Sensor (Cảm biến màu & LED Phần cứng)
 
-### `hwSeeLed` / `hwSeeLedBlink` / `hwSeeLedOff`
+### `hwSeeLed` / `hwSeeLedBlink` / `hwSeeNativeLedBlink` / `hwSeeLedOff`
 **Mô tả**: Kiểm tra và đợi trạng thái đèn LED phần cứng (RED, GREEN, BLUE, YELLOW, CYAN, MAGENTA, PINK, WHITE, OFF) hoặc kiểm tra sự kiện nháy LED (Blink) kèm lọc màu sắc, số lần nháy (count), thời gian chờ (timeout) và khoảng cách giữa các xung (pulse). Hỗ trợ truyền tên nút thân thiện (`button: "NC3"` hoặc `"NC3"`).
+
+`hwSeeLedBlink` đếm blink bằng cách PC tự lấy mẫu RGBC liên tục qua serial rồi tự phát hiện cạnh lên/xuống phía client — nhanh và đủ dùng trên máy dev ổn định, nhưng có thể thỉnh thoảng đếm thiếu 1 nhịp nếu polling bị trễ/jitter (thường gặp hơn trên Windows do driver COM port). `hwSeeNativeLedBlink` cùng tham số nhưng đếm bằng chính bộ đếm blink thời gian thực trên firmware STM32 — đáng tin cậy hơn, khuyến nghị dùng khi cần chạy ổn định trên nhiều máy khác nhau.
 
 Ví dụ chi tiết theo các nghiệp vụ thực tế (`hardware_control_services` & `hardware_web`):
 
@@ -1027,6 +1029,20 @@ Ví dụ chi tiết theo các nghiệp vụ thực tế (`hardware_control_servi
 
 # 7. Chờ đèn LED tắt hẳn
 - hwSeeLedOff: 1                       # Chờ LED kênh 1 tắt (dưới ngưỡng offBelowPercent)
+
+# 8. hwSeeNativeLedBlink: cùng tham số như hwSeeLedBlink, nhưng đếm bằng bộ đếm
+#    blink theo thời gian thực trên firmware (color blink_cursor?/color blink?)
+#    thay vì PC tự lấy mẫu RGBC qua serial rồi tự phát hiện cạnh xung.
+#    Ưu tiên dùng lệnh này khi cần độ ổn định cao trên nhiều máy khác nhau
+#    (đặc biệt Windows) - hwSeeLedBlink có thể thỉnh thoảng đếm thiếu 1 nhịp
+#    nếu polling qua serial bị trễ/jitter do driver COM port của máy host.
+#    minPulseMs/maxPulseMs/maxGapMs không áp dụng ở đây (firmware dùng ngưỡng
+#    đã calib sẵn trong Flash).
+- hwSeeNativeLedBlink:
+    channel: 1
+    color: "PINK"
+    count: 3
+    timeoutMs: 8000
 ```
 
 ### `hwSensorLight` / `hwSetBrightnessThresholds` / `hwWaitForBrightness` / `hwWaitForCct`

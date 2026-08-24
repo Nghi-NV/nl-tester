@@ -112,6 +112,7 @@ hwStopRepeatClick,,hardware,Stop continuous click repeat loop on STM32,number|ob
 hwConfigureServo,,hardware,Configure servo channel angles and durations,object,channel,pressAngle|releaseAngle|pressDurationMs|releaseDurationMs|holdDurationMs,no,all,"- hwConfigureServo: { channel: 1, pressAngle: 75 }",""
 hwSeeLed,,hardware,Assert/Wait for LED color (RED|GREEN|BLUE|YELLOW|CYAN|MAGENTA|PINK|WHITE|OFF),string|object,channel,expected|timeoutMs,no,all,"- hwSeeLed: GREEN",""
 hwSeeLedBlink,,hardware,Assert/Wait for LED blink pattern (with color and count filter),number|string|object,channel,color|count|timeoutMs,no,all,"- hwSeeLedBlink: { channel: 1, color: BLUE, count: 2 }",""
+hwSeeNativeLedBlink,,hardware,Assert/Wait for LED blink pattern on STM32 native counter,number|string|object,channel,color|count|timeoutMs|afterEventId,no,all,"- hwSeeNativeLedBlink: { channel: 1, color: BLUE, count: 2 }",""
 hwSeeLedOff,,hardware,Assert/Wait for LED to turn OFF,number|object,channel,timeoutMs,no,all,"- hwSeeLedOff: 1",""
 hwSensorLight,,hardware,Set color sensor illumination light ON/OFF,string|boolean|object,channel|state|enabled,,no,all,"- hwSensorLight: on",""
 hwSetBrightnessThresholds,,hardware,Set brightness thresholds and blink window,object,channel|offBelowPercent|onAbovePercent,minPulseMs|maxPulseMs|sequenceEndGapMs,no,all,"- hwSetBrightnessThresholds: { channel: 1, offBelowPercent: 30, onAbovePercent: 70 }",""
