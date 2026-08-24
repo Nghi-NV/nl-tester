@@ -369,7 +369,8 @@ pub async fn get_hierarchy_ios(_udid: Option<&str>) -> Result<String> {
 pub async fn get_hierarchy_windows() -> Result<String> {
     #[cfg(target_os = "windows")]
     {
-        let driver = crate::driver::windows::WindowsDriver::new()?;
+        use crate::driver::traits::PlatformDriver;
+        let driver = crate::driver::windows::WindowsDriver::new();
         driver.dump_ui_hierarchy().await
     }
     #[cfg(not(target_os = "windows"))]
