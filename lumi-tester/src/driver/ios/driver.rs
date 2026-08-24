@@ -1,8 +1,10 @@
 //! iOS Driver implementation
 //!
-//! This driver enables iOS automation testing:
-//! - Simulators: Uses idb CLI tool
-//! - Real devices: Uses WebDriverAgent (WDA) via HTTP API
+//! UI automation (tap/swipe/type/hierarchy/screenshot) goes entirely through the
+//! `lm-ios-tester` on-device agent (native XCUITest, see `agent.rs`) - both simulators
+//! and real devices. Process/file/lifecycle operations (install/uninstall/push/pull)
+//! use native `xcrun devicectl`/`xcrun simctl` (see `devicectl.rs`). idb and
+//! WebDriverAgent are not used anywhere in this driver.
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -15,8 +17,8 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use super::accessibility::{self, IosElement};
-use super::idb;
-use super::wda::WdaClient;
+use super::agent::AgentClient;
+use super::devicectl;
 use crate::driver::common;
 use crate::driver::image_matcher::{find_template, ImageRegion, MatchConfig};
 use crate::driver::traits::{PlatformDriver, Selector, SwipeDirection};
@@ -25,9 +27,8 @@ use colored::Colorize;
 use image::GenericImageView;
 use std::collections::HashMap as StdHashMap;
 
-/// iOS driver implementation
-/// - Simulators: Uses idb
-/// - Real devices: Uses WebDriverAgent (WDA)
+/// iOS driver implementation - UI automation via the on-device `lm-ios-tester` agent,
+/// process/file/lifecycle operations via native `xcrun devicectl`/`xcrun simctl`.
 pub struct IosDriver {
     /// Device UDID
     udid: String,
@@ -48,8 +49,13 @@ pub struct IosDriver {
     screen_size: (u32, u32),
     /// Mock location states keyed by name ("" for default)
     mock_states: Arc<Mutex<StdHashMap<String, IosMockLocationState>>>,
-    /// WDA client for real device UI automation
-    wda_client: Arc<Mutex<Option<WdaClient>>>,
+    /// lm-ios-tester agent client - the sole UI-automation path (simulator and real
+    /// device alike). `None` only when the agent couldn't be started at all, in which
+    /// case UI-automation methods return an explicit error rather than silently no-op.
+    agent_client: Arc<Mutex<Option<AgentClient>>>,
+    /// Bundle id of the most recently `launch_app`-ed app - the agent's `hierarchy`
+    /// command needs an explicit target bundle id (defaults to SpringBoard otherwise).
+    current_app_id: Arc<Mutex<Option<String>>>,
     /// OCR engine (lazy-initialized)
     ocr_engine: tokio::sync::OnceCell<crate::driver::ocr::OcrEngine>,
 }
@@ -85,7 +91,7 @@ impl Default for IosMockLocationState {
 impl IosDriver {
     /// Create a new iOS driver
     pub async fn new(udid: Option<&str>) -> Result<Self> {
-        let targets = idb::list_targets().await?;
+        let targets = devicectl::list_targets().await?;
 
         let target = if let Some(id) = udid.filter(|s| !s.is_empty()) {
             targets
@@ -116,34 +122,30 @@ impl IosDriver {
         );
 
         let is_simulator = target.target_type.eq_ignore_ascii_case("simulator");
-        let screen_size = idb::get_screen_size(&target.udid)
-            .await
-            .unwrap_or((390, 844));
+        let mut screen_size = (390, 844);
 
-        // Initialize WDA client for real devices
-        let wda_client = if !is_simulator {
-            // Try to ensure WDA is running (auto-start if possible)
-            let port = super::wda::DEFAULT_WDA_PORT;
-            let _ = super::wda_setup::ensure_wda_running(&target.udid, port).await;
-
-            // Check if WDA host was found (stored in env by wda_setup)
-            let wda_host = std::env::var("WDA_HOST").unwrap_or_else(|_| "localhost".to_string());
-            let client = WdaClient::with_host(&wda_host, port);
-
-            if client.is_ready().await.unwrap_or(false) {
-                println!(
-                    "{} WebDriverAgent ready at {}:{}",
-                    "✓".green(),
-                    wda_host,
-                    port
-                );
-                Some(client)
-            } else {
-                None
-            }
+        // The agent (native XCTest) works identically on simulators and real devices -
+        // `agent_setup::ensure_agent_running` launches `xcodebuild test-without-building`
+        // against the target's UDID either way, and the port-forward step it also tries
+        // (`iproxy`, USB-only) simply no-ops harmlessly for a simulator UDID since the
+        // agent is already reachable on localhost in that case.
+        let port = super::agent::DEFAULT_AGENT_PORT;
+        let agent_client = if super::agent_setup::ensure_agent_running(&target.udid, port).await {
+            Some(AgentClient::new("localhost", port))
         } else {
+            eprintln!(
+                "{} lm-ios-tester agent could not be started - UI automation (tap/swipe/type/\
+                 hierarchy/screenshot) will fail until it is",
+                "⚠".yellow()
+            );
             None
         };
+
+        if let Some(ref agent) = agent_client {
+            if let Some(size) = agent.get_screen_size().await {
+                screen_size = size;
+            }
+        }
 
         Ok(Self {
             udid: target.udid,
@@ -155,7 +157,8 @@ impl IosDriver {
             current_recording_path: Arc::new(Mutex::new(None)),
             screen_size,
             mock_states: Arc::new(Mutex::new(StdHashMap::new())),
-            wda_client: Arc::new(Mutex::new(wda_client)),
+            agent_client: Arc::new(Mutex::new(agent_client)),
+            current_app_id: Arc::new(Mutex::new(None)),
             ocr_engine: tokio::sync::OnceCell::new(),
         })
     }
@@ -166,6 +169,62 @@ impl IosDriver {
         *cache = None;
         let mut time = self.cache_time.lock().await;
         *time = None;
+    }
+
+    /// Clear an app's on-disk state and privacy permissions. Simulator-only:
+    /// `xcrun simctl ...` (Simulator Control) only ever targets simulators - on a real
+    /// device these calls fail immediately, so this used to be silently swallowed and
+    /// `clearState: true` did nothing on physical hardware (confirmed: an already-logged-
+    /// in app stayed logged in across `launchApp(clearState: true)`). No idb-level
+    /// equivalent exists for a real device short of a full app uninstall/reinstall
+    /// (needs the app's .ipa/.app bundle on hand, not available here) - warn instead of
+    /// silently no-op'ing, so a flow relying on this doesn't fail confusingly several
+    /// steps later with no indication why. Shared by both `launch_app`'s `clearState`
+    /// path and the separate `clear_app_data` trait method (the executor calls the
+    /// latter, not `launch_app`'s clear-state branch, whenever a flow's `launchApp` step
+    /// combines `clearState` with `permissions` - both call paths need the real logic).
+    async fn clear_app_state_impl(&self, bundle_id: &str) {
+        if self.is_simulator {
+            let container_result = tokio::process::Command::new("xcrun")
+                .args(&["simctl", "get_app_container", &self.udid, bundle_id, "data"])
+                .output()
+                .await;
+
+            if let Ok(output) = container_result {
+                if output.status.success() {
+                    let container_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !container_path.is_empty() && std::path::Path::new(&container_path).exists()
+                    {
+                        // Delete contents of Documents, Library, tmp folders (keep the folders)
+                        let subfolders = ["Documents", "Library", "tmp"];
+                        for folder in &subfolders {
+                            let folder_path = format!("{}/{}", container_path, folder);
+                            if std::path::Path::new(&folder_path).exists() {
+                                let _ = tokio::process::Command::new("sh")
+                                    .args(&[
+                                        "-c",
+                                        &format!("rm -rf {}/* 2>/dev/null || true", folder_path),
+                                    ])
+                                    .output()
+                                    .await;
+                            }
+                        }
+                    }
+                }
+            }
+
+            let _ = tokio::process::Command::new("xcrun")
+                .args(&["simctl", "privacy", &self.udid, "reset", "all", bundle_id])
+                .output()
+                .await;
+        } else {
+            println!(
+                "  {} clearState not supported on physical iOS devices (simctl is \
+                 simulator-only; a real device needs a full app uninstall/reinstall \
+                 instead)",
+                "⚠".yellow()
+            );
+        }
     }
 
     /// Get the UI hierarchy (with caching)
@@ -184,18 +243,14 @@ impl IosDriver {
         }
         drop(cache_time);
 
-        // Fast path: real devices already keep a persistent WebDriverAgent HTTP session
-        // open (used for tap/swipe/etc.) - reuse it for hierarchy reads too instead of
-        // spawning a fresh `idb` process (idb is Python-based; each invocation pays
-        // interpreter startup + gRPC client setup on top of the actual query, easily
-        // several hundred ms to 1s+). Falls back to the existing idb-based dump on any
-        // failure (WDA unavailable, request error, unexpected response shape) - simulators
-        // never get a wda_client in the first place (see `AndroidDriver::new`) so they
-        // always take this fallback, unchanged from before.
-        let json_output = match self.try_fast_hierarchy_dump().await {
-            Some(json) => json,
-            None => idb::describe_ui(&self.udid).await?,
-        };
+        // Single round trip via the lm-ios-tester agent (`-[XCUIElement
+        // snapshotWithError:]`, ~100ms measured) - the only hierarchy source now that
+        // idb/WDA are gone. No fallback: if the agent isn't reachable, error out
+        // explicitly instead of returning a stale/empty hierarchy.
+        let json_output = self
+            .try_agent_hierarchy_dump()
+            .await
+            .ok_or_else(|| anyhow::anyhow!("lm-ios-tester agent is not reachable - cannot read UI hierarchy"))?;
         let elements = accessibility::parse_ui_hierarchy(&json_output)?;
 
         // Update cache
@@ -207,13 +262,155 @@ impl IosDriver {
         Ok(elements)
     }
 
-    /// Try to fetch the UI hierarchy JSON via the already-connected WebDriverAgent
-    /// session. Returns `None` if there's no WDA client (simulator, or WDA failed to
-    /// start) or the request fails for any reason.
-    async fn try_fast_hierarchy_dump(&self) -> Option<String> {
-        let mut guard = self.wda_client.lock().await;
-        let wda = guard.as_mut()?;
-        wda.get_source().await.ok()
+    /// Try the lm-ios-tester agent's `hierarchy` command. Returns `None` if there's no
+    /// agent client (simulator, or the agent failed to start) or the request fails.
+    async fn try_agent_hierarchy_dump(&self) -> Option<String> {
+        let guard = self.agent_client.lock().await;
+        let agent = guard.as_ref()?;
+        let bundle_id = self.current_app_id.lock().await.clone().unwrap_or_default();
+        let data = agent.hierarchy(&bundle_id).await?;
+        serde_json::to_string(&data).ok()
+    }
+
+    async fn try_agent_tap(&self, x: i32, y: i32) -> bool {
+        let guard = self.agent_client.lock().await;
+        match guard.as_ref() {
+            Some(agent) => agent.tap(x as f64, y as f64).await,
+            None => false,
+        }
+    }
+
+    async fn try_agent_long_press(&self, x: i32, y: i32, duration_ms: u64) -> bool {
+        let guard = self.agent_client.lock().await;
+        match guard.as_ref() {
+            Some(agent) => agent.long_press(x as f64, y as f64, duration_ms).await,
+            None => false,
+        }
+    }
+
+    async fn try_agent_double_tap(&self, x: i32, y: i32) -> bool {
+        let guard = self.agent_client.lock().await;
+        match guard.as_ref() {
+            Some(agent) => agent.double_tap(x as f64, y as f64).await,
+            None => false,
+        }
+    }
+
+    async fn try_agent_swipe(&self, x1: i32, y1: i32, x2: i32, y2: i32, duration_ms: u64) -> bool {
+        let guard = self.agent_client.lock().await;
+        match guard.as_ref() {
+            Some(agent) => {
+                agent
+                    .swipe(x1 as f64, y1 as f64, x2 as f64, y2 as f64, duration_ms)
+                    .await
+            }
+            None => false,
+        }
+    }
+
+    async fn try_agent_type_text(&self, text: &str) -> bool {
+        let guard = self.agent_client.lock().await;
+        match guard.as_ref() {
+            Some(agent) => agent.type_text(text).await,
+            None => false,
+        }
+    }
+
+    async fn try_agent_erase_text(&self, count: u32) -> bool {
+        let guard = self.agent_client.lock().await;
+        match guard.as_ref() {
+            Some(agent) => agent.erase_text(count).await,
+            None => false,
+        }
+    }
+
+    async fn try_agent_press_key(&self, key: &str) -> bool {
+        let guard = self.agent_client.lock().await;
+        match guard.as_ref() {
+            Some(agent) => agent.press_key(key).await,
+            None => false,
+        }
+    }
+
+    async fn try_agent_press_button(&self, name: &str) -> bool {
+        let guard = self.agent_client.lock().await;
+        match guard.as_ref() {
+            Some(agent) => agent.press_button(name).await,
+            None => false,
+        }
+    }
+
+    async fn try_agent_screenshot(&self, path: &str) -> bool {
+        let guard = self.agent_client.lock().await;
+        let Some(agent) = guard.as_ref() else {
+            return false;
+        };
+        let Some(b64) = agent.screenshot_base64().await else {
+            return false;
+        };
+        use base64::Engine;
+        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(&b64) else {
+            return false;
+        };
+        std::fs::write(path, bytes).is_ok()
+    }
+
+    /// Screenshot capture used throughout the driver (OCR, image matching, pixel color,
+    /// screenshot comparison, `take_screenshot`). Agent first (works on simulator and
+    /// real device alike); `xcrun simctl io screenshot` as a simulator-only fallback
+    /// (CoreSimulator talks straight to the simulator's window server, no XCTest agent
+    /// needed) - no equivalent native fallback exists for a real device.
+    async fn capture_screenshot(&self, path: &str) -> Result<()> {
+        if self.try_agent_screenshot(path).await {
+            return Ok(());
+        }
+        if self.is_simulator {
+            devicectl::screenshot_simulator(&self.udid, path).await?;
+            return Ok(());
+        }
+        anyhow::bail!("lm-ios-tester agent is not reachable - cannot capture screenshot")
+    }
+
+    /// Raw hierarchy JSON via the agent, erroring out (not silently degrading) when the
+    /// agent isn't reachable - used by helpers that need to inspect the tree directly
+    /// (paste-menu detection, text-field discovery) rather than through `get_ui_hierarchy`'s
+    /// cache.
+    async fn hierarchy_json(&self) -> Result<String> {
+        self.try_agent_hierarchy_dump()
+            .await
+            .ok_or_else(|| anyhow::anyhow!("lm-ios-tester agent is not reachable - cannot read UI hierarchy"))
+    }
+
+    async fn agent_tap(&self, x: i32, y: i32) -> Result<()> {
+        if self.try_agent_tap(x, y).await {
+            Ok(())
+        } else {
+            anyhow::bail!("lm-ios-tester agent is not reachable - cannot tap")
+        }
+    }
+
+    async fn agent_long_press(&self, x: i32, y: i32, duration_ms: u64) -> Result<()> {
+        if self.try_agent_long_press(x, y, duration_ms).await {
+            Ok(())
+        } else {
+            anyhow::bail!("lm-ios-tester agent is not reachable - cannot long-press")
+        }
+    }
+
+    async fn agent_swipe(&self, x1: i32, y1: i32, x2: i32, y2: i32, duration_ms: u64) -> Result<()> {
+        if self.try_agent_swipe(x1, y1, x2, y2, duration_ms).await {
+            Ok(())
+        } else {
+            anyhow::bail!("lm-ios-tester agent is not reachable - cannot swipe")
+        }
+    }
+
+    async fn agent_press_button(&self, name: &str) -> Result<()> {
+        if self.try_agent_press_button(name).await {
+            Ok(())
+        } else {
+            anyhow::bail!("lm-ios-tester agent is not reachable - cannot press '{}'", name)
+        }
     }
 
     /// Get OCR engine (lazy-initialized)
@@ -239,7 +436,7 @@ impl IosDriver {
         // Capture screenshot
         let screenshot_path = std::env::temp_dir().join(format!("ios_ocr_{}.png", Uuid::new_v4()));
         let screenshot_path_str = screenshot_path.to_string_lossy().to_string();
-        idb::screenshot(&self.udid, &screenshot_path_str).await?;
+        self.capture_screenshot(&screenshot_path_str).await?;
         let png_data = std::fs::read(&screenshot_path)?;
         let _ = std::fs::remove_file(&screenshot_path);
 
@@ -302,7 +499,7 @@ impl IosDriver {
         let screenshot_path_str = screenshot_path.to_string_lossy().to_string();
 
         let screenshot_start = Instant::now();
-        idb::screenshot(&self.udid, &screenshot_path_str).await?;
+        self.capture_screenshot(&screenshot_path_str).await?;
         println!("      ⏱ Screenshot: {:?}", screenshot_start.elapsed());
 
         // Match
@@ -678,7 +875,7 @@ impl IosDriver {
 
         // 2. Find target element to tap (TextField)
         // We reuse the logic from erase_text to find generic text field if we don't know where to tap
-        let ui_json = idb::describe_ui(&self.udid).await?;
+        let ui_json = self.hierarchy_json().await?;
         let mut tap_x = (self.screen_size.0 / 2) as i32;
         let mut tap_y = (self.screen_size.1 / 4) as i32;
 
@@ -703,21 +900,21 @@ impl IosDriver {
         // 3. Tap to ensure focus / Bring up menu
         // We tap once. If menu doesn't appear, we try tapping cursor again.
         println!("    {} Tapping to focus text field...", "ℹ".blue());
-        idb::tap(&self.udid, tap_x, tap_y).await?;
+        self.agent_tap(tap_x, tap_y).await?;
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         // Check if "Paste" is visible immediately
         if self.find_paste_button().await?.is_none() {
             // Tap again (sometimes toggle menu)
             println!("    {} Tapping again to reveal menu...", "ℹ".blue());
-            idb::tap(&self.udid, tap_x, tap_y).await?;
+            self.agent_tap(tap_x, tap_y).await?;
             tokio::time::sleep(Duration::from_millis(700)).await;
         }
 
         // If still not visible, try long press
         if self.find_paste_button().await?.is_none() {
             println!("    {} Long pressing to reveal menu...", "ℹ".blue());
-            idb::long_press(&self.udid, tap_x, tap_y, 1000).await?;
+            self.agent_long_press(tap_x, tap_y, 1000).await?;
             tokio::time::sleep(Duration::from_millis(1000)).await;
         }
 
@@ -730,7 +927,7 @@ impl IosDriver {
                 px,
                 py
             );
-            idb::tap(&self.udid, px, py).await?;
+            self.agent_tap(px, py).await?;
         } else {
             println!(
                 "{} Could not find 'Paste' menu item. Trying blind tap near cursor...",
@@ -750,7 +947,7 @@ impl IosDriver {
     }
 
     async fn find_paste_button(&self) -> Result<Option<IosElement>> {
-        let ui_json = idb::describe_ui(&self.udid).await?;
+        let ui_json = self.hierarchy_json().await?;
         if let Ok(elements) = crate::driver::ios::accessibility::parse_ui_hierarchy(&ui_json) {
             let flat = crate::driver::ios::accessibility::flatten_elements(&elements);
 
@@ -792,62 +989,39 @@ impl PlatformDriver for IosDriver {
 
     async fn launch_app(&self, bundle_id: &str, clear_state: bool) -> Result<()> {
         self.invalidate_cache().await;
+        *self.current_app_id.lock().await = Some(bundle_id.to_string());
 
-        // Always terminate first if running
-        let _ = idb::terminate_app(&self.udid, bundle_id, self.is_simulator).await;
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        if clear_state {
-            // Silently clear app data
-
-            // Get app data container path using simctl
-            let container_result = tokio::process::Command::new("xcrun")
-                .args(&["simctl", "get_app_container", &self.udid, bundle_id, "data"])
-                .output()
-                .await;
-
-            if let Ok(output) = container_result {
-                if output.status.success() {
-                    let container_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    if !container_path.is_empty() && std::path::Path::new(&container_path).exists()
-                    {
-                        // Delete contents of Documents, Library, tmp folders (keep the folders)
-                        let subfolders = ["Documents", "Library", "tmp"];
-                        for folder in &subfolders {
-                            let folder_path = format!("{}/{}", container_path, folder);
-                            if std::path::Path::new(&folder_path).exists() {
-                                // Remove all contents inside the folder
-                                let _ = tokio::process::Command::new("rm")
-                                    .args(&["-rf", &format!("{}/*", folder_path)])
-                                    .output()
-                                    .await;
-
-                                // Use shell to expand glob
-                                let _ = tokio::process::Command::new("sh")
-                                    .args(&[
-                                        "-c",
-                                        &format!("rm -rf {}/* 2>/dev/null || true", folder_path),
-                                    ])
-                                    .output()
-                                    .await;
-                            }
-                        }
-                        // Cleared app container silently
-                    }
+        // The agent's `launch_app`/`terminate_app` use `[XCUIApplication terminate]`/
+        // `launch` (native XCTest) - the reliable path on both simulator and real
+        // device. `devicectl`/`simctl process launch` is the fallback when the agent
+        // itself isn't reachable (agent not started) - it can restart the process but
+        // can't drive the app afterward, so UI automation will still fail until the
+        // agent comes back.
+        let agent_launched = {
+            let guard = self.agent_client.lock().await;
+            match guard.as_ref() {
+                Some(agent) => {
+                    agent.terminate_app(bundle_id).await;
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                    Some(agent.launch_app(bundle_id).await)
                 }
+                None => None,
             }
+        };
 
-            // Also reset privacy permissions
-            let _ = tokio::process::Command::new("xcrun")
-                .args(&["simctl", "privacy", &self.udid, "reset", "all", bundle_id])
-                .output()
-                .await;
-
+        if agent_launched.is_none() {
+            let _ = devicectl::terminate_app(&self.udid, bundle_id, self.is_simulator).await;
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
 
-        // Launch the app (silently)
-        idb::launch_app(&self.udid, bundle_id, self.is_simulator).await?;
+        if clear_state {
+            self.clear_app_state_impl(bundle_id).await;
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+
+        if agent_launched.is_none() {
+            devicectl::launch_app(&self.udid, bundle_id, self.is_simulator).await?;
+        }
 
         // Wait longer for app to fully stabilize (especially after clear state)
         let wait_time = if clear_state { 2000 } else { 1000 };
@@ -858,7 +1032,16 @@ impl PlatformDriver for IosDriver {
     }
 
     async fn stop_app(&self, bundle_id: &str) -> Result<()> {
-        idb::terminate_app(&self.udid, bundle_id, self.is_simulator).await?;
+        let agent_ok = {
+            let guard = self.agent_client.lock().await;
+            match guard.as_ref() {
+                Some(agent) => Some(agent.terminate_app(bundle_id).await),
+                None => None,
+            }
+        };
+        if agent_ok.is_none() {
+            devicectl::terminate_app(&self.udid, bundle_id, self.is_simulator).await?;
+        }
         self.invalidate_cache().await;
         Ok(())
     }
@@ -869,18 +1052,7 @@ impl PlatformDriver for IosDriver {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Element not found for tap: {:?}", selector))?;
 
-        if self.is_simulator {
-            idb::tap(&self.udid, pos.0, pos.1).await?;
-        } else {
-            // Use WDA for real devices
-            let mut wda = self.wda_client.lock().await;
-            if let Some(ref mut client) = *wda {
-                client.tap(pos.0, pos.1).await?;
-            } else {
-                // Fallback to idb (will likely fail)
-                idb::tap(&self.udid, pos.0, pos.1).await?;
-            }
-        }
+        self.agent_tap(pos.0, pos.1).await?;
         self.invalidate_cache().await;
         Ok(())
     }
@@ -891,16 +1063,7 @@ impl PlatformDriver for IosDriver {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Element not found for long_press: {:?}", selector))?;
 
-        if self.is_simulator {
-            idb::long_press(&self.udid, pos.0, pos.1, duration_ms).await?;
-        } else {
-            let mut wda = self.wda_client.lock().await;
-            if let Some(ref mut client) = *wda {
-                client.long_press(pos.0, pos.1, duration_ms).await?;
-            } else {
-                idb::long_press(&self.udid, pos.0, pos.1, duration_ms).await?;
-            }
-        }
+        self.agent_long_press(pos.0, pos.1, duration_ms).await?;
         self.invalidate_cache().await;
         Ok(())
     }
@@ -911,20 +1074,8 @@ impl PlatformDriver for IosDriver {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Element not found for double_tap: {:?}", selector))?;
 
-        if self.is_simulator {
-            // Perform two rapid taps
-            idb::tap(&self.udid, pos.0, pos.1).await?;
-            tokio::time::sleep(Duration::from_millis(50)).await;
-            idb::tap(&self.udid, pos.0, pos.1).await?;
-        } else {
-            let mut wda = self.wda_client.lock().await;
-            if let Some(ref mut client) = *wda {
-                client.double_tap(pos.0, pos.1).await?;
-            } else {
-                idb::tap(&self.udid, pos.0, pos.1).await?;
-                tokio::time::sleep(Duration::from_millis(50)).await;
-                idb::tap(&self.udid, pos.0, pos.1).await?;
-            }
+        if !self.try_agent_double_tap(pos.0, pos.1).await {
+            anyhow::bail!("lm-ios-tester agent is not reachable - cannot double-tap");
         }
 
         self.invalidate_cache().await;
@@ -936,30 +1087,28 @@ impl PlatformDriver for IosDriver {
     }
 
     async fn input_text(&self, text: &str, _unicode: bool) -> Result<()> {
-        if self.is_simulator {
-            if text.chars().all(|c| c.is_ascii()) {
-                idb::input_text(&self.udid, text).await?;
-            } else {
-                // Fallback for non-ASCII characters (e.g. Vietnamese)
+        if !self.try_agent_type_text(text).await {
+            if self.is_simulator {
+                // Clipboard-paste fallback (simulator only: uses `xcrun simctl pbcopy`,
+                // which has no real-device equivalent) for when the agent can't type
+                // directly - e.g. non-ASCII text the keyboard-event path chokes on.
                 self.input_text_clipboard(text).await?;
-            }
-        } else {
-            // Use WDA for real devices - supports both ASCII and Unicode
-            let mut wda = self.wda_client.lock().await;
-            if let Some(ref mut client) = *wda {
-                client.input_text(text).await?;
             } else {
-                // Fallback to idb (will likely fail for real devices)
-                idb::input_text(&self.udid, text).await?;
+                anyhow::bail!("lm-ios-tester agent is not reachable - cannot type text");
             }
         }
         self.invalidate_cache().await;
         Ok(())
     }
 
-    async fn erase_text(&self, _char_count: Option<u32>) -> Result<()> {
-        // For iOS, find text field and select all via triple-tap then replace
-        let ui_json = idb::describe_ui(&self.udid).await?;
+    async fn erase_text(&self, char_count: Option<u32>) -> Result<()> {
+        if self.try_agent_erase_text(char_count.unwrap_or(60)).await {
+            self.invalidate_cache().await;
+            return Ok(());
+        }
+
+        // Fallback: find text field and select all via triple-tap then replace
+        let ui_json = self.hierarchy_json().await?;
 
         // Look for TextField/SearchField in the UI to get correct coordinates
         let mut tap_x = (self.screen_size.0 / 2) as i32;
@@ -980,18 +1129,20 @@ impl PlatformDriver for IosDriver {
 
         // Triple-tap to select all text
         for _ in 0..3 {
-            idb::tap(&self.udid, tap_x, tap_y).await?;
+            self.agent_tap(tap_x, tap_y).await?;
             tokio::time::sleep(Duration::from_millis(80)).await;
         }
         tokio::time::sleep(Duration::from_millis(300)).await;
 
         // Type space to replace selected text
-        idb::input_text(&self.udid, " ").await?;
+        if !self.try_agent_type_text(" ").await {
+            anyhow::bail!("lm-ios-tester agent is not reachable - cannot erase text");
+        }
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Triple-tap again to select the space
         for _ in 0..3 {
-            idb::tap(&self.udid, tap_x, tap_y).await?;
+            self.agent_tap(tap_x, tap_y).await?;
             tokio::time::sleep(Duration::from_millis(80)).await;
         }
         tokio::time::sleep(Duration::from_millis(200)).await;
@@ -1001,21 +1152,10 @@ impl PlatformDriver for IosDriver {
     }
 
     async fn hide_keyboard(&self) -> Result<()> {
-        if self.is_simulator {
-            // Try pressing return to dismiss, common pattern
-            let _ = idb::press_key(&self.udid, "XCUIKeyboardKeyReturn").await;
-
+        if !self.try_agent_press_key("RETURN").await {
             // Alternative: tap outside the keyboard area
             let (_, height) = self.screen_size;
-            let _ = idb::tap(&self.udid, 50, (height / 4) as i32).await;
-        } else {
-            let mut wda = self.wda_client.lock().await;
-            if let Some(ref mut client) = *wda {
-                // Press return key to dismiss keyboard
-                let _ = client.press_key("RETURN").await;
-            } else {
-                let _ = idb::press_key(&self.udid, "XCUIKeyboardKeyReturn").await;
-            }
+            let _ = self.agent_tap(50, (height / 4) as i32).await;
         }
 
         self.invalidate_cache().await;
@@ -1092,16 +1232,7 @@ impl PlatformDriver for IosDriver {
             y2
         );
 
-        if self.is_simulator {
-            idb::swipe(&self.udid, x1, y1, x2, y2, duration_ms).await?;
-        } else {
-            let mut wda = self.wda_client.lock().await;
-            if let Some(ref mut client) = *wda {
-                client.swipe(x1, y1, x2, y2, duration_ms).await?;
-            } else {
-                idb::swipe(&self.udid, x1, y1, x2, y2, duration_ms).await?;
-            }
-        }
+        self.agent_swipe(x1, y1, x2, y2, duration_ms.unwrap_or(300)).await?;
         self.invalidate_cache().await;
         Ok(())
     }
@@ -1119,16 +1250,7 @@ impl PlatformDriver for IosDriver {
             duration_ms
         );
 
-        if self.is_simulator {
-            idb::swipe(&self.udid, x1, y1, x2, y2, Some(duration_ms)).await?;
-        } else {
-            let mut wda = self.wda_client.lock().await;
-            if let Some(ref mut client) = *wda {
-                client.swipe(x1, y1, x2, y2, Some(duration_ms)).await?;
-            } else {
-                idb::swipe(&self.udid, x1, y1, x2, y2, Some(duration_ms)).await?;
-            }
-        }
+        self.agent_swipe(x1, y1, x2, y2, duration_ms).await?;
         self.invalidate_cache().await;
         Ok(())
     }
@@ -1289,8 +1411,12 @@ impl PlatformDriver for IosDriver {
     }
 
     async fn open_link(&self, url: &str, _app_id: Option<&str>) -> Result<()> {
-        let _output = idb::open_url(&self.udid, url).await?;
-        // Check output?
+        // `xcrun simctl openurl` covers simulators cleanly. No equivalent exists for a
+        // real device without idb: `devicectl device process launch` only passes plain
+        // command-line arguments to the target process, not a URL through
+        // `application(_:open:options:)`, so a real device has no native way to open a
+        // deep link short of idb's own `open` command - a genuine, documented gap.
+        devicectl::open_url(&self.udid, url, self.is_simulator).await?;
         self.invalidate_cache().await;
         Ok(())
     }
@@ -1302,7 +1428,7 @@ impl PlatformDriver for IosDriver {
     ) -> Result<f64> {
         // Take current screenshot
         let temp_path = format!("/tmp/ios_screenshot_{}.png", Uuid::new_v4());
-        idb::screenshot(&self.udid, &temp_path).await?;
+        self.capture_screenshot(&temp_path).await?;
 
         // Load both images
         let current = image::open(&temp_path).context("Failed to open current screenshot")?;
@@ -1335,7 +1461,7 @@ impl PlatformDriver for IosDriver {
     }
 
     async fn take_screenshot(&self, path: &str) -> Result<()> {
-        idb::screenshot(&self.udid, path).await?;
+        self.capture_screenshot(path).await?;
         println!("{} Screenshot saved to: {}", "✓".green(), path);
         Ok(())
     }
@@ -1344,32 +1470,13 @@ impl PlatformDriver for IosDriver {
         // iOS back gesture: swipe from left edge
         let (_, height) = self.screen_size;
         let center_y = height as i32 / 2;
-
-        if self.is_simulator {
-            idb::swipe(&self.udid, 5, center_y, 200, center_y, Some(200)).await?;
-        } else {
-            let mut wda = self.wda_client.lock().await;
-            if let Some(ref mut client) = *wda {
-                client.swipe(5, center_y, 200, center_y, Some(200)).await?;
-            } else {
-                idb::swipe(&self.udid, 5, center_y, 200, center_y, Some(200)).await?;
-            }
-        }
+        self.agent_swipe(5, center_y, 200, center_y, 200).await?;
         self.invalidate_cache().await;
         Ok(())
     }
 
     async fn home(&self) -> Result<()> {
-        if self.is_simulator {
-            idb::press_button(&self.udid, "HOME").await?;
-        } else {
-            let mut wda = self.wda_client.lock().await;
-            if let Some(ref mut client) = *wda {
-                client.press_button("home").await?;
-            } else {
-                idb::press_button(&self.udid, "HOME").await?;
-            }
-        }
+        self.agent_press_button("home").await?;
         self.invalidate_cache().await;
         Ok(())
     }
@@ -1379,11 +1486,29 @@ impl PlatformDriver for IosDriver {
     }
 
     async fn dump_ui_hierarchy(&self) -> Result<String> {
-        idb::describe_ui(&self.udid).await
+        self.hierarchy_json().await
     }
 
     async fn dump_logs(&self, limit: u32) -> Result<String> {
-        idb::get_logs(&self.udid, limit).await
+        // Simulators are ordinary macOS processes under CoreSimulator, so `simctl spawn`
+        // + the system `log` tool reads the simulator's own unified log directly - a
+        // genuine native replacement for idb's `log --style compact`. Real devices have
+        // no devicectl/simctl equivalent (no log-streaming subcommand exists there) - a
+        // documented gap, not a faked replacement.
+        if !self.is_simulator {
+            anyhow::bail!(
+                "dump_logs is not supported on physical iOS devices without idb (no \
+                 xcrun devicectl equivalent for streaming device logs exists)"
+            );
+        }
+        let output = tokio::process::Command::new("xcrun")
+            .args(&["simctl", "spawn", &self.udid, "log", "show", "--style", "compact", "--last", "2m"])
+            .output()
+            .await
+            .context("Failed to run xcrun simctl spawn log show")?;
+        let logs = String::from_utf8_lossy(&output.stdout);
+        let lines: Vec<&str> = logs.lines().rev().take(limit as usize).collect();
+        Ok(lines.into_iter().rev().collect::<Vec<_>>().join("\n"))
     }
 
     async fn tap_by_type_index(&self, element_type: &str, index: u32) -> Result<()> {
@@ -1399,8 +1524,17 @@ impl PlatformDriver for IosDriver {
     }
 
     async fn start_recording(&self, path: &str) -> Result<()> {
-        let child = tokio::process::Command::new("idb")
-            .args(&["record", "video", "--udid", &self.udid, path])
+        // `xcrun simctl io recordVideo` is a clean native replacement for idb's `record
+        // video` on simulators (stops the same way, on SIGINT). No devicectl/simctl
+        // equivalent exists for real devices - a genuine, documented gap.
+        if !self.is_simulator {
+            anyhow::bail!(
+                "start_recording is not supported on physical iOS devices without idb \
+                 (no xcrun devicectl equivalent for screen recording exists)"
+            );
+        }
+        let child = tokio::process::Command::new("xcrun")
+            .args(&["simctl", "io", &self.udid, "recordVideo", path])
             .spawn()?;
 
         *self.recording_process.lock().await = Some(child);
@@ -1413,7 +1547,7 @@ impl PlatformDriver for IosDriver {
 
     async fn stop_recording(&self) -> Result<()> {
         if let Some(mut child) = self.recording_process.lock().await.take() {
-            // idb record video stops on SIGINT
+            // `simctl io recordVideo` stops on SIGINT, same as idb's `record video` did.
             // Since child.kill() is SIGKILL, we should try to send SIGINT if possible.
             // On MacOS/Linux we can use kill -2
             if let Some(pid) = child.id() {
@@ -1478,30 +1612,57 @@ impl PlatformDriver for IosDriver {
     }
 
     async fn press_key(&self, key: &str) -> Result<()> {
-        match key.to_uppercase().as_str() {
-            "HOME" | "VOLUME_UP" | "VOLUME_DOWN" | "LOCK" | "SIRI" => {
-                idb::press_button(&self.udid, &key.to_uppercase()).await
-            }
-            _ => idb::press_key(&self.udid, key).await,
+        let agent_button_name = match key.to_uppercase().as_str() {
+            "HOME" => Some("home"),
+            "VOLUME_UP" => Some("volumeup"),
+            "VOLUME_DOWN" => Some("volumedown"),
+            _ => None,
+        };
+        let ok = if let Some(name) = agent_button_name {
+            self.try_agent_press_button(name).await
+        } else {
+            self.try_agent_press_key(&key.to_uppercase()).await
+        };
+        if ok {
+            Ok(())
+        } else {
+            anyhow::bail!("lm-ios-tester agent is not reachable - cannot press '{}'", key)
         }
     }
 
     async fn push_file(&self, source: &str, dest: &str) -> Result<()> {
-        idb::push_file(&self.udid, source, dest).await
+        let bundle_id = self.current_app_id.lock().await.clone().ok_or_else(|| {
+            anyhow::anyhow!("push_file needs a launched app's bundle id (no app has been launched yet)")
+        })?;
+        devicectl::push_file(&self.udid, &bundle_id, source, dest, self.is_simulator).await
     }
 
     async fn pull_file(&self, source: &str, dest: &str) -> Result<()> {
-        idb::pull_file(&self.udid, source, dest).await
+        let bundle_id = self.current_app_id.lock().await.clone().ok_or_else(|| {
+            anyhow::anyhow!("pull_file needs a launched app's bundle id (no app has been launched yet)")
+        })?;
+        devicectl::pull_file(&self.udid, &bundle_id, source, dest, self.is_simulator).await
     }
 
     async fn clear_app_data(&self, app_id: &str) -> Result<()> {
-        // Just terminate for now
-        idb::terminate_app(&self.udid, app_id, self.is_simulator).await
+        // Was previously just a terminate - never actually cleared any data on either
+        // simulator or real device (comment said "Just terminate for now"). The executor
+        // calls this method, not `launch_app`'s own clear-state branch, whenever a
+        // flow's `launchApp` step combines `clearState: true` with `permissions` (see
+        // `TestCommand::LaunchApp` in executor.rs) - a flow like that was silently never
+        // getting its app data cleared at all.
+        let _ = devicectl::terminate_app(&self.udid, app_id, self.is_simulator).await;
+        self.clear_app_state_impl(app_id).await;
+        Ok(())
     }
 
     async fn set_clipboard(&self, text: &str) -> Result<()> {
         // Workaround: type text
-        idb::input_text(&self.udid, text).await
+        if self.try_agent_type_text(text).await {
+            Ok(())
+        } else {
+            anyhow::bail!("lm-ios-tester agent is not reachable - cannot set clipboard")
+        }
     }
 
     async fn get_clipboard(&self) -> Result<String> {
@@ -1511,7 +1672,7 @@ impl PlatformDriver for IosDriver {
     async fn get_pixel_color(&self, x: i32, y: i32) -> Result<(u8, u8, u8)> {
         // Take screenshot and extract pixel using common utility
         let temp_path = format!("/tmp/ios_pixel_{}.png", Uuid::new_v4());
-        idb::screenshot(&self.udid, &temp_path).await?;
+        self.capture_screenshot(&temp_path).await?;
 
         let img = image::open(&temp_path).context("Failed to open screenshot for pixel color")?;
         let _ = std::fs::remove_file(&temp_path);
@@ -1590,9 +1751,23 @@ impl PlatformDriver for IosDriver {
                     .output()
                     .await;
             }
+        } else {
+            // `idb clear-keychain` was worth trying (confirmed on a physical iOS 26.5.2
+            // device that it actually rejects real targets: "Target doesn't conform to
+            // FBSimulatorKeychainCommands protocol" - the name makes clear it's
+            // simulator-only, contrary to what its own `--help` output suggested). No
+            // idb-level equivalent exists for a real device short of a full app
+            // uninstall/reinstall (which needs the app's .ipa/.app bundle on hand, not
+            // available here) - warn instead of silently no-op'ing as before, so a flow
+            // relying on `clearKeychain: true` to force a logged-out state doesn't fail
+            // confusingly several steps later with no indication why.
+            println!(
+                "  {} clearKeychain not supported on physical iOS devices (no XCTest/ \
+                 devicectl API for it exists; a real device needs a full app \
+                 uninstall/reinstall instead)",
+                "⚠".yellow()
+            );
         }
-        // For physical device: clearKeychain is a no-op (would require app reinstall)
-        // Handled silently - the display_name shows clearKeychain was requested
 
         Ok(())
     }
@@ -1620,14 +1795,14 @@ impl PlatformDriver for IosDriver {
         let (w, _h) = self.screen_size;
         let center_x = (w / 2) as i32;
         // Start very top (0) to 500
-        idb::swipe(&self.udid, center_x, 0, center_x, 500, Some(300)).await
+        self.agent_swipe(center_x, 0, center_x, 500, 300).await
     }
 
     async fn open_quick_settings(&self) -> Result<()> {
         // Control Center: Swipe down from top-right
         let (w, _h) = self.screen_size;
         let start_x = (w as i32) - 10;
-        idb::swipe(&self.udid, start_x, 0, start_x, 400, Some(400)).await
+        self.agent_swipe(start_x, 0, start_x, 400, 400).await
     }
 
     async fn set_volume(&self, _level: u8) -> Result<()> {
@@ -1636,19 +1811,26 @@ impl PlatformDriver for IosDriver {
     }
 
     async fn lock_device(&self) -> Result<()> {
-        idb::press_button(&self.udid, "LOCK").await
+        // Neither XCTest's public `XCUIDevice.Button` (home/volumeUp/volumeDown only,
+        // no lock case) nor devicectl/simctl expose a way to lock the screen - idb's
+        // `press-button LOCK` relied on a private mechanism with no native equivalent.
+        // A genuine, documented gap rather than a faked no-op.
+        anyhow::bail!(
+            "lock_device is not supported without idb (no public XCTest API or xcrun \
+             devicectl/simctl equivalent for locking the screen exists)"
+        )
     }
 
     async fn unlock_device(&self) -> Result<()> {
         // Wake up
-        idb::press_button(&self.udid, "HOME").await?;
+        self.agent_press_button("home").await?;
         // If it was locked, this might wake it. If on lock screen, might need swipe up?
         // Let's try to swipe up from bottom just in case
         let (w, h) = self.screen_size;
         let center_x = (w / 2) as i32;
         let bottom_y = (h as i32) - 10;
         let mid_y = (h / 2) as i32;
-        idb::swipe(&self.udid, center_x, bottom_y, center_x, mid_y, Some(300)).await?;
+        self.agent_swipe(center_x, bottom_y, center_x, mid_y, 300).await?;
         Ok(())
     }
 
@@ -1659,17 +1841,17 @@ impl PlatformDriver for IosDriver {
             anyhow::bail!("App file not found: {}", path);
         }
         println!("  {} Installing app: {}", "⬇".cyan(), path);
-        idb::install_app(&self.udid, path).await
+        devicectl::install_app(&self.udid, path, self.is_simulator).await
     }
 
     async fn uninstall_app(&self, app_id: &str) -> Result<()> {
         println!("  {} Uninstalling app: {}", "🗑".cyan(), app_id);
-        idb::uninstall_app(&self.udid, app_id).await
+        devicectl::uninstall_app(&self.udid, app_id, self.is_simulator).await
     }
 
     async fn background_app(&self, app_id_opt: Option<&str>, duration_ms: u64) -> Result<()> {
         // Press Home
-        idb::press_button(&self.udid, "HOME").await?;
+        self.agent_press_button("home").await?;
 
         // Wait
         tokio::time::sleep(tokio::time::Duration::from_millis(duration_ms)).await;
@@ -1683,9 +1865,24 @@ impl PlatformDriver for IosDriver {
         Ok(())
     }
 
-    async fn set_orientation(&self, _mode: crate::parser::types::Orientation) -> Result<()> {
+    async fn set_orientation(&self, mode: crate::parser::types::Orientation) -> Result<()> {
+        use crate::parser::types::Orientation;
+        if !self.is_simulator {
+            let agent_mode = match mode {
+                Orientation::Portrait => "portrait",
+                Orientation::UpsideDown => "upsideDown",
+                Orientation::Landscape | Orientation::LandscapeLeft => "landscapeLeft",
+                Orientation::LandscapeRight => "landscapeRight",
+            };
+            let guard = self.agent_client.lock().await;
+            if let Some(agent) = guard.as_ref() {
+                if agent.set_orientation(agent_mode).await {
+                    return Ok(());
+                }
+            }
+        }
         println!(
-             "  {} set_orientation not reliably supported on iOS Simulators via idb (requires private APIs or XCUI)", 
+             "  {} set_orientation not reliably supported on iOS Simulators via idb (requires private APIs or XCUI)",
              "⚠️".yellow()
         );
         Ok(())
@@ -1704,14 +1901,6 @@ impl PlatformDriver for IosDriver {
         use rand::Rng;
         use rand::SeedableRng;
 
-        if !self.is_simulator {
-            println!(
-                "  {} Mock location is only supported on iOS Simulator",
-                "⚠".yellow()
-            );
-            return Ok(());
-        }
-
         if points.is_empty() {
             anyhow::bail!("No GPS points provided for mock location");
         }
@@ -1729,6 +1918,8 @@ impl PlatformDriver for IosDriver {
         );
 
         let udid = self.udid.clone();
+        let is_simulator = self.is_simulator;
+        let agent_client = self.agent_client.clone();
         let interval = std::time::Duration::from_millis(interval_ms);
 
         if let Some(speed) = speed_kmh {
@@ -1795,17 +1986,25 @@ impl PlatformDriver for IosDriver {
                         }
                     };
 
-                    // Set location using simctl
-                    let _ = tokio::process::Command::new("xcrun")
-                        .args(&[
-                            "simctl",
-                            "location",
-                            &udid,
-                            "set",
-                            &format!("{},{}", lat, lon),
-                        ])
-                        .output()
-                        .await;
+                    // Simulators only understand `simctl location`; real devices use the
+                    // agent's `set_location` (XCTRunnerDaemonSession-based, see agent.rs).
+                    if is_simulator {
+                        let _ = tokio::process::Command::new("xcrun")
+                            .args(&[
+                                "simctl",
+                                "location",
+                                &udid,
+                                "set",
+                                &format!("{},{}", lat, lon),
+                            ])
+                            .output()
+                            .await;
+                    } else {
+                        let guard = agent_client.lock().await;
+                        if let Some(agent) = guard.as_ref() {
+                            agent.set_location(lat, lon, 0.0).await;
+                        }
+                    }
 
                     if i < points_clone.len() - 1 {
                         let next_point = &points_clone[i + 1];
@@ -1862,6 +2061,11 @@ impl PlatformDriver for IosDriver {
                 .args(&["simctl", "location", &self.udid, "clear"])
                 .output()
                 .await;
+        } else {
+            let guard = self.agent_client.lock().await;
+            if let Some(agent) = guard.as_ref() {
+                agent.clear_location().await;
+            }
         }
         println!("  {} iOS mock location stopped", "📍".yellow());
         Ok(())

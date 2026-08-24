@@ -1,0 +1,314 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		2F271ECEE962E68A638AB821 /* LumiAgentTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 81DB8A7D607739345F81256A /* LumiAgentTests.m */; };
+		44E612ED3B46512EAEC26ABF /* LumiSocketServer.m in Sources */ = {isa = PBXBuildFile; fileRef = 0DEF7D58D0A99B5490A8C1F7 /* LumiSocketServer.m */; };
+		7C96F615F638AD8839A40A1A /* LumiCommandHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = FD481E03E582B469DDE79589 /* LumiCommandHandler.m */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0DEF7D58D0A99B5490A8C1F7 /* LumiSocketServer.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = LumiSocketServer.m; sourceTree = "<group>"; };
+		3C57E0E8E32CFA70279465EF /* LumiIOSAgentRunner.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = LumiIOSAgentRunner.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		5400D6D01D37082B9BF711E6 /* LumiCommandHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LumiCommandHandler.h; sourceTree = "<group>"; };
+		74961D7B770C02C1613972D5 /* LumiSocketServer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LumiSocketServer.h; sourceTree = "<group>"; };
+		81DB8A7D607739345F81256A /* LumiAgentTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = LumiAgentTests.m; sourceTree = "<group>"; };
+		B1813BAE511379B809499A63 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		B81C44569CCBA94096E44A97 /* LumiPrivateXCTest.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LumiPrivateXCTest.h; sourceTree = "<group>"; };
+		FD481E03E582B469DDE79589 /* LumiCommandHandler.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = LumiCommandHandler.m; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		428D65F48C3D3C2171CB9985 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				3C57E0E8E32CFA70279465EF /* LumiIOSAgentRunner.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		55351927A159965565E7EE6B = {
+			isa = PBXGroup;
+			children = (
+				A2A7DF2BFF81B0E99922B8EE /* LumiIOSAgentRunner */,
+				428D65F48C3D3C2171CB9985 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A2A7DF2BFF81B0E99922B8EE /* LumiIOSAgentRunner */ = {
+			isa = PBXGroup;
+			children = (
+				B1813BAE511379B809499A63 /* Info.plist */,
+				81DB8A7D607739345F81256A /* LumiAgentTests.m */,
+				5400D6D01D37082B9BF711E6 /* LumiCommandHandler.h */,
+				FD481E03E582B469DDE79589 /* LumiCommandHandler.m */,
+				B81C44569CCBA94096E44A97 /* LumiPrivateXCTest.h */,
+				74961D7B770C02C1613972D5 /* LumiSocketServer.h */,
+				0DEF7D58D0A99B5490A8C1F7 /* LumiSocketServer.m */,
+			);
+			path = LumiIOSAgentRunner;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		713DF60357F42552935047B7 /* LumiIOSAgentRunner */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 627995E398336D9F62EA1621 /* Build configuration list for PBXNativeTarget "LumiIOSAgentRunner" */;
+			buildPhases = (
+				EBEF7F24A5CB12CDD7740B20 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LumiIOSAgentRunner;
+			packageProductDependencies = (
+			);
+			productName = LumiIOSAgentRunner;
+			productReference = 3C57E0E8E32CFA70279465EF /* LumiIOSAgentRunner.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		3A6C67EC9F1B80B4289692BD /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					713DF60357F42552935047B7 = {
+						DevelopmentTeam = W829PZX392;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 6B27959D0F732A6DF08DEC68 /* Build configuration list for PBXProject "LumiIOSAgent" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 55351927A159965565E7EE6B;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				713DF60357F42552935047B7 /* LumiIOSAgentRunner */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		EBEF7F24A5CB12CDD7740B20 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2F271ECEE962E68A638AB821 /* LumiAgentTests.m in Sources */,
+				7C96F615F638AD8839A40A1A /* LumiCommandHandler.m in Sources */,
+				44E612ED3B46512EAEC26ABF /* LumiSocketServer.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		044A414EA0F6833CE804FD3A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = W829PZX392;
+				EXCLUDED_ARCHS = i386;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = LumiIOSAgentRunner/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.lumi.LumiIOSAgentRunner;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		2AA44DB183BB871E74C19542 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		46DC5B572ECA1AA9139946FA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = W829PZX392;
+				EXCLUDED_ARCHS = i386;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = LumiIOSAgentRunner/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.lumi.LumiIOSAgentRunner;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		4CCA780A711C3AFB75ECD627 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		627995E398336D9F62EA1621 /* Build configuration list for PBXNativeTarget "LumiIOSAgentRunner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				044A414EA0F6833CE804FD3A /* Debug */,
+				46DC5B572ECA1AA9139946FA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6B27959D0F732A6DF08DEC68 /* Build configuration list for PBXProject "LumiIOSAgent" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2AA44DB183BB871E74C19542 /* Debug */,
+				4CCA780A711C3AFB75ECD627 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 3A6C67EC9F1B80B4289692BD /* Project object */;
+}

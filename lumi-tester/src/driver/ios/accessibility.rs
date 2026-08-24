@@ -3,15 +3,70 @@
 //! Parses the output from `idb ui describe-all` to find and match UI elements.
 
 use anyhow::Result;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 /// Represents a frame/bounds of an iOS UI element
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct IosFrame {
     pub x: f64,
     pub y: f64,
     pub width: f64,
     pub height: f64,
+}
+
+/// WDA's real `?format=json` source (confirmed against an actual physical device, not
+/// just docs/guesses) encodes `frame` as `NSStringFromCGRect`'s text form,
+/// `"{{x, y}, {width, height}}"`, not a `{x,y,width,height}` JSON object - `idb ui
+/// describe-all` does use the object shape, so both need to be accepted here.
+impl<'de> Deserialize<'de> for IosFrame {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct FrameObject {
+            x: f64,
+            y: f64,
+            width: f64,
+            height: f64,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum FrameRepr {
+            Object(FrameObject),
+            String(String),
+        }
+
+        match FrameRepr::deserialize(deserializer)? {
+            FrameRepr::Object(o) => Ok(IosFrame {
+                x: o.x,
+                y: o.y,
+                width: o.width,
+                height: o.height,
+            }),
+            FrameRepr::String(s) => parse_cgrect_string(&s)
+                .ok_or_else(|| serde::de::Error::custom(format!("invalid CGRect string: {}", s))),
+        }
+    }
+}
+
+/// Parses `"{{x, y}, {width, height}}"` (the text form of `CGRect`) into an `IosFrame`.
+fn parse_cgrect_string(s: &str) -> Option<IosFrame> {
+    let nums: Vec<f64> = s
+        .split(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
+        .filter(|p| !p.is_empty())
+        .filter_map(|p| p.parse::<f64>().ok())
+        .collect();
+    if nums.len() < 4 {
+        return None;
+    }
+    Some(IosFrame {
+        x: nums[0],
+        y: nums[1],
+        width: nums[2],
+        height: nums[3],
+    })
 }
 
 impl IosFrame {
@@ -34,37 +89,55 @@ impl IosFrame {
 /// Represents an iOS UI element from accessibility tree
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct IosElement {
-    /// Accessibility label
-    #[serde(default, alias = "AXLabel", alias = "name")]
+    /// Accessibility label. `idb`'s output only has "AXLabel"; WDA's real `?format=json`
+    /// source (confirmed on a physical device) has BOTH "label" and a redundant "name"
+    /// key holding the identical value on every element - aliasing "name" to this same
+    /// field alongside "label" made serde see two keys for one field and hard-fail with
+    /// "duplicate field" on every single element. "label" (WDA) / "AXLabel" (idb) is
+    /// enough; the "name" duplicate is intentionally left unmapped.
+    #[serde(default, alias = "AXLabel")]
     pub label: Option<String>,
 
-    /// Accessibility identifier
-    #[serde(default, alias = "AXUniqueId")]
+    /// Redundant name key emitted by WDA
+    #[serde(default)]
+    pub name: Option<String>,
+
+    /// Accessibility identifier. Real WDA key (confirmed on device) is "rawIdentifier",
+    /// not "AXUniqueId" - keep both since idb may still use the latter.
+    #[serde(default, alias = "AXUniqueId", alias = "rawIdentifier")]
     pub identifier: Option<String>,
 
     /// Element type (e.g., "Button", "TextField", "StaticText")
     #[serde(rename = "type", default)]
     pub element_type: Option<String>,
 
-    /// Element frame/bounds. `idb ui describe-all` uses the key "frame"; WDA's JSON
-    /// source (`?format=json`) uses "rect" for the same {x,y,width,height} shape.
-    #[serde(default, alias = "rect")]
+    /// Element frame/bounds from `frame` or `nativeFrame` key
+    #[serde(default, alias = "nativeFrame")]
     pub frame: IosFrame,
 
+    /// Redundant rect object emitted by WDA (`rect` key)
+    #[serde(default)]
+    pub rect: Option<IosFrame>,
+
     /// Accessibility value
-    #[serde(default, alias = "AXValue")]
+    #[serde(default, alias = "AXValue", deserialize_with = "deserialize_ios_string_or_any")]
     pub value: Option<String>,
 
     /// Placeholder text (for text fields)
     #[serde(default)]
     pub placeholder: Option<String>,
 
-    /// Whether element is enabled
-    #[serde(default = "default_true")]
+    /// Whether element is enabled. `idb ui describe-all` uses key "enabled" with a real
+    /// JSON bool; WDA's `?format=json` source (confirmed on a real device) uses
+    /// "isEnabled" with a *string* `"1"`/`"0"` instead - both need to be accepted, or
+    /// (as originally written, with neither the key nor the value shape matched) this
+    /// silently always fell back to the default and never reflected a truly disabled
+    /// element.
+    #[serde(default = "default_true", alias = "isEnabled", deserialize_with = "deserialize_ios_bool")]
     pub enabled: bool,
 
-    /// Whether element is visible
-    #[serde(default = "default_true")]
+    /// Whether element is visible. Same idb-vs-WDA key/shape mismatch as `enabled` above.
+    #[serde(default = "default_true", alias = "isVisible", deserialize_with = "deserialize_ios_bool")]
     pub visible: bool,
 
     /// Child elements
@@ -76,11 +149,47 @@ fn default_true() -> bool {
     true
 }
 
+fn deserialize_ios_string_or_any<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(match v {
+        Some(serde_json::Value::String(s)) => Some(s),
+        Some(serde_json::Value::Number(n)) => Some(n.to_string()),
+        Some(serde_json::Value::Bool(b)) => Some(b.to_string()),
+        _ => None,
+    })
+}
+
+fn deserialize_ios_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v = serde_json::Value::deserialize(deserializer)?;
+    Ok(match v {
+        serde_json::Value::Bool(b) => b,
+        serde_json::Value::String(s) => s == "1" || s.eq_ignore_ascii_case("true"),
+        serde_json::Value::Number(n) => n.as_i64() == Some(1),
+        _ => true,
+    })
+}
+
 impl IosElement {
+    /// Returns primary display text (label or name or value)
+    pub fn display_text(&self) -> Option<&str> {
+        self.label.as_deref().or(self.name.as_deref()).or(self.value.as_deref())
+    }
+
     /// Check if element matches the given text exactly (case-sensitive)
     pub fn matches_text_exact(&self, text: &str) -> bool {
         if let Some(label) = &self.label {
             if label == text {
+                return true;
+            }
+        }
+        if let Some(name) = &self.name {
+            if name == text {
                 return true;
             }
         }
@@ -105,6 +214,11 @@ impl IosElement {
                 return true;
             }
         }
+        if let Some(name) = &self.name {
+            if name.to_lowercase() == text_lower || name.to_lowercase().contains(&text_lower) {
+                return true;
+            }
+        }
         if let Some(value) = &self.value {
             if value.to_lowercase() == text_lower || value.to_lowercase().contains(&text_lower) {
                 return true;
@@ -117,6 +231,11 @@ impl IosElement {
     pub fn matches_text_regex(&self, pattern: &regex::Regex) -> bool {
         if let Some(label) = &self.label {
             if pattern.is_match(label) {
+                return true;
+            }
+        }
+        if let Some(name) = &self.name {
+            if pattern.is_match(name) {
                 return true;
             }
         }
@@ -182,20 +301,52 @@ impl IosElement {
     }
 }
 
-/// Parse the JSON output from `idb ui describe-all`
+/// Normalize frames so that elements with rect instead of frame get populated
+fn normalize_frames(elements: &mut [IosElement]) {
+    for el in elements {
+        if el.frame.width == 0.0 && el.frame.height == 0.0 {
+            if let Some(ref r) = el.rect {
+                el.frame = r.clone();
+            }
+        }
+        normalize_frames(&mut el.children);
+    }
+}
+
+/// Parse the JSON output from `idb ui describe-all` or WDA `/source?format=json`
 pub fn parse_ui_hierarchy(json_output: &str) -> Result<Vec<IosElement>> {
-    // idb output can be a single object or array
-    // Try parsing as array first
-    if let Ok(elements) = serde_json::from_str::<Vec<IosElement>>(json_output) {
+    // 1. Try parsing as serde_json::Value to handle WDA { "value": { ... } } or { "tree": { ... } }
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_output) {
+        if let Some(val) = v.get("value").or_else(|| v.get("tree")) {
+            if val.is_object() {
+                if let Ok(element) = serde_json::from_value::<IosElement>(val.clone()) {
+                    let mut elements = vec![element];
+                    normalize_frames(&mut elements);
+                    return Ok(elements);
+                }
+            } else if val.is_array() {
+                if let Ok(mut elements) = serde_json::from_value::<Vec<IosElement>>(val.clone()) {
+                    normalize_frames(&mut elements);
+                    return Ok(elements);
+                }
+            }
+        }
+    }
+
+    // 2. Try parsing as array
+    if let Ok(mut elements) = serde_json::from_str::<Vec<IosElement>>(json_output) {
+        normalize_frames(&mut elements);
         return Ok(elements);
     }
 
-    // Try as single element
+    // 3. Try as single element
     if let Ok(element) = serde_json::from_str::<IosElement>(json_output) {
-        return Ok(vec![element]);
+        let mut elements = vec![element];
+        normalize_frames(&mut elements);
+        return Ok(elements);
     }
 
-    // Try line-by-line JSON
+    // 4. Try line-by-line JSON
     let mut elements = Vec::new();
     for line in json_output.lines() {
         if line.trim().is_empty() {
@@ -210,6 +361,7 @@ pub fn parse_ui_hierarchy(json_output: &str) -> Result<Vec<IosElement>> {
         anyhow::bail!("Failed to parse UI hierarchy JSON");
     }
 
+    normalize_frames(&mut elements);
     Ok(elements)
 }
 
@@ -435,7 +587,7 @@ mod tests {
 
         let elements = parse_ui_hierarchy(wda_json).expect("should parse WDA JSON source");
         assert_eq!(elements.len(), 1, "single root element, children stay nested");
-        assert_eq!(elements[0].label.as_deref(), Some("MyApp"));
+        assert_eq!(elements[0].display_text(), Some("MyApp"));
         assert_eq!(elements[0].frame.width, 390.0);
 
         let flat = flatten_elements(&elements);

@@ -1,0 +1,32 @@
+name: LumiIOSAgent
+options:
+  bundleIdPrefix: com.lumi
+targets:
+  LumiIOSAgentRunner:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: LumiIOSAgentRunner
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lumi.LumiIOSAgentRunner
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: "W829PZX392"
+        PROVISIONING_PROFILE_SPECIFIER: ""
+        EXCLUDED_ARCHS: i386
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: LumiIOSAgentRunner/Info.plist
+        CLANG_ENABLE_OBJC_ARC: YES
+        SWIFT_VERSION: "5.0"
+schemes:
+  LumiIOSAgentRunner:
+    build:
+      targets:
+        LumiIOSAgentRunner: [test]
+    test:
+      config: Debug
+      targets:
+        - LumiIOSAgentRunner
+
