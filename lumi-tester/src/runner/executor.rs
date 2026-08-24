@@ -4298,8 +4298,30 @@ impl TestExecutor {
                 let from_params = self.resolve_tap_params(&params.from);
                 let to_params = self.resolve_tap_params(&params.to);
 
-                let from_selector = self
-                    .build_selector(
+                let from_selector = if let Some(point_str) = &from_params.point {
+                    let parts: Vec<&str> = point_str.split(',').collect();
+                    if parts.len() == 2 {
+                        let (screen_width, screen_height) = self.driver.get_screen_size().await?;
+                        let x_str = parts[0].trim();
+                        let y_str = parts[1].trim();
+                        let x = if x_str.ends_with('%') {
+                            let pct: f64 = x_str.trim_end_matches('%').parse().unwrap_or(0.0);
+                            (screen_width as f64 * pct / 100.0) as i32
+                        } else {
+                            x_str.parse().unwrap_or(0)
+                        };
+                        let y = if y_str.ends_with('%') {
+                            let pct: f64 = y_str.trim_end_matches('%').parse().unwrap_or(0.0);
+                            (screen_height as f64 * pct / 100.0) as i32
+                        } else {
+                            y_str.parse().unwrap_or(0)
+                        };
+                        Some(crate::driver::traits::Selector::Point { x, y })
+                    } else {
+                        None
+                    }
+                } else {
+                    self.build_selector(
                         &from_params.text,
                         &from_params.regex,
                         &from_params.id,
@@ -4316,10 +4338,33 @@ impl TestExecutor {
                         from_params.exact,
                         &from_params.ocr,
                     )
-                    .ok_or_else(|| anyhow::anyhow!("No 'from' selector specified for drag"))?;
+                }
+                .ok_or_else(|| anyhow::anyhow!("No 'from' selector specified for drag"))?;
 
-                let to_selector = self
-                    .build_selector(
+                let to_selector = if let Some(point_str) = &to_params.point {
+                    let parts: Vec<&str> = point_str.split(',').collect();
+                    if parts.len() == 2 {
+                        let (screen_width, screen_height) = self.driver.get_screen_size().await?;
+                        let x_str = parts[0].trim();
+                        let y_str = parts[1].trim();
+                        let x = if x_str.ends_with('%') {
+                            let pct: f64 = x_str.trim_end_matches('%').parse().unwrap_or(0.0);
+                            (screen_width as f64 * pct / 100.0) as i32
+                        } else {
+                            x_str.parse().unwrap_or(0)
+                        };
+                        let y = if y_str.ends_with('%') {
+                            let pct: f64 = y_str.trim_end_matches('%').parse().unwrap_or(0.0);
+                            (screen_height as f64 * pct / 100.0) as i32
+                        } else {
+                            y_str.parse().unwrap_or(0)
+                        };
+                        Some(crate::driver::traits::Selector::Point { x, y })
+                    } else {
+                        None
+                    }
+                } else {
+                    self.build_selector(
                         &to_params.text,
                         &to_params.regex,
                         &to_params.id,
@@ -4336,7 +4381,8 @@ impl TestExecutor {
                         to_params.exact,
                         &to_params.ocr,
                     )
-                    .ok_or_else(|| anyhow::anyhow!("No 'to' selector specified for drag"))?;
+                }
+                .ok_or_else(|| anyhow::anyhow!("No 'to' selector specified for drag"))?;
 
                 let from_sel = self
                     .apply_element_offset(from_selector, &from_params.align, &from_params.offset)
