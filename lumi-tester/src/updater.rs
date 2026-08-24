@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use colored::Colorize;
+use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Command;
@@ -247,26 +248,22 @@ pub async fn run_update(options: UpdateOptions) -> Result<()> {
             .user_agent(format!("lumi-tester/{}", env!("CARGO_PKG_VERSION")))
             .build()?;
 
-        let response = client
-            .get(&download_url)
-            .send()
-            .await
-            .with_context(|| format!("Failed to download update binary from {}", download_url))?
-            .error_for_status()
-            .with_context(|| format!("Download returned error status from {}", download_url))?;
+        download_file_with_progress(&client, &download_url, &temp_file, &asset_name).await?;
 
-        let bytes = response.bytes().await?;
-        tokio::fs::write(&temp_file, bytes)
-            .await
-            .with_context(|| format!("Failed to write temporary binary {}", temp_file.display()))?;
+        let proc_pb = create_process_progress_bar(100, "Setting executable permissions...");
+        proc_pb.set_position(25);
 
         make_executable(&temp_file)?;
+        proc_pb.set_position(60);
+        proc_pb.set_message("Replacing current executable binary...");
 
         // Replace current executable
         replace_executable(&temp_file, &current_exe)?;
+        proc_pb.set_position(100);
+        proc_pb.finish_with_message("Installation completed successfully ✅");
 
         println!(
-            "{}",
+            "\n{}",
             format!("✅ Successfully updated Lumi Tester CLI to {}!", target_ver)
                 .green()
                 .bold()
@@ -278,32 +275,35 @@ pub async fn run_update(options: UpdateOptions) -> Result<()> {
         if let Some(vsix_url) = report.extension_download_url {
             println!("\n{}", format!("⬇️  Downloading VS Code Extension ({})...", report.extension_latest).cyan());
             let temp_dir = std::env::temp_dir();
-            let vsix_path = temp_dir.join(format!("lumi-tester-{}.vsix", report.extension_latest));
+            let vsix_name = format!("lumi-tester-{}.vsix", report.extension_latest);
+            let vsix_path = temp_dir.join(&vsix_name);
 
             let client = reqwest::Client::builder()
                 .user_agent(format!("lumi-tester/{}", env!("CARGO_PKG_VERSION")))
                 .build()?;
 
-            let response = client.get(&vsix_url).send().await?.error_for_status()?;
-            let bytes = response.bytes().await?;
-            tokio::fs::write(&vsix_path, bytes).await?;
-
+            download_file_with_progress(&client, &vsix_url, &vsix_path, &vsix_name).await?;
             println!("  Saved VSIX to: {}", vsix_path.display().to_string().blue());
 
             // Check if code CLI is available to install directly
             let code_check = Command::new("code").arg("--version").output();
             if code_check.is_ok() {
-                println!("  Installing extension via 'code --install-extension'...");
+                let proc_pb = create_process_progress_bar(100, "Installing extension via 'code --install-extension'...");
+                proc_pb.set_position(30);
+
                 let status = Command::new("code")
                     .args(["--install-extension", &vsix_path.to_string_lossy(), "--force"])
                     .status();
 
                 match status {
                     Ok(s) if s.success() => {
-                        println!("{}", "✅ Successfully installed latest Lumi Tester VS Code Extension!".green().bold());
+                        proc_pb.set_position(100);
+                        proc_pb.finish_with_message("VS Code Extension installed ✅");
+                        println!("\n{}", "✅ Successfully installed latest Lumi Tester VS Code Extension!".green().bold());
                     }
                     _ => {
-                        println!("  {} Could not install extension automatically. Run manually:", "⚠️".yellow());
+                        proc_pb.abandon_with_message("Automatic install failed ⚠️");
+                        println!("\n  {} Could not install extension automatically. Run manually:", "⚠️".yellow());
                         println!("    code --install-extension {}", vsix_path.display());
                     }
                 }
@@ -321,6 +321,81 @@ pub async fn run_update(options: UpdateOptions) -> Result<()> {
     }
 
     Ok(())
+}
+
+async fn download_file_with_progress(
+    client: &reqwest::Client,
+    download_url: &str,
+    target_path: &Path,
+    item_name: &str,
+) -> Result<()> {
+    use tokio::io::AsyncWriteExt;
+
+    let mut response = client
+        .get(download_url)
+        .send()
+        .await
+        .with_context(|| format!("Failed to download from {}", download_url))?
+        .error_for_status()
+        .with_context(|| format!("Download returned error status from {}", download_url))?;
+
+    let total_size = response.content_length();
+
+    let pb = if let Some(len) = total_size {
+        let pb = ProgressBar::new(len);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("  {spinner:.cyan} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({percent}%) {msg}")
+                .unwrap_or_else(|_| ProgressStyle::default_bar())
+                .progress_chars("━╸─"),
+        );
+        pb
+    } else {
+        let pb = ProgressBar::new_spinner();
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .template("  {spinner:.cyan} [{elapsed_precise}] {bytes} {msg}")
+                .unwrap_or_else(|_| ProgressStyle::default_spinner()),
+        );
+        pb
+    };
+
+    pb.set_message(format!("Downloading {}", item_name));
+
+    let mut file = tokio::fs::File::create(target_path)
+        .await
+        .with_context(|| format!("Failed to create temporary file {}", target_path.display()))?;
+
+    let mut downloaded: u64 = 0;
+
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .with_context(|| "Error while streaming download chunks")?
+    {
+        file.write_all(&chunk)
+            .await
+            .with_context(|| "Failed to write downloaded bytes")?;
+        downloaded += chunk.len() as u64;
+        pb.set_position(downloaded);
+    }
+
+    file.flush().await.with_context(|| "Failed to flush downloaded file")?;
+    pb.finish_with_message(format!("Downloaded {} (100%)", item_name));
+
+    Ok(())
+}
+
+fn create_process_progress_bar(total_steps: u64, initial_msg: &str) -> ProgressBar {
+    let pb = ProgressBar::new(total_steps);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("  {spinner:.green} [{elapsed_precise}] [{wide_bar:.green/white}] {percent}% {msg}")
+            .unwrap_or_else(|_| ProgressStyle::default_bar())
+            .progress_chars("━╸─"),
+    );
+    pb.set_message(initial_msg.to_string());
+    pb
 }
 
 #[cfg(unix)]
