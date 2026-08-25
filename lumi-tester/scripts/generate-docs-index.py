@@ -14,7 +14,9 @@ INDEX_HTML = DOCS_DIR / "index.html"
 ROOT_DOCS_INDEX = ROOT / "docs" / "index.html"
 
 DOC_SOURCES = {
+    "cli_reference": DOCS_DIR / "cli-reference.md",
     "commands": DOCS_DIR / "api" / "commands.md",
+    "automotive_testing": DOCS_DIR / "automotive-testing.md",
     "hardware_control": DOCS_DIR / "hardware-control.md",
     "camera_hardware": DOCS_DIR / "camera-hardware-testing.md",
     "desktop_testing": DOCS_DIR / "desktop-testing.md",
@@ -25,7 +27,9 @@ DOC_SOURCES = {
 }
 
 PAGE_NAMES = {
-    "commands": "Commands Reference",
+    "cli_reference": "CLI Commands & Options Reference",
+    "commands": "YAML Commands Reference",
+    "automotive_testing": "Android Auto & Apple CarPlay",
     "hardware_control": "Hardware Jig Control",
     "camera_hardware": "Camera & LED Testing",
     "desktop_testing": "Desktop Testing (macOS & Windows)",

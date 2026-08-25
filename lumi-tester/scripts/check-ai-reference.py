@@ -63,8 +63,10 @@ INSTALL_AI_PS1 = ROOT / "lumi-tester" / "scripts" / "install-ai.ps1"
 MCP_SERVER_JS = ROOT / "lumi-tester-mcp" / "src" / "server.js"
 MCP_README = ROOT / "lumi-tester-mcp" / "README.md"
 README_MD = ROOT / "lumi-tester" / "README.md"
+CLI_REFERENCE_MD = ROOT / "lumi-tester" / "docs" / "cli-reference.md"
 WRITING_TESTS_MD = ROOT / "lumi-tester" / "docs" / "writing_tests.md"
 COMMANDS_MD = ROOT / "lumi-tester" / "docs" / "api" / "commands.md"
+AUTOMOTIVE_TESTING_MD = ROOT / "lumi-tester" / "docs" / "automotive-testing.md"
 HARDWARE_CONTROL_MD = ROOT / "lumi-tester" / "docs" / "hardware-control.md"
 CAMERA_HARDWARE_MD = ROOT / "lumi-tester" / "docs" / "camera-hardware-testing.md"
 PYTHON_INTEGRATION_MD = ROOT / "lumi-tester" / "docs" / "python-integration.md"
@@ -1560,7 +1562,9 @@ def validate_docs_index_content() -> list[str]:
         return [f"{DOCS_INDEX_HTML}: could not find embedded docs block"]
     embedded = json.loads(match.group(1))
     expected = {
+        "cli_reference": CLI_REFERENCE_MD.read_text(encoding="utf-8"),
         "commands": COMMANDS_MD.read_text(encoding="utf-8"),
+        "automotive_testing": AUTOMOTIVE_TESTING_MD.read_text(encoding="utf-8"),
         "hardware_control": HARDWARE_CONTROL_MD.read_text(encoding="utf-8"),
         "camera_hardware": CAMERA_HARDWARE_MD.read_text(encoding="utf-8"),
         "desktop_testing": DESKTOP_TESTING_MD.read_text(encoding="utf-8"),
@@ -1570,7 +1574,9 @@ def validate_docs_index_content() -> list[str]:
         "ai_authoring": AI_AUTHORING_MD.read_text(encoding="utf-8"),
     }
     expected_page_names = {
-        "commands": "Commands Reference",
+        "cli_reference": "CLI Commands & Options Reference",
+        "commands": "YAML Commands Reference",
+        "automotive_testing": "Android Auto & Apple CarPlay",
         "hardware_control": "Hardware Jig Control",
         "camera_hardware": "Camera & LED Testing",
         "desktop_testing": "Desktop Testing (macOS & Windows)",
