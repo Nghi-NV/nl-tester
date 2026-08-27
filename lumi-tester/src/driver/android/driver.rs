@@ -685,6 +685,52 @@ impl AndroidDriver {
                 }
             }
 
+            // A text/content-desc match whose bounds cover (almost) the entire
+            // screen is untrustworthy as a tap coordinate - confirmed live on a
+            // Flutter app (LumiLife, "Flexible button configuration" screen): a
+            // scrollable container's semantics node ended up carrying a *different*
+            // widget's label (a fixed-position "Save" button's label merged onto its
+            // ancestor scrollable region) while keeping the container's own
+            // full-screen bounds. `content-desc="Save"` was genuinely present and
+            // matched correctly - the label lookup isn't the bug - but tapping the
+            // reported center landed in empty space, not on the real, visually small
+            // button, because the BOUNDS attached to that label were wrong. OCR reads
+            // the actual rendered pixels instead of the (in this case wrong)
+            // accessibility tree, so it finds the button's real position regardless
+            // of this class of semantics bug. Scoped to Text/TextRegex only - other
+            // selector kinds (id, type, role, etc.) don't have a literal string to
+            // search for visually, and aren't known to hit this failure mode.
+            if matches!(selector, Selector::Text(..) | Selector::TextRegex(..)) {
+                let b = &elem.bounds;
+                let elem_area = (b.right - b.left).max(0) as u64 * (b.bottom - b.top).max(0) as u64;
+                let screen_area = self.screen_size.0 as u64 * self.screen_size.1 as u64;
+                // >=90% of the screen - a real button/label is essentially never
+                // legitimately this large, so this is a strong "bounds are wrong"
+                // signal rather than a coincidence worth risking false positives over.
+                if screen_area > 0 && elem_area * 10 >= screen_area * 9 {
+                    let (text, index, is_regex) = match selector {
+                        Selector::Text(t, i, _) => (t.clone(), *i, false),
+                        Selector::TextRegex(p, i) => (p.clone(), *i, true),
+                        _ => unreachable!(),
+                    };
+                    println!(
+                        "  {} Matched element for {:?} has near-full-screen bounds \
+                         (likely a broken accessibility label, seen on Flutter apps) \
+                         - trying OCR instead...",
+                        "⚠".yellow(),
+                        text
+                    );
+                    match self.find_ocr_text(&text, index, is_regex, None).await {
+                        Ok(Some(point)) => return Ok(Some(point)),
+                        _ => println!(
+                            "  {} OCR fallback found nothing either - using the \
+                             (possibly wrong) accessibility-tree coordinate",
+                            "⚠".yellow()
+                        ),
+                    }
+                }
+            }
+
             Ok(Some(elem.bounds.center()))
         } else {
             Ok(None)

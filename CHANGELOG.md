@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.32] - 2026-08-27
+
+### 🚀 Highlights & Improvements
+
+#### 1. Smart OCR Fallback for Flutter Anomalous Bounds
+- **Near-Full-Screen Bounds Detection**: Detects Flutter/dynamic framework semantics anomalies where a container or scrollable region accidentally inherits a child button's label (`content-desc`) while retaining near-full-screen bounds ($\ge 90\%$ screen area).
+- **Automated Visual OCR Fallback**: When an anomalous text/regex match is detected, the driver automatically performs an on-screen OCR visual scan to locate the exact rendered pixel coordinates of the button, ensuring taps land precisely on the target element instead of empty screen space.
+
+---
+
 ## [v0.1.31] - 2026-08-27
 
 ### 🚀 Highlights & Improvements
