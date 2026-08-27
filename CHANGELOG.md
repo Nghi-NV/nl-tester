@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.33] - 2026-08-27
+
+### 🚀 Highlights & Improvements
+
+#### 1. Adaptive Terminal Resize & Non-Overlapping Progress Rendering
+- **Dynamic Auto-Sizing (`wide_bar`)**: Upgraded CLI updater progress bar to use `{wide_bar}` and throttled redraw rates (`stdout_with_hz(15)`), automatically adjusting bar width to terminal dimensions without line-wrapping or duplicate output lines when resizing terminal windows.
+- **Strict TTY / Non-TTY Segmentation**: Completely isolates interactive visual bars from headless/CI milestone logs (`[25%]`, `[50%]`, `[75%]`, `[100%]`), ensuring clean single-line output everywhere.
+
+---
+
 ## [v0.1.32] - 2026-08-27
 
 ### 🚀 Highlights & Improvements

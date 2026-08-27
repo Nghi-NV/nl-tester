@@ -564,28 +564,36 @@ async fn download_file_with_progress(
     let total_size = response.content_length();
     let is_tty = std::io::stdout().is_terminal();
 
-    let pb = if let Some(len) = total_size {
-        let pb = ProgressBar::with_draw_target(Some(len), ProgressDrawTarget::stdout());
-        pb.set_style(
-            ProgressStyle::default_bar()
-                .template("  {spinner:.cyan} [{elapsed_precise}] [{bar:35.cyan/blue}] {bytes}/{total_bytes} ({percent}%) {bytes_per_sec} {msg}")
-                .unwrap_or_else(|_| ProgressStyle::default_bar())
-                .progress_chars("━╸─"),
-        );
-        pb.enable_steady_tick(std::time::Duration::from_millis(80));
-        pb
+    let pb = if is_tty {
+        if let Some(len) = total_size {
+            let pb = ProgressBar::with_draw_target(
+                Some(len),
+                ProgressDrawTarget::stdout_with_hz(15),
+            );
+            pb.set_style(
+                ProgressStyle::default_bar()
+                    .template("  {spinner:.cyan} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({percent}%)")
+                    .unwrap_or_else(|_| ProgressStyle::default_bar())
+                    .progress_chars("━╸─"),
+            );
+            pb.enable_steady_tick(std::time::Duration::from_millis(80));
+            pb
+        } else {
+            let pb = ProgressBar::with_draw_target(
+                None,
+                ProgressDrawTarget::stdout_with_hz(15),
+            );
+            pb.set_style(
+                ProgressStyle::default_spinner()
+                    .template("  {spinner:.cyan} [{elapsed_precise}] {bytes}")
+                    .unwrap_or_else(|_| ProgressStyle::default_spinner()),
+            );
+            pb.enable_steady_tick(std::time::Duration::from_millis(80));
+            pb
+        }
     } else {
-        let pb = ProgressBar::with_draw_target(None, ProgressDrawTarget::stdout());
-        pb.set_style(
-            ProgressStyle::default_spinner()
-                .template("  {spinner:.cyan} [{elapsed_precise}] {bytes} {bytes_per_sec} {msg}")
-                .unwrap_or_else(|_| ProgressStyle::default_spinner()),
-        );
-        pb.enable_steady_tick(std::time::Duration::from_millis(80));
-        pb
+        ProgressBar::hidden()
     };
-
-    pb.set_message(format!("Downloading {}", item_name));
 
     let mut file = tokio::fs::File::create(target_path)
         .await
@@ -629,16 +637,23 @@ async fn download_file_with_progress(
 }
 
 fn create_process_progress_bar(total_steps: u64, initial_msg: &str) -> ProgressBar {
-    let pb = ProgressBar::with_draw_target(Some(total_steps), ProgressDrawTarget::stdout());
-    pb.set_style(
-        ProgressStyle::default_bar()
-            .template("  {spinner:.green} [{elapsed_precise}] [{bar:35.green/white}] {percent}% {msg}")
-            .unwrap_or_else(|_| ProgressStyle::default_bar())
-            .progress_chars("━╸─"),
-    );
-    pb.enable_steady_tick(std::time::Duration::from_millis(80));
-    pb.set_message(initial_msg.to_string());
-    pb
+    if std::io::stdout().is_terminal() {
+        let pb = ProgressBar::with_draw_target(
+            Some(total_steps),
+            ProgressDrawTarget::stdout_with_hz(15),
+        );
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("  {spinner:.green} [{elapsed_precise}] [{wide_bar:.green/white}] {percent}% {msg}")
+                .unwrap_or_else(|_| ProgressStyle::default_bar())
+                .progress_chars("━╸─"),
+        );
+        pb.enable_steady_tick(std::time::Duration::from_millis(80));
+        pb.set_message(initial_msg.to_string());
+        pb
+    } else {
+        ProgressBar::hidden()
+    }
 }
 
 #[cfg(unix)]
