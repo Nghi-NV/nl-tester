@@ -37,10 +37,6 @@ pub struct IosDriver {
     device_name: String,
     /// Whether this is a simulator (vs physical device)
     is_simulator: bool,
-    /// Cached UI hierarchy
-    ui_cache: Arc<Mutex<Option<Vec<IosElement>>>>,
-    /// Cache timestamp
-    cache_time: Arc<Mutex<Option<Instant>>>,
     /// Video recording process
     recording_process: Arc<Mutex<Option<tokio::process::Child>>>,
     /// Current recording output path
@@ -173,8 +169,6 @@ impl IosDriver {
             udid: target.udid,
             device_name: target.name,
             is_simulator,
-            ui_cache: Arc::new(Mutex::new(None)),
-            cache_time: Arc::new(Mutex::new(None)),
             recording_process: Arc::new(Mutex::new(None)),
             current_recording_path: Arc::new(Mutex::new(None)),
             screen_size,
@@ -228,14 +222,6 @@ impl IosDriver {
         } else {
             false
         }
-    }
-
-    /// Invalidate the UI cache
-    pub async fn invalidate_cache(&self) {
-        let mut cache = self.ui_cache.lock().await;
-        *cache = None;
-        let mut time = self.cache_time.lock().await;
-        *time = None;
     }
 
     /// Clear an app's on-disk state and privacy permissions. Simulator-only:
@@ -294,22 +280,19 @@ impl IosDriver {
         }
     }
 
-    /// Get the UI hierarchy (with caching)
+    /// Get the UI hierarchy - always a fresh dump, never cached.
+    ///
+    /// This used to cache the last dump for up to 500ms. Removed for the same reason
+    /// as the equivalent Android driver cache (see that `get_ui_hierarchy`'s doc
+    /// comment for the full, live-confirmed root cause on Flutter apps): a hierarchy
+    /// dumped for one check can land inside a cache's TTL window while still
+    /// reflecting stale semantics from before a navigation/state change, so a
+    /// subsequent selector resolution (e.g. a tap's coordinates) can silently use
+    /// wrong data. Not independently reproduced against a physical iOS device in this
+    /// pass (no device was connected), but the same caching assumption
+    /// ("invalidate-on-mutating-action keeps it honest") applies here too, and a
+    /// single round trip via the agent is already fast (~100ms) - not worth caching.
     async fn get_ui_hierarchy(&self) -> Result<Vec<IosElement>> {
-        const CACHE_DURATION: Duration = Duration::from_millis(500);
-
-        // Check cache
-        let cache_time = self.cache_time.lock().await;
-        if let Some(time) = *cache_time {
-            if time.elapsed() < CACHE_DURATION {
-                let cache = self.ui_cache.lock().await;
-                if let Some(elements) = cache.as_ref() {
-                    return Ok(elements.clone());
-                }
-            }
-        }
-        drop(cache_time);
-
         // Single round trip via the lm-ios-tester agent (`-[XCUIElement
         // snapshotWithError:]`, ~100ms measured) - the only hierarchy source now that
         // idb/WDA are gone. No fallback: if the agent isn't reachable, error out
@@ -318,15 +301,7 @@ impl IosDriver {
             .try_agent_hierarchy_dump()
             .await
             .ok_or_else(|| anyhow::anyhow!("lm-ios-tester agent is not reachable - cannot read UI hierarchy"))?;
-        let elements = accessibility::parse_ui_hierarchy(&json_output)?;
-
-        // Update cache
-        let mut cache = self.ui_cache.lock().await;
-        *cache = Some(elements.clone());
-        let mut time = self.cache_time.lock().await;
-        *time = Some(Instant::now());
-
-        Ok(elements)
+        accessibility::parse_ui_hierarchy(&json_output)
     }
 
     /// Try the lm-ios-tester agent's `hierarchy` command. Returns `None` if there's no
@@ -1065,7 +1040,6 @@ impl PlatformDriver for IosDriver {
     }
 
     async fn launch_app(&self, bundle_id: &str, clear_state: bool) -> Result<()> {
-        self.invalidate_cache().await;
         *self.current_app_id.lock().await = Some(bundle_id.to_string());
 
         // The agent's `launch_app`/`terminate_app` use `[XCUIApplication terminate]`/
@@ -1104,7 +1078,6 @@ impl PlatformDriver for IosDriver {
         // Wait longer for app to fully stabilize (especially after clear state)
         let wait_time = if clear_state { 2000 } else { 1000 };
         tokio::time::sleep(Duration::from_millis(wait_time)).await;
-        self.invalidate_cache().await;
 
         Ok(())
     }
@@ -1121,7 +1094,6 @@ impl PlatformDriver for IosDriver {
         if agent_ok.is_none() {
             devicectl::terminate_app(&self.udid, bundle_id, self.is_simulator).await?;
         }
-        self.invalidate_cache().await;
         Ok(())
     }
 
@@ -1132,7 +1104,6 @@ impl PlatformDriver for IosDriver {
             .ok_or_else(|| anyhow::anyhow!("Element not found for tap: {:?}", selector))?;
 
         self.agent_tap(pos.0, pos.1).await?;
-        self.invalidate_cache().await;
         Ok(())
     }
 
@@ -1143,7 +1114,6 @@ impl PlatformDriver for IosDriver {
             .ok_or_else(|| anyhow::anyhow!("Element not found for long_press: {:?}", selector))?;
 
         self.agent_long_press(pos.0, pos.1, duration_ms).await?;
-        self.invalidate_cache().await;
         Ok(())
     }
 
@@ -1157,7 +1127,6 @@ impl PlatformDriver for IosDriver {
             anyhow::bail!("lm-ios-tester agent is not reachable - cannot double-tap");
         }
 
-        self.invalidate_cache().await;
         Ok(())
     }
 
@@ -1176,13 +1145,11 @@ impl PlatformDriver for IosDriver {
                 anyhow::bail!("lm-ios-tester agent is not reachable - cannot type text");
             }
         }
-        self.invalidate_cache().await;
         Ok(())
     }
 
     async fn erase_text(&self, char_count: Option<u32>) -> Result<()> {
         if self.try_agent_erase_text(char_count.unwrap_or(60)).await {
-            self.invalidate_cache().await;
             return Ok(());
         }
 
@@ -1226,7 +1193,6 @@ impl PlatformDriver for IosDriver {
         }
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        self.invalidate_cache().await;
         Ok(())
     }
 
@@ -1237,7 +1203,6 @@ impl PlatformDriver for IosDriver {
             let _ = self.agent_tap(50, (height / 4) as i32).await;
         }
 
-        self.invalidate_cache().await;
         Ok(())
     }
 
@@ -1312,7 +1277,6 @@ impl PlatformDriver for IosDriver {
         );
 
         self.agent_swipe(x1, y1, x2, y2, duration_ms.unwrap_or(300)).await?;
-        self.invalidate_cache().await;
         Ok(())
     }
 
@@ -1330,7 +1294,6 @@ impl PlatformDriver for IosDriver {
         );
 
         self.agent_swipe(x1, y1, x2, y2, duration_ms).await?;
-        self.invalidate_cache().await;
         Ok(())
     }
 
@@ -1354,7 +1317,6 @@ impl PlatformDriver for IosDriver {
     }
 
     async fn is_visible(&self, selector: &Selector) -> Result<bool> {
-        self.invalidate_cache().await;
         Ok(self.find_element(selector).await?.is_some())
     }
 
@@ -1363,7 +1325,6 @@ impl PlatformDriver for IosDriver {
         let timeout = Duration::from_millis(timeout_ms);
 
         while start.elapsed() < timeout {
-            self.invalidate_cache().await;
             if self.find_element(selector).await?.is_some() {
                 return Ok(true);
             }
@@ -1378,7 +1339,6 @@ impl PlatformDriver for IosDriver {
         let timeout = Duration::from_millis(timeout_ms);
 
         while start.elapsed() < timeout {
-            self.invalidate_cache().await;
             if self.find_element(selector).await?.is_none() {
                 return Ok(true);
             }
@@ -1496,7 +1456,6 @@ impl PlatformDriver for IosDriver {
         // `application(_:open:options:)`, so a real device has no native way to open a
         // deep link short of idb's own `open` command - a genuine, documented gap.
         devicectl::open_url(&self.udid, url, self.is_simulator).await?;
-        self.invalidate_cache().await;
         Ok(())
     }
 
@@ -1550,13 +1509,11 @@ impl PlatformDriver for IosDriver {
         let (_, height) = self.screen_size;
         let center_y = height as i32 / 2;
         self.agent_swipe(5, center_y, 200, center_y, 200).await?;
-        self.invalidate_cache().await;
         Ok(())
     }
 
     async fn home(&self) -> Result<()> {
         self.agent_press_button("home").await?;
-        self.invalidate_cache().await;
         Ok(())
     }
 

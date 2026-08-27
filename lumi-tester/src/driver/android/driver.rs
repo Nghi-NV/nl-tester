@@ -122,16 +122,12 @@ impl Default for MockLocationState {
     }
 }
 
-/// UI Cache TTL in milliseconds (3 seconds for better performance)
-const UI_CACHE_TTL_MS: u64 = 3000;
-
 /// Android driver implementation using ADB
 pub struct AndroidDriver {
     serial: Option<String>,
     screen_size: (u32, u32),
     recording_process: Arc<Mutex<Option<tokio::process::Child>>>,
     current_recording_path: Arc<Mutex<Option<String>>>,
-    ui_cache: Arc<Mutex<Option<(Instant, Vec<UiElement>)>>>,
     /// Mock location states keyed by name ("" for default)
     mock_states: Arc<Mutex<HashMap<String, MockLocationState>>>,
     /// Target display ID (default 0)
@@ -247,7 +243,6 @@ impl AndroidDriver {
             screen_size,
             recording_process: Arc::new(Mutex::new(None)),
             current_recording_path: Arc::new(Mutex::new(None)),
-            ui_cache: Arc::new(Mutex::new(None)),
             mock_states: Arc::new(Mutex::new(HashMap::new())),
             display_id: AtomicU64::new(0),
             speed_profile,
@@ -259,12 +254,6 @@ impl AndroidDriver {
             agent_consecutive_failures: Arc::new(Mutex::new(0)),
             last_tap_point: Arc::new(Mutex::new(None)),
         })
-    }
-
-    /// Invalidate the UI cache
-    async fn invalidate_cache(&self) {
-        let mut cache = self.ui_cache.lock().await;
-        *cache = None;
     }
 
     /// Get input command prefix with optional display ID flag
@@ -339,18 +328,27 @@ impl AndroidDriver {
         }
     }
 
-    /// Get the UI hierarchy (with caching)
+    /// Get the UI hierarchy - always a fresh dump, never cached.
+    ///
+    /// This used to cache the last dump for up to 3s (`UI_CACHE_TTL_MS`), invalidated
+    /// after every UI-mutating driver action (tap/swipe/input/etc.). That assumption -
+    /// "invalidate-on-mutating-action keeps the cache honest" - doesn't hold for a
+    /// Flutter app (confirmed live, not a guess: LumiLife): Flutter builds its
+    /// accessibility *semantics* tree asynchronously, independent of this client's own
+    /// cache bookkeeping and independent of real Android touch/window state. A
+    /// hierarchy dumped for one check (e.g. a `waitSee` for on-screen text right after
+    /// a navigation) could land inside the cache's TTL window while still reflecting a
+    /// semantics tree that hadn't finished rebuilding for input fields on the new
+    /// screen - a later `tapOn` reusing that same cached snapshot then resolved tap
+    /// coordinates against stale data. The tap still landed and was recognized as a
+    /// valid gesture at the OS level (confirmed via logcat: InputDispatcher delivered
+    /// it, GestureDetector recognized the TAP) - it just didn't hit the real, current
+    /// input field, so it never gained focus. Removed the cache entirely rather than
+    /// patching each call site's staleness window individually: the agent's in-process
+    /// fast path makes a dump cheap (~10-20ms), so there's no real performance case for
+    /// keeping it, and "always fresh" closes this whole class of bug at the source
+    /// instead of requiring every future caller to remember to invalidate correctly.
     async fn get_ui_hierarchy(&self) -> Result<Vec<UiElement>> {
-        // Check cache first (TTL based on UI_CACHE_TTL_MS)
-        {
-            let cache = self.ui_cache.lock().await;
-            if let Some((timestamp, elements)) = &*cache {
-                if timestamp.elapsed() < Duration::from_millis(UI_CACHE_TTL_MS) {
-                    return Ok(elements.clone());
-                }
-            }
-        }
-
         // Fast path: lm-android-tester agent holds a persistent UiAutomation connection on-device,
         // so a dump is a single in-process tree read (~10-20ms) instead of spawning a fresh
         // `uiautomator dump` process (~2s cold start on real devices, confirmed by
@@ -359,7 +357,6 @@ impl AndroidDriver {
         let xml = match self.try_fast_hierarchy_dump().await {
             Some(xml) => xml,
             None => {
-                // Cache miss or expired, dump fresh UI
                 // Optimization: Use exec-out with /dev/stdout to avoid file I/O
                 // This is faster than writing to /sdcard and reading back
                 match adb::exec_out(self.serial.as_deref(), "uiautomator dump /dev/stdout").await
@@ -377,15 +374,7 @@ impl AndroidDriver {
             }
         };
 
-        let elements = uiautomator::parse_hierarchy(&xml)?;
-
-        // Update cache
-        {
-            let mut cache = self.ui_cache.lock().await;
-            *cache = Some((Instant::now(), elements.clone()));
-        }
-
-        Ok(elements)
+        uiautomator::parse_hierarchy(&xml)
     }
 
     /// Try to get the current UI hierarchy XML from the lm-android-tester agent's persistent
@@ -980,7 +969,6 @@ impl AndroidDriver {
         )
         .await?;
         self.smart_delay_after_action().await;
-        self.invalidate_cache().await;
 
         Ok(())
     }
@@ -1462,14 +1450,12 @@ impl PlatformDriver for AndroidDriver {
             );
         }
 
-        self.invalidate_cache().await;
 
         Ok(())
     }
 
     async fn stop_app(&self, app_id: &str) -> Result<()> {
         adb::shell(self.serial.as_deref(), &format!("am force-stop {}", app_id)).await?;
-        self.invalidate_cache().await;
         Ok(())
     }
 
@@ -1496,7 +1482,6 @@ impl PlatformDriver for AndroidDriver {
 
         // Smart delay after tap (adaptive based on speed profile)
         self.smart_delay_after_action().await;
-        self.invalidate_cache().await;
 
         Ok(())
     }
@@ -1547,7 +1532,6 @@ impl PlatformDriver for AndroidDriver {
             ),
         )
         .await?;
-        self.invalidate_cache().await;
 
         Ok(())
     }
@@ -1571,7 +1555,6 @@ impl PlatformDriver for AndroidDriver {
         .await?;
 
         self.smart_delay_after_action().await;
-        self.invalidate_cache().await;
 
         Ok(())
     }
@@ -1662,7 +1645,6 @@ impl PlatformDriver for AndroidDriver {
         // "passing" and only showing up several steps later as an unrelated-
         // looking failure (e.g. the next screen's button never appearing because
         // login never actually received an email/password).
-        self.invalidate_cache().await;
         let has_focused_input = self
             .get_ui_hierarchy()
             .await
@@ -1689,7 +1671,6 @@ impl PlatformDriver for AndroidDriver {
         // Fast path: only handles "erase everything" (char_count is None). Falls back to
         // the DEL-key loop below on any failure (agent unavailable, no focused field).
         if char_count.is_none() && self.try_mirror_erase_text().await {
-            self.invalidate_cache().await;
             return Ok(());
         }
 
@@ -1701,7 +1682,6 @@ impl PlatformDriver for AndroidDriver {
             adb::shell(self.serial.as_deref(), &format!("{} keyevent 67", prefix)).await?;
             // KEYCODE_DEL
         }
-        self.invalidate_cache().await;
 
         Ok(())
     }
@@ -1744,7 +1724,6 @@ impl PlatformDriver for AndroidDriver {
 
             // Wait for keyboard to hide
             tokio::time::sleep(Duration::from_millis(100)).await;
-            self.invalidate_cache().await;
         }
         // If keyboard is not visible, do nothing (prevents accidental back navigation)
 
@@ -1816,7 +1795,6 @@ impl PlatformDriver for AndroidDriver {
             ),
         )
         .await?;
-        self.invalidate_cache().await;
 
         Ok(())
     }
@@ -1832,7 +1810,6 @@ impl PlatformDriver for AndroidDriver {
             duration_ms
         );
         adb::shell(self.serial.as_deref(), &cmd).await?;
-        self.invalidate_cache().await;
         Ok(())
     }
 
@@ -1858,9 +1835,6 @@ impl PlatformDriver for AndroidDriver {
 
             // Wait for scroll animation (adaptive based on speed profile)
             tokio::time::sleep(Duration::from_millis(scroll_delay)).await;
-
-            // Explicitly invalidate cache to force fresh dump
-            self.invalidate_cache().await;
         }
 
         // Final check
@@ -1879,31 +1853,8 @@ impl PlatformDriver for AndroidDriver {
         const MAX_INTERVAL: u64 = 500;
 
         while start.elapsed() < timeout {
-            // Always force a fresh dump before checking, on every iteration including
-            // the first - do NOT reuse whatever's already cached, even though a
-            // preceding UI-mutating action nominally just invalidated it.
-            //
-            // Root cause this closes (confirmed live, not a guess): on a Flutter app
-            // (LumiLife), the accessibility *semantics* tree is built asynchronously
-            // and lags real screen state, independent of this client's own cache
-            // bookkeeping. A hierarchy dumped for an earlier, unrelated check (e.g. a
-            // `waitSee` for on-screen text right after a navigation) can land inside
-            // this cache's TTL window while still reflecting a semantics tree that
-            // hasn't finished rebuilding for input fields on the new screen -
-            // confirmed by manually dumping mid-navigation and getting back elements
-            // from a completely different, earlier screen. A `tapOn` immediately
-            // after such a `waitSee` would then resolve its tap coordinates against
-            // that stale snapshot: the tap still lands and gets recognized as a valid
-            // gesture at the Android/OS level (confirmed via logcat - InputDispatcher
-            // delivers it, GestureDetector recognizes the TAP), but the coordinates
-            // don't correspond to the real, current input field, so it never actually
-            // gains focus. The old "reuse cache on first check" optimization here
-            // (removed) assumed invalidate-on-mutating-action was sufficient to keep
-            // the cache honest; it wasn't, for exactly this class of app. The added
-            // cost is one extra dump per `wait*`/`tapOn`/etc. call when nothing
-            // changed - negligible with the agent's in-process fast path (~10-20ms),
-            // real but smaller than the cost of a silently-wrong tap otherwise.
-            self.invalidate_cache().await;
+            // Each `is_visible` call below does a fresh `get_ui_hierarchy()` dump -
+            // see that function's doc comment for why this must never be cached.
 
             if self.is_visible(selector).await? {
                 return Ok(true);
@@ -1926,11 +1877,8 @@ impl PlatformDriver for AndroidDriver {
         const MAX_INTERVAL: u64 = 500;
 
         while start.elapsed() < timeout {
-            // See wait_for_element above: always force a fresh dump, even on the
-            // first check - a stale cached hierarchy can otherwise report an element
-            // "absent" simply because it predates a real state change, not because
-            // the element actually disappeared.
-            self.invalidate_cache().await;
+            // Each `is_visible` call below does a fresh `get_ui_hierarchy()` dump -
+            // see that function's doc comment for why this must never be cached.
 
             if !self.is_visible(selector).await? {
                 return Ok(true);
@@ -1987,7 +1935,6 @@ impl PlatformDriver for AndroidDriver {
             // println!("DEBUG: Open Link Output: {}", output.trim());
         }
 
-        self.invalidate_cache().await;
         Ok(())
     }
 
@@ -2094,13 +2041,11 @@ impl PlatformDriver for AndroidDriver {
 
     async fn back(&self) -> Result<()> {
         adb::shell(self.serial.as_deref(), "input keyevent 4").await?; // KEYCODE_BACK
-        self.invalidate_cache().await;
         Ok(())
     }
 
     async fn home(&self) -> Result<()> {
         adb::shell(self.serial.as_deref(), "input keyevent 3").await?; // KEYCODE_HOME
-        self.invalidate_cache().await;
         Ok(())
     }
 
@@ -2688,7 +2633,6 @@ impl PlatformDriver for AndroidDriver {
 
         // Wait for rotation animation
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-        self.invalidate_cache().await;
 
         Ok(())
     }
@@ -2725,7 +2669,6 @@ impl PlatformDriver for AndroidDriver {
             &format!("{} keyevent {}", self.input_prefix(), keycode),
         )
         .await?;
-        self.invalidate_cache().await;
         Ok(())
     }
 
@@ -2739,7 +2682,6 @@ impl PlatformDriver for AndroidDriver {
 
     async fn clear_app_data(&self, app_id: &str) -> Result<()> {
         adb::shell(self.serial.as_deref(), &format!("pm clear {}", app_id)).await?;
-        self.invalidate_cache().await;
         Ok(())
     }
 
@@ -2919,7 +2861,6 @@ impl PlatformDriver for AndroidDriver {
 
         // Wait for rotation animation
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-        self.invalidate_cache().await;
 
         Ok(())
     }

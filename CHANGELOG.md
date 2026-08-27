@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.31] - 2026-08-27
+
+### 🚀 Highlights & Improvements
+
+#### 1. Zero-Stale UI Hierarchy Architecture (Android & iOS)
+- **Eliminated UI Hierarchy Caching**: Completely removed stale UI cache locks across both `AndroidDriver` and `IosDriver`. Every visibility check, assertion, and tap/input interaction now performs a fresh, real-time hierarchy dump (`get_ui_hierarchy()`).
+- **Flutter & Dynamic UI Precision**: Fixes race conditions and phantom misses in dynamic frameworks (Flutter, React Native, SwiftUI, Jetpack Compose) where the accessibility semantics tree updates asynchronously after navigation or animation.
+- **Fast-Path Agent Performance**: Leverages the high-speed in-process `lm-android-tester` (~10-20ms) and `lm-ios-tester` (~100ms) agents for maximum execution speed without compromising selector accuracy.
+
+---
+
 ## [v0.1.30] - 2026-08-27
 
 ### 🚀 Highlights & Improvements
