@@ -1,6 +1,6 @@
 [package]
 name = "lumi-tester"
-version = "0.1.29"
+version = "0.1.30"
 edition = "2021"
 description = "Multi-platform automation testing CLI"
 repository = "https://github.com/Nghi-NV/nl-tester"
@@ -44,7 +44,7 @@ log = "0.4"
 env_logger = "0.10"
 
 # Image processing
-image = { version = "0.24", features = ["gif"] }
+image = { version = "0.24", features = ["gif", "webp"] }
 imageproc = "0.23"
 
 # XML parsing (for UI hierarchy)

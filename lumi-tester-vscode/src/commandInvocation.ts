@@ -50,7 +50,14 @@ export function parseYamlPlatform(filePath: string): string | undefined {
 }
 
 export function buildRunInvocation(options: RunInvocationOptions): Invocation {
-  const args = [options.testFilePath];
+  // Always request report generation (JSON, report.html, summary.html, JUnit) -
+  // the CLI treats `--report` as opt-in (so scripted/CI callers that just want
+  // pass/fail don't pay the extra write cost), but a run started interactively
+  // from the editor should always leave a report behind: that's the whole reason
+  // someone runs a test from a YAML file rather than a headless CI job. Without
+  // this, "Run All" completed with no error but also silently produced none of
+  // report.html / summary.html / index.html.
+  const args = [options.testFilePath, '--report'];
   if (options.commandIndex !== undefined) {
     args.push('--command-index', options.commandIndex.toString());
   } else if (options.fromCommandIndex !== undefined) {

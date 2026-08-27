@@ -21,9 +21,50 @@ const DEVICE_APK_PATH: &str = "/data/local/tmp/lm-android-tester.apk";
 /// Local bundled APK filename (checked in `resources/apk/`)
 const LOCAL_APK_NAME: &str = "lm-android-tester.apk";
 
-/// Agent command server port. Deliberately different from nl-mirror's 8889 so the two can
-/// coexist on the same device (e.g. a human mirroring the screen while a test runs).
+/// Agent command server port the on-device agent itself listens on (hardcoded in the
+/// agent's own source, `App.kt`'s `COMMAND_PORT` - this side can't vary per device).
+/// Deliberately different from nl-mirror's 8889 so the two can coexist on the same
+/// device (e.g. a human mirroring the screen while a test runs).
 const AGENT_PORT: u16 = 7899;
+
+/// Deterministic per-device HOST-side local port for `adb forward`. `adb forward`'s
+/// device side is fixed by the agent APK (always `AGENT_PORT`), but the HOST side is
+/// just a local TCP listener - and a single shared host port for every device meant
+/// two devices' forwards silently fought over the same port (whichever device last
+/// ran `adb forward` "owned" it), so an agent-mediated command (screenshot, tap,
+/// hierarchy dump, hideKeyboard's visibility check) issued for device A while device
+/// B's forward was the most recently established one would silently execute against
+/// device B instead - reproduced directly: a `snapshot` targeted at one device came
+/// back showing another device's screen entirely. Hashing the serial into a
+/// per-device host port removes the collision. Must be a fixed, process-independent
+/// hash (not `DefaultHasher`, whose `RandomState` seed varies per process) since two
+/// *separate* `lumi-tester` invocations for the same serial must derive the same
+/// port to usefully share one forward.
+pub fn agent_port_for(serial: Option<&str>) -> u16 {
+    match serial {
+        Some(s) => {
+            const BASE: u32 = 20000;
+            const RANGE: u32 = 10000;
+            BASE as u16 + (fnv1a_hash(s.as_bytes()) % RANGE) as u16
+        }
+        // No serial (single implicit device) - keep the original fixed port so
+        // existing single-device behavior/logs are unchanged.
+        None => AGENT_PORT,
+    }
+}
+
+/// Minimal stable FNV-1a hash (32-bit). Deterministic across processes/runs, unlike
+/// `std::collections::hash_map::DefaultHasher`.
+fn fnv1a_hash(bytes: &[u8]) -> u32 {
+    const FNV_OFFSET_BASIS: u32 = 0x811c9dc5;
+    const FNV_PRIME: u32 = 0x01000193;
+    let mut hash = FNV_OFFSET_BASIS;
+    for &b in bytes {
+        hash ^= b as u32;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
 
 /// Set once the first time the agent turns out to be unavailable, so the "falling back to
 /// the slower adb-based path" diagnostic below is only ever printed once per process
@@ -79,10 +120,10 @@ impl AgentService {
     }
 
     /// Verify connectivity to the agent's command port by sending a ping command
-    pub async fn verify_connection() -> bool {
+    pub async fn verify_connection(serial: Option<&str>) -> bool {
         use std::io::{Read, Write};
 
-        let addr = format!("127.0.0.1:{}", AGENT_PORT);
+        let addr = format!("127.0.0.1:{}", agent_port_for(serial));
         match std::net::TcpStream::connect_timeout(
             &addr.parse().unwrap(),
             std::time::Duration::from_millis(500),
@@ -229,8 +270,11 @@ impl AgentService {
         Err(anyhow!("lm-android-tester agent failed to start"))
     }
 
-    /// Setup ADB port forwarding for the agent's command port
+    /// Setup ADB port forwarding for the agent's command port. Host side is a
+    /// per-serial port (see `agent_port_for`); device side is always `AGENT_PORT`,
+    /// the fixed port the agent APK itself listens on.
     pub async fn setup_port_forward(serial: Option<&str>) -> Result<()> {
+        let host_port = agent_port_for(serial);
         let serial_args: Vec<String> = match serial {
             Some(s) => vec!["-s".to_string(), s.to_string()],
             None => vec![],
@@ -239,7 +283,7 @@ impl AgentService {
         let mut args = serial_args;
         args.extend([
             "forward".to_string(),
-            format!("tcp:{}", AGENT_PORT),
+            format!("tcp:{}", host_port),
             format!("tcp:{}", AGENT_PORT),
         ]);
 
@@ -247,13 +291,13 @@ impl AgentService {
             .args(&args)
             .output()
             .await
-            .map_err(|e| anyhow!("Failed to forward port {}: {}", AGENT_PORT, e))?;
+            .map_err(|e| anyhow!("Failed to forward port {}: {}", host_port, e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(anyhow!(
                 "Failed to forward port {}: {}",
-                AGENT_PORT,
+                host_port,
                 stderr
             ));
         }
@@ -292,7 +336,7 @@ impl AgentService {
             Self::setup_port_forward(serial).await?;
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
-            if Self::verify_connection().await {
+            if Self::verify_connection(serial).await {
                 eprintln!("  ✓ Agent restarted with new APK");
                 return Ok(());
             } else {
@@ -303,7 +347,7 @@ impl AgentService {
         // 4. Check if the agent is already running and reachable
         let is_process_running = Self::is_running(serial).await;
         let mut is_reachable = if is_process_running {
-            Self::verify_connection().await
+            Self::verify_connection(serial).await
         } else {
             false
         };
@@ -324,7 +368,7 @@ impl AgentService {
                     break;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-                is_reachable = Self::verify_connection().await;
+                is_reachable = Self::verify_connection(serial).await;
                 if is_reachable || attempt == 2 {
                     break;
                 }
@@ -340,16 +384,16 @@ impl AgentService {
 
             // Verify again after start
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            if !Self::verify_connection().await {
+            if !Self::verify_connection(serial).await {
                 // One more attempt: re-establish port forward after service start
                 eprintln!("  🔄 Re-establishing port forward after service start...");
                 Self::setup_port_forward(serial).await?;
                 tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-                if !Self::verify_connection().await {
+                if !Self::verify_connection(serial).await {
                     return Err(anyhow!(
                         "agent started but port {} is not reachable",
-                        AGENT_PORT
+                        agent_port_for(serial)
                     ));
                 }
             }

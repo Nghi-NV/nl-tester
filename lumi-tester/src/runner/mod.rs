@@ -330,8 +330,29 @@ async fn run_on_device(
                 .run_file(file, command_index, from_command_index, command_name.as_deref())
                 .await
             {
-                let _ = executor.finish().await;
-                return Err(e);
+                // A file can fail two ways: a command inside it fails an assertion
+                // (recorded as a failed step, `run_file` still returns Ok and
+                // `continue_on_failure` already lets execution move on), or the
+                // whole file hits a fatal/infra-level error (e.g. `hwConnect`
+                // can't reach the hardware jig) that bubbles out of `run_file` as
+                // a hard `Err` before any step gets recorded. Previously THIS
+                // case aborted the entire remaining directory batch regardless of
+                // `continue_on_failure` - one file with no jig connected meant
+                // every other file after it in the directory silently never ran.
+                // Respect the flag here too: log and move on to the next file.
+                // Trade-off: since the error happened before any step was
+                // recorded, this file won't appear as a FAILED entry in the
+                // generated report - it's just absent from it.
+                eprintln!(
+                    "  {} {} failed to run: {} (continuing to next file - continue-on-failure)",
+                    "⚠️".yellow(),
+                    file.display(),
+                    e
+                );
+                if !continue_on_failure {
+                    let _ = executor.finish().await;
+                    return Err(e);
+                }
             }
         }
     }

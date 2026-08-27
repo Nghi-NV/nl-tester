@@ -52,7 +52,24 @@ pub struct IosDriver {
     /// lm-ios-tester agent client - the sole UI-automation path (simulator and real
     /// device alike). `None` only when the agent couldn't be started at all, in which
     /// case UI-automation methods return an explicit error rather than silently no-op.
+    /// Previously, `None` here was permanent for the rest of the driver's lifetime -
+    /// `ensure_agent_running` was only ever called once, at construction. On a real
+    /// device the agent launches via `xcodebuild test-without-building` (an XCTest UI
+    /// target), which can take 20-90s and can fail on transient issues (device locked,
+    /// signing/auth timeout) unrelated to whether the agent would work if retried a
+    /// moment later - a single bad launch attempt shouldn't silently disable UI
+    /// automation for an entire test run. See `ensure_agent_ready` below.
     agent_client: Arc<Mutex<Option<AgentClient>>>,
+    /// Per-UDID host port for `iproxy`/the agent client (see `agent::agent_port_for`) -
+    /// stored so `ensure_agent_ready` can retry `ensure_agent_running` with the same
+    /// port later without re-deriving it.
+    agent_port: u16,
+    /// Wall-clock time of the most recent `ensure_agent_running` retry attempt (`None`
+    /// until the first one). Rate-limits retries after `agent_client` is `None`: retrying
+    /// immediately on every command would mean hammering `xcodebuild test-without-
+    /// building` (an expensive, multi-second-at-best operation) on every single UI
+    /// action while the agent is down, but never retrying is the bug described above.
+    agent_last_attempt: Arc<Mutex<Option<Instant>>>,
     /// Bundle id of the most recently `launch_app`-ed app - the agent's `hierarchy`
     /// command needs an explicit target bundle id (defaults to SpringBoard otherwise).
     current_app_id: Arc<Mutex<Option<String>>>,
@@ -129,7 +146,12 @@ impl IosDriver {
         // against the target's UDID either way, and the port-forward step it also tries
         // (`iproxy`, USB-only) simply no-ops harmlessly for a simulator UDID since the
         // agent is already reachable on localhost in that case.
-        let port = super::agent::DEFAULT_AGENT_PORT;
+        // Per-UDID host port (not the shared DEFAULT_AGENT_PORT) - a fixed port shared by
+        // every device meant a second connected iOS device's `iproxy` could fail to bind
+        // or ambiguously share the first device's tunnel, the same class of cross-device
+        // bug already found and fixed for Android's `adb forward`. See
+        // `agent::agent_port_for`'s doc comment.
+        let port = super::agent::agent_port_for(&target.udid);
         let agent_client = if super::agent_setup::ensure_agent_running(&target.udid, port).await {
             Some(AgentClient::new("localhost", port))
         } else {
@@ -158,9 +180,54 @@ impl IosDriver {
             screen_size,
             mock_states: Arc::new(Mutex::new(StdHashMap::new())),
             agent_client: Arc::new(Mutex::new(agent_client)),
+            agent_port: port,
+            // Seed with "now" (not None) - we just attempted a launch above, so the
+            // cooldown in `ensure_agent_ready` should count from this attempt, not allow
+            // an immediate second attempt on the very next command.
+            agent_last_attempt: Arc::new(Mutex::new(Some(Instant::now()))),
             current_app_id: Arc::new(Mutex::new(None)),
             ocr_engine: tokio::sync::OnceCell::new(),
         })
+    }
+
+    /// Ensure `agent_client` is populated, retrying `ensure_agent_running` (bounded by
+    /// `AGENT_RETRY_COOLDOWN`) if a previous attempt failed - see `agent_client`'s doc
+    /// comment for why this exists. Returns whether an agent is available after this
+    /// call. Mirrors the equivalent fix in the Android driver
+    /// (`AndroidDriver::send_mirror_command`'s cooldown-gated `init_session` retry).
+    async fn ensure_agent_ready(&self) -> bool {
+        {
+            let guard = self.agent_client.lock().await;
+            if guard.is_some() {
+                return true;
+            }
+        }
+
+        // Longer cooldown than Android's (5s): a failed iOS agent launch means retrying
+        // `xcodebuild test-without-building` end to end, which is itself already a
+        // multi-second-to-tens-of-seconds operation (`ensure_agent_running` waits up to
+        // 60s for it) - retrying that too eagerly would make a genuinely-down agent add
+        // significant latency to every command in the meantime.
+        const AGENT_RETRY_COOLDOWN: Duration = Duration::from_secs(20);
+        let should_attempt = {
+            let last = *self.agent_last_attempt.lock().await;
+            match last {
+                Some(t) if t.elapsed() < AGENT_RETRY_COOLDOWN => false,
+                _ => true,
+            }
+        };
+        if !should_attempt {
+            return false;
+        }
+        *self.agent_last_attempt.lock().await = Some(Instant::now());
+
+        if super::agent_setup::ensure_agent_running(&self.udid, self.agent_port).await {
+            let mut guard = self.agent_client.lock().await;
+            *guard = Some(AgentClient::new("localhost", self.agent_port));
+            true
+        } else {
+            false
+        }
     }
 
     /// Invalidate the UI cache
@@ -265,6 +332,7 @@ impl IosDriver {
     /// Try the lm-ios-tester agent's `hierarchy` command. Returns `None` if there's no
     /// agent client (simulator, or the agent failed to start) or the request fails.
     async fn try_agent_hierarchy_dump(&self) -> Option<String> {
+        self.ensure_agent_ready().await;
         let guard = self.agent_client.lock().await;
         let agent = guard.as_ref()?;
         let bundle_id = self.current_app_id.lock().await.clone().unwrap_or_default();
@@ -273,6 +341,7 @@ impl IosDriver {
     }
 
     async fn try_agent_tap(&self, x: i32, y: i32) -> bool {
+        self.ensure_agent_ready().await;
         let guard = self.agent_client.lock().await;
         match guard.as_ref() {
             Some(agent) => agent.tap(x as f64, y as f64).await,
@@ -281,6 +350,7 @@ impl IosDriver {
     }
 
     async fn try_agent_long_press(&self, x: i32, y: i32, duration_ms: u64) -> bool {
+        self.ensure_agent_ready().await;
         let guard = self.agent_client.lock().await;
         match guard.as_ref() {
             Some(agent) => agent.long_press(x as f64, y as f64, duration_ms).await,
@@ -289,6 +359,7 @@ impl IosDriver {
     }
 
     async fn try_agent_double_tap(&self, x: i32, y: i32) -> bool {
+        self.ensure_agent_ready().await;
         let guard = self.agent_client.lock().await;
         match guard.as_ref() {
             Some(agent) => agent.double_tap(x as f64, y as f64).await,
@@ -297,6 +368,7 @@ impl IosDriver {
     }
 
     async fn try_agent_swipe(&self, x1: i32, y1: i32, x2: i32, y2: i32, duration_ms: u64) -> bool {
+        self.ensure_agent_ready().await;
         let guard = self.agent_client.lock().await;
         match guard.as_ref() {
             Some(agent) => {
@@ -309,6 +381,7 @@ impl IosDriver {
     }
 
     async fn try_agent_type_text(&self, text: &str) -> bool {
+        self.ensure_agent_ready().await;
         let guard = self.agent_client.lock().await;
         match guard.as_ref() {
             Some(agent) => agent.type_text(text).await,
@@ -317,6 +390,7 @@ impl IosDriver {
     }
 
     async fn try_agent_erase_text(&self, count: u32) -> bool {
+        self.ensure_agent_ready().await;
         let guard = self.agent_client.lock().await;
         match guard.as_ref() {
             Some(agent) => agent.erase_text(count).await,
@@ -325,6 +399,7 @@ impl IosDriver {
     }
 
     async fn try_agent_press_key(&self, key: &str) -> bool {
+        self.ensure_agent_ready().await;
         let guard = self.agent_client.lock().await;
         match guard.as_ref() {
             Some(agent) => agent.press_key(key).await,
@@ -333,6 +408,7 @@ impl IosDriver {
     }
 
     async fn try_agent_press_button(&self, name: &str) -> bool {
+        self.ensure_agent_ready().await;
         let guard = self.agent_client.lock().await;
         match guard.as_ref() {
             Some(agent) => agent.press_button(name).await,
@@ -341,6 +417,7 @@ impl IosDriver {
     }
 
     async fn try_agent_screenshot(&self, path: &str) -> bool {
+        self.ensure_agent_ready().await;
         let guard = self.agent_client.lock().await;
         let Some(agent) = guard.as_ref() else {
             return false;
@@ -997,6 +1074,7 @@ impl PlatformDriver for IosDriver {
         // itself isn't reachable (agent not started) - it can restart the process but
         // can't drive the app afterward, so UI automation will still fail until the
         // agent comes back.
+        self.ensure_agent_ready().await;
         let agent_launched = {
             let guard = self.agent_client.lock().await;
             match guard.as_ref() {
@@ -1032,6 +1110,7 @@ impl PlatformDriver for IosDriver {
     }
 
     async fn stop_app(&self, bundle_id: &str) -> Result<()> {
+        self.ensure_agent_ready().await;
         let agent_ok = {
             let guard = self.agent_client.lock().await;
             match guard.as_ref() {
@@ -1874,6 +1953,7 @@ impl PlatformDriver for IosDriver {
                 Orientation::Landscape | Orientation::LandscapeLeft => "landscapeLeft",
                 Orientation::LandscapeRight => "landscapeRight",
             };
+            self.ensure_agent_ready().await;
             let guard = self.agent_client.lock().await;
             if let Some(agent) = guard.as_ref() {
                 if agent.set_orientation(agent_mode).await {
@@ -2062,6 +2142,7 @@ impl PlatformDriver for IosDriver {
                 .output()
                 .await;
         } else {
+            self.ensure_agent_ready().await;
             let guard = self.agent_client.lock().await;
             if let Some(agent) = guard.as_ref() {
                 agent.clear_location().await;

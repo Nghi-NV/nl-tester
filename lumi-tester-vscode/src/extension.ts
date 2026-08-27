@@ -216,6 +216,22 @@ export function activate(context: vscode.ExtensionContext) {
       console.log('Lumi: Found lumi-tester runtime:', runtime);
 
       try {
+        // Without this, opening the Inspector before ever picking a device (e.g.
+        // right after a window reload, which resets DeviceManager's in-memory
+        // `selectedDevice` to null - it isn't persisted) launched
+        // `lumi-tester inspect` with no `--device`. With exactly one Android
+        // device that's ambiguous-but-harmless (adb picks the only one); with two
+        // or more connected at once - the actual case this surfaced on - `adb`
+        // itself refuses ("more than one device/emulator"), the inspector process
+        // exits, and the iframe's own polling shows a generic "Screen capture
+        // failed" toast with no indication *why*. `runTestFile` and friends
+        // already call this before running - the Inspector command just never did.
+        const targetPlatform = parseYamlPlatform(uri.fsPath);
+        const isDesktopOrWeb = targetPlatform === 'macos' || targetPlatform === 'windows' || targetPlatform === 'desktop' || targetPlatform === 'web';
+        if (!isDesktopOrWeb) {
+          await deviceManager?.ensureDeviceSelected();
+        }
+
         const device = deviceManager?.getSelectedDevice() || undefined;
         await InspectorPanel.show(context, runtime, device);
         console.log('Lumi: InspectorPanel.show() completed');

@@ -207,7 +207,15 @@ async function capture() {
 
   try {
     const r = await fetch(`/api/screenshot?skip_hierarchy=false`);
-    if (!r.ok) throw new Error('Capture failed: ' + r.statusText);
+    if (!r.ok) {
+      // The server puts the real failure reason in the response body (e.g. "ADB
+      // shell command failed: adb: more than one device/emulator" when 2+ Android
+      // devices are connected and none was targeted) - show that instead of just
+      // the generic HTTP status text, so a failure is actually diagnosable from
+      // the toast alone instead of needing to dig through devtools/logs.
+      const bodyText = await r.text().catch(() => '');
+      throw new Error(bodyText.trim() || r.statusText || `HTTP ${r.status}`);
+    }
     const d = await r.json();
 
     const img = document.getElementById('screen');
@@ -238,8 +246,9 @@ async function capture() {
 
   } catch (e) {
     console.error(e);
+    const reason = (e && e.message) ? e.message : 'Screen capture failed';
     if (statusText) statusText.textContent = 'Screen capture failed';
-    showToast('Screen capture failed');
+    showToast(reason);
   } finally {
     if (btn) btn.disabled = false;
   }

@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.30] - 2026-08-27
+
+### 🚀 Highlights & Improvements
+
+#### 1. Unified Light-Theme Summary Report & Interactive Dashboard
+- **Modern Light-Theme Test Summary (`summary.html`)**: Transitioned default single-session reporting to a sleek, modern light-themed `summary.html` report with rich step-by-step telemetry, embedded screenshot diffs, and structured timing metrics.
+- **Enhanced Sessions History Dashboard (`output/index.html`)**: Added interactive date range filtering (`Từ` / `Đến`), pass rate trends, and one-click access directly to each test session's summary report.
+- **Robust Report Re-generation**: Added `generated_at` timestamp metadata ensuring `lumi-tester report <file>` deserializes and regenerates reports seamlessly.
+
+#### 2. Android & iOS Driver Reliability
+- **Flutter & Async Hierarchy Cache Fix**: Enhanced `wait_for_element` on Android to invalidate cache on every poll cycle, completely preventing stale tap coordinates caused by asynchronous semantics tree lags in Flutter apps.
+- **Multi-Device Android Agent Port Routing**: Dynamically routes TCP agent socket connections via `agent_port_for(serial)` across multiple connected physical devices / emulators.
+- **iOS Agent Lifecycle Enhancements**: Improved WebDriverAgent setup, connection verification, and device lifecycle handling.
+
+#### 3. Full Batch Execution Resilience (`--continue-on-failure`)
+- **Fatal Init Error Handling**: `continue_on_failure` now catches and logs fatal file/infrastructure errors (such as disconnected hardware jigs or invalid file targets) without halting the remainder of the directory test batch.
+
+#### 4. VS Code Extension & Inspector
+- **Auto Device Selection Prompt**: Automatically prompts user to select target device when opening Element Inspector if multiple mobile devices are connected.
+- **WebP Image Support**: Upgraded image processing pipeline to support WebP formats alongside GIF and PNG.
+
+---
+
 ## [v0.1.29] - 2026-08-24
 
 ### 🚀 Highlights & Improvements

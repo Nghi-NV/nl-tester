@@ -148,9 +148,33 @@ pub struct AndroidDriver {
     /// `adb shell uiautomator dump`). `None` when not connected or dropped after an error.
     agent_stream: Arc<Mutex<Option<tokio::net::TcpStream>>>,
     /// Tri-state: `None` = not yet attempted this session, `Some(true)` = agent confirmed
-    /// available and preferred, `Some(false)` = agent unavailable, don't retry (falls back
-    /// to the shell-based `uiautomator dump` for the rest of the run).
+    /// available and preferred, `Some(false)` = agent was unreachable on the most recent
+    /// `init_session` attempt. `Some(false)` does NOT mean "give up permanently" - see
+    /// `agent_last_init_attempt` below. It used to: a single transient failure (agent
+    /// still booting, ADB momentarily busy, a port-forward not yet settled) at the start
+    /// of a run permanently downgraded the *entire rest of that run* to the slow adb path
+    /// with zero retries, which is exactly the "occasionally can't connect" behavior
+    /// reported - the agent was fine seconds later but nothing ever checked again.
     agent_available: Arc<Mutex<Option<bool>>>,
+    /// Wall-clock time of the most recent `init_session` attempt, regardless of outcome.
+    /// Used to rate-limit retries after a `Some(false)`: `init_session` itself does real
+    /// work (adb shell calls, possibly a port-forward + agent restart), so retrying it on
+    /// literally every single command when the agent is genuinely absent (build not
+    /// deployed at all) would add real per-command overhead - but never retrying at all is
+    /// the bug above. `AGENT_RETRY_COOLDOWN` balances the two.
+    agent_last_init_attempt: Arc<Mutex<Option<Instant>>>,
+    /// Count of consecutive `send_mirror_request_raw` failures since the last success.
+    /// A single failure just drops the stream and retries a plain TCP reconnect next
+    /// call (cheap, sufficient for a one-off dropped packet or closed connection). But
+    /// a plain reconnect only fixes a broken *stream* - if the underlying `adb forward`
+    /// mapping itself went stale (forwards can go stale even with the agent process
+    /// itself healthy - the same class of issue `init_session`'s port-forward retry
+    /// already handles at startup), every reconnect attempt fails the same way forever
+    /// with nothing ever re-running `setup_port_forward`. After a few consecutive
+    /// failures this escalates to a full `init_session` re-check (via the
+    /// `agent_available`/cooldown path) instead of retrying the same
+    /// cheap-but-insufficient fix indefinitely.
+    agent_consecutive_failures: Arc<Mutex<u32>>,
     /// Coordinates of the most recent selector-based tap. Used by `input_text` to retry
     /// the tap once if `set_text` can't find a focused field right after - the tap can be
     /// confirmed "delivered" (WAIT_FOR_FINISH) while still missing the real hit-test target
@@ -231,6 +255,8 @@ impl AndroidDriver {
             sdk_version,
             agent_stream: Arc::new(Mutex::new(None)),
             agent_available: Arc::new(Mutex::new(None)),
+            agent_last_init_attempt: Arc::new(Mutex::new(None)),
+            agent_consecutive_failures: Arc::new(Mutex::new(0)),
             last_tap_point: Arc::new(Mutex::new(None)),
         })
     }
@@ -482,38 +508,70 @@ impl AndroidDriver {
         std::fs::write(path, bytes).is_ok()
     }
 
-    /// Ensure the lm-android-tester agent is deployed/running (once per driver lifetime), send a
-    /// single line-delimited JSON request over the persistent socket, and return the
+    /// Ensure the lm-android-tester agent is deployed/running (once per driver lifetime, then
+    /// re-checked at most once per `AGENT_RETRY_COOLDOWN` if it was previously unreachable),
+    /// send a single line-delimited JSON request over the persistent socket, and return the
     /// parsed `data`/response envelope. Returns `None` on any failure - callers must treat
     /// that as "fall back to the adb-based path", never as an error to propagate.
     async fn send_mirror_command(&self, request: &[u8]) -> Option<serde_json::Value> {
-        {
-            let avail = self.agent_available.lock().await;
-            if *avail == Some(false) {
+        // How long to wait before retrying `init_session` after it previously failed.
+        // Short enough that a transient blip (agent still booting, ADB momentarily busy,
+        // a stale port-forward) self-heals within a run instead of downgrading the whole
+        // run to the slow path; long enough that a genuinely absent agent (APK never
+        // built/deployed) doesn't pay init_session's real adb-shell-call cost on every
+        // single command.
+        const AGENT_RETRY_COOLDOWN: Duration = Duration::from_secs(5);
+
+        let already_confirmed = *self.agent_available.lock().await == Some(true);
+        if !already_confirmed {
+            let should_attempt = {
+                let last = *self.agent_last_init_attempt.lock().await;
+                match last {
+                    Some(t) if t.elapsed() < AGENT_RETRY_COOLDOWN => false,
+                    _ => true,
+                }
+            };
+            if !should_attempt {
+                return None;
+            }
+
+            *self.agent_last_init_attempt.lock().await = Some(Instant::now());
+            if super::agent_service::AgentService::init_session(self.serial.as_deref())
+                .await
+                .is_err()
+            {
+                *self.agent_available.lock().await = Some(false);
                 return None;
             }
         }
 
-        // Only pay the deploy/start/port-forward cost once per driver lifetime.
-        let already_confirmed = *self.agent_available.lock().await == Some(true);
-        if !already_confirmed
-            && super::agent_service::AgentService::init_session(self.serial.as_deref())
-                .await
-                .is_err()
-        {
-            *self.agent_available.lock().await = Some(false);
-            return None;
-        }
+        // Escalate to a full init_session re-check (which can re-run setup_port_forward)
+        // after this many consecutive raw-request failures, rather than retrying a plain
+        // TCP reconnect forever against a mapping that may itself be the actual problem.
+        const MAX_CONSECUTIVE_FAILURES_BEFORE_REINIT: u32 = 2;
 
         match self.send_mirror_request_raw(request).await {
             Some(value) => {
                 *self.agent_available.lock().await = Some(true);
+                *self.agent_consecutive_failures.lock().await = 0;
                 Some(value)
             }
             None => {
                 // Drop the stale stream so the next call reconnects fresh; a single
                 // transient failure shouldn't permanently disable the fast path.
                 *self.agent_stream.lock().await = None;
+
+                let mut failures = self.agent_consecutive_failures.lock().await;
+                *failures += 1;
+                if *failures >= MAX_CONSECUTIVE_FAILURES_BEFORE_REINIT {
+                    *failures = 0;
+                    drop(failures);
+                    // Route back through init_session (cooldown-gated, so this doesn't
+                    // fire on every single subsequent call either) instead of just the
+                    // raw stream reconnect above, so a stale port-forward actually gets
+                    // rediscovered and repaired rather than failing the same way forever.
+                    *self.agent_available.lock().await = Some(false);
+                }
                 None
             }
         }
@@ -526,9 +584,13 @@ impl AndroidDriver {
 
         let mut stream_guard = self.agent_stream.lock().await;
         if stream_guard.is_none() {
+            let addr = format!(
+                "127.0.0.1:{}",
+                super::agent_service::agent_port_for(self.serial.as_deref())
+            );
             let stream = tokio::time::timeout(
                 Duration::from_millis(1000),
-                tokio::net::TcpStream::connect("127.0.0.1:7899"),
+                tokio::net::TcpStream::connect(addr),
             )
             .await
             .ok()?
@@ -1543,9 +1605,15 @@ impl PlatformDriver for AndroidDriver {
         // same coordinates now, once the animation has had more time to settle, and retrying
         // is the fast-path-preserving fix (vs. immediately giving up on it for this call).
         // Empirically a single retry only recovers ~2/3 of these (measured 12.5% -> 4% over
-        // 45 real-device runs), so retry with backoff up to 2 more times before falling back.
+        // 45 real-device runs); logged here (previously silent) since a run that only hits
+        // this on the LAST retry, or falls all the way to the adb fallback below, would
+        // otherwise give zero indication in the output of why a later step failed.
+        println!(
+            "  {} Text entry fast path failed on first attempt (target field likely still mid-animation) - retrying with re-tap...",
+            "⚠".yellow()
+        );
         if let Some((x, y)) = *self.last_tap_point.lock().await {
-            for backoff_ms in [300u64, 600] {
+            for backoff_ms in [300u64, 600, 900] {
                 tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
                 self.try_mirror_tap(x, y).await;
                 if self.try_mirror_set_text(text).await {
@@ -1554,9 +1622,10 @@ impl PlatformDriver for AndroidDriver {
             }
         }
 
-        // Fallback: use standard input text (only reached if the agent is unavailable -
-        // converts non-ASCII to ASCII since this path can't do real Unicode input; see
-        // the fast path above for why that's rarely a problem in practice).
+        // Fallback: use standard input text (only reached if the agent is unavailable, or
+        // every retry above still failed - converts non-ASCII to ASCII since this path
+        // can't do real Unicode input; see the fast path above for why that's rarely a
+        // problem in practice).
         let mut final_text = text.to_string();
 
         if text.chars().any(|c| !c.is_ascii()) {
@@ -1584,6 +1653,35 @@ impl PlatformDriver for AndroidDriver {
         )
         .await?;
 
+        // Unlike the agent's set_text, `adb shell input text` has no way to report
+        // per-field success - it just sends key events to whatever currently has
+        // system input focus, which can be nothing at all if every tap attempt
+        // above actually missed the field. Verify something ended up focused
+        // before declaring success, so a genuinely-blank field surfaces as a
+        // clear, correctly-attributed error right here instead of silently
+        // "passing" and only showing up several steps later as an unrelated-
+        // looking failure (e.g. the next screen's button never appearing because
+        // login never actually received an email/password).
+        self.invalidate_cache().await;
+        let has_focused_input = self
+            .get_ui_hierarchy()
+            .await
+            .map(|elements| {
+                elements
+                    .iter()
+                    .any(|e| e.focused && e.class.contains("EditText"))
+            })
+            // A failed hierarchy fetch here is inconclusive (e.g. an unrelated adb
+            // hiccup) - don't fail this command over that, only over a confirmed
+            // "nothing is focused" read.
+            .unwrap_or(true);
+
+        if !has_focused_input {
+            anyhow::bail!(
+                "Failed to enter text: no input field has focus after tap + 3 retries + adb fallback - the target field was likely still mid-animation when tapped and never actually received focus"
+            );
+        }
+
         Ok(())
     }
 
@@ -1610,19 +1708,30 @@ impl PlatformDriver for AndroidDriver {
 
     async fn hide_keyboard(&self) -> Result<()> {
         // Check if keyboard is currently visible. Fast path via the agent
-        // (UiAutomation.getWindows(), no adb round-trip); falls back to the adb-based
-        // `dumpsys input_method` check on any failure. Never assume "not visible" just
-        // because the fast check failed - that would risk silently skipping a needed
-        // hide-keyboard action, whereas a wrong "visible" guess only costs one harmless
-        // extra BACK press below (still gated on this same check, so it can't misfire
-        // into an actual back-navigation when the keyboard is genuinely already closed).
+        // (UiAutomation.getWindows() looking for a TYPE_INPUT_METHOD window) - but
+        // ONLY trust a "true" answer from it outright. A bare "false" is NOT trusted
+        // on its own: confirmed on a real Galaxy A06 (Samsung OneUI keyboard) that
+        // this check can false-negative - the keyboard was genuinely shown per
+        // `dumpsys input_method`'s mInputShown, yet `UiAutomation.windows` never
+        // reported a TYPE_INPUT_METHOD window for it, so the agent said "not
+        // visible" and hideKeyboard silently did nothing. So: agent "true" is
+        // trusted immediately (fast path); agent "false" or "unavailable" both fall
+        // through to the adb-based `dumpsys input_method` check, which is the one
+        // source that stayed accurate across every real-device case tested.
+        //
+        // Only `mInputShown` is trusted from that dumpsys text, not
+        // `mIsInputViewShown` (also previously OR'd in here) - that second flag was
+        // observed stuck at "true" on a device where no keyboard was visible at all
+        // (stale IME-service-reported state, not the system's live window state),
+        // which would cause an unwanted BACK press - not "harmless" in a stateful
+        // test flow, since it can navigate the app rather than dismiss nothing.
         let keyboard_visible = match self.try_mirror_is_keyboard_visible().await {
-            Some(visible) => visible,
-            None => {
+            Some(true) => true,
+            Some(false) | None => {
                 let dumpsys = adb::shell(self.serial.as_deref(), "dumpsys input_method")
                     .await
                     .unwrap_or_default();
-                dumpsys.contains("mInputShown=true") || dumpsys.contains("mIsInputViewShown=true")
+                dumpsys.contains("mInputShown=true")
             }
         };
 
@@ -1768,22 +1877,33 @@ impl PlatformDriver for AndroidDriver {
         let base_interval = self.speed_profile.poll_interval_ms();
         let mut interval = base_interval;
         const MAX_INTERVAL: u64 = 500;
-        let mut first_check = true;
 
         while start.elapsed() < timeout {
-            // Every UI-mutating action (tap/swipe/input/etc.) already invalidates the
-            // cache right after it runs, so the first check here can safely reuse
-            // whatever hierarchy is already cached (real dump if the cache was empty
-            // or stale, no-op if a preceding action just invalidated it). This avoids
-            // paying for a fresh `uiautomator dump` (~2s on real devices) on every
-            // consecutive assertVisible/waitUntilVisible when nothing changed the UI
-            // in between. From the 2nd iteration on, we're specifically retrying
-            // because the element wasn't there yet, so we do need a fresh dump to
-            // detect a real state change.
-            if !first_check {
-                self.invalidate_cache().await;
-            }
-            first_check = false;
+            // Always force a fresh dump before checking, on every iteration including
+            // the first - do NOT reuse whatever's already cached, even though a
+            // preceding UI-mutating action nominally just invalidated it.
+            //
+            // Root cause this closes (confirmed live, not a guess): on a Flutter app
+            // (LumiLife), the accessibility *semantics* tree is built asynchronously
+            // and lags real screen state, independent of this client's own cache
+            // bookkeeping. A hierarchy dumped for an earlier, unrelated check (e.g. a
+            // `waitSee` for on-screen text right after a navigation) can land inside
+            // this cache's TTL window while still reflecting a semantics tree that
+            // hasn't finished rebuilding for input fields on the new screen -
+            // confirmed by manually dumping mid-navigation and getting back elements
+            // from a completely different, earlier screen. A `tapOn` immediately
+            // after such a `waitSee` would then resolve its tap coordinates against
+            // that stale snapshot: the tap still lands and gets recognized as a valid
+            // gesture at the Android/OS level (confirmed via logcat - InputDispatcher
+            // delivers it, GestureDetector recognizes the TAP), but the coordinates
+            // don't correspond to the real, current input field, so it never actually
+            // gains focus. The old "reuse cache on first check" optimization here
+            // (removed) assumed invalidate-on-mutating-action was sufficient to keep
+            // the cache honest; it wasn't, for exactly this class of app. The added
+            // cost is one extra dump per `wait*`/`tapOn`/etc. call when nothing
+            // changed - negligible with the agent's in-process fast path (~10-20ms),
+            // real but smaller than the cost of a silently-wrong tap otherwise.
+            self.invalidate_cache().await;
 
             if self.is_visible(selector).await? {
                 return Ok(true);
@@ -1804,15 +1924,13 @@ impl PlatformDriver for AndroidDriver {
         let base_interval = self.speed_profile.poll_interval_ms();
         let mut interval = base_interval;
         const MAX_INTERVAL: u64 = 500;
-        let mut first_check = true;
 
         while start.elapsed() < timeout {
-            // See wait_for_element above for why the first check can reuse the
-            // existing cache instead of forcing a fresh dump.
-            if !first_check {
-                self.invalidate_cache().await;
-            }
-            first_check = false;
+            // See wait_for_element above: always force a fresh dump, even on the
+            // first check - a stale cached hierarchy can otherwise report an element
+            // "absent" simply because it predates a real state change, not because
+            // the element actually disappeared.
+            self.invalidate_cache().await;
 
             if !self.is_visible(selector).await? {
                 return Ok(true);
@@ -2185,8 +2303,14 @@ impl PlatformDriver for AndroidDriver {
                         }
                         // Also send start_mock_location to lm-android-tester to re-register from app side
                         if mirror_active_local {
+                            let agent_addr: std::net::SocketAddr = format!(
+                                "127.0.0.1:{}",
+                                super::agent_service::agent_port_for(serial.as_deref())
+                            )
+                            .parse()
+                            .unwrap();
                             if let Ok(mut stream) = std::net::TcpStream::connect_timeout(
-                                &"127.0.0.1:7899".parse().unwrap(),
+                                &agent_addr,
                                 std::time::Duration::from_millis(200),
                             ) {
                                 use std::io::Write;
@@ -2290,8 +2414,14 @@ impl PlatformDriver for AndroidDriver {
                     // Try to send to lm-android-tester synchronously with better timeout
                     // Auto-reconnect if too many consecutive failures
                     let nl_success = if mirror_active_local {
+                        let agent_addr: std::net::SocketAddr = format!(
+                            "127.0.0.1:{}",
+                            super::agent_service::agent_port_for(serial.as_deref())
+                        )
+                        .parse()
+                        .unwrap();
                         match std::net::TcpStream::connect_timeout(
-                            &"127.0.0.1:7899".parse().unwrap(),
+                            &agent_addr,
                             std::time::Duration::from_millis(200),
                         ) {
                             Ok(mut stream) => {
@@ -2348,8 +2478,10 @@ impl PlatformDriver for AndroidDriver {
                                             .await;
 
                                         // Verify connection
-                                        if super::agent_service::AgentService::verify_connection()
-                                            .await
+                                        if super::agent_service::AgentService::verify_connection(
+                                            serial.as_deref(),
+                                        )
+                                        .await
                                         {
                                             eprintln!("  ✅ lm-android-tester reconnected successfully");
                                             consecutive_failures = 0;
@@ -2437,8 +2569,14 @@ impl PlatformDriver for AndroidDriver {
                                 );
 
                                 if mirror_active_local {
+                                    let agent_addr: std::net::SocketAddr = format!(
+                                        "127.0.0.1:{}",
+                                        super::agent_service::agent_port_for(serial.as_deref())
+                                    )
+                                    .parse()
+                                    .unwrap();
                                     if let Ok(mut stream) = std::net::TcpStream::connect_timeout(
-                                        &"127.0.0.1:7899".parse().unwrap(),
+                                        &agent_addr,
                                         std::time::Duration::from_millis(100),
                                     ) {
                                         let _ = stream.set_write_timeout(Some(

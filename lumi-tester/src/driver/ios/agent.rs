@@ -14,6 +14,42 @@ use tokio::sync::Mutex;
 
 pub const DEFAULT_AGENT_PORT: u16 = 8110;
 
+/// Deterministic per-device HOST-side local port for `iproxy`, mirroring the identical
+/// fix already applied to the Android agent (`agent_service.rs::agent_port_for`) for
+/// the identical bug: `iproxy <port> <port> -u <udid>` used the same fixed host port
+/// (`DEFAULT_AGENT_PORT`) for every UDID, so a second connected iOS device's `iproxy`
+/// would either fail to bind (port already held by the first device's `iproxy`) or - if
+/// the first device's `iproxy` had since exited - silently bind fresh while a stale
+/// `is_ready()` check against that same port could still reach whichever device's
+/// `iproxy`/agent happens to be listening on it, not necessarily the one being driven.
+/// `iproxy`, unlike `adb forward`, is a standalone per-invocation process with no
+/// central "rebind" semantics, so this is a real conflict (bind failure or ambiguous
+/// port ownership), not just theoretical. The on-device agent itself always listens on
+/// the fixed `DEFAULT_AGENT_PORT` (`kLumiAgentPort` in `LumiAgentTests.m` - can't vary
+/// per device without rebuilding/redeploying the agent), so only the HOST side varies.
+/// Base range (40000+) deliberately disjoint from Android's per-serial range
+/// (20000-30000) so a mixed Android+iOS session can never collide either.
+pub fn agent_port_for(udid: &str) -> u16 {
+    const BASE: u32 = 40000;
+    const RANGE: u32 = 10000;
+    BASE as u16 + (fnv1a_hash(udid.as_bytes()) % RANGE) as u16
+}
+
+/// Minimal stable FNV-1a hash (32-bit) - deterministic across processes/runs (unlike
+/// `std::collections::hash_map::DefaultHasher`, whose `RandomState` seed varies per
+/// process), which matters here since two *separate* `lumi-tester` invocations for the
+/// same UDID must derive the same port to usefully share one `iproxy` tunnel.
+fn fnv1a_hash(bytes: &[u8]) -> u32 {
+    const FNV_OFFSET_BASIS: u32 = 0x811c9dc5;
+    const FNV_PRIME: u32 = 0x01000193;
+    let mut hash = FNV_OFFSET_BASIS;
+    for &b in bytes {
+        hash ^= b as u32;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
+
 pub struct AgentClient {
     host: String,
     port: u16,

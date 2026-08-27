@@ -19,6 +19,7 @@ test('runs a configured Windows executable directly', () => {
     args: [
       'run',
       'C:\\tests\\login.yaml',
+      '--report',
       '--command-index',
       '3',
       '--platform',
@@ -46,6 +47,7 @@ test('builds run invocation with fromCommandIndex', () => {
     args: [
       'run',
       '/workspace/tests/login.yaml',
+      '--report',
       '--from-command-index',
       '2',
       '--platform',
@@ -74,6 +76,7 @@ test('does not append mobile device flags for desktop platform', () => {
     args: [
       'run',
       '/workspace/tests/desktop.yaml',
+      '--report',
       '--command-index',
       '0'
     ]
@@ -93,7 +96,7 @@ test('keeps cargo only for a source runtime', () => {
 
   assert.deepEqual(invocation, {
     executable: 'cargo',
-    args: ['run', '--', 'run', '/workspace/tests/login.yaml'],
+    args: ['run', '--', 'run', '/workspace/tests/login.yaml', '--report'],
     cwd: '/workspace/lumi-tester'
   });
 });

@@ -529,7 +529,14 @@ impl TestExecutor {
         let mut video_rel_path = None;
 
         if video_active {
-            let out_dir = &self.context.output_dir;
+            // Same session-scoped layout as failure evidence (images/logs) -
+            // videos get their own subfolder under the session instead of the
+            // flat device-level output dir.
+            let videos_dir = self
+                .context
+                .output_path(&format!("sessions/{}/evidence/videos", self.session.session_id));
+            let _ = std::fs::create_dir_all(&videos_dir);
+
             // Sanitize flow name safely
             let safe_name: String = flow_name
                 .chars()
@@ -542,9 +549,9 @@ impl TestExecutor {
                 chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")
             );
 
-            let abs_path = out_dir.join(&filename);
+            let abs_path = videos_dir.join(&filename);
             let abs_path_str = abs_path.to_string_lossy().to_string();
-            video_rel_path = Some(filename);
+            video_rel_path = Some(abs_path.display().to_string());
 
             self.emitter.emit(TestEvent::Log {
                 message: format!(
@@ -5302,26 +5309,20 @@ impl TestExecutor {
         let uuid = Uuid::new_v4().to_string();
         let timestamp = chrono::Local::now().format("%H%M%S");
 
-        // 1. Snapshot XML
-        match self.driver.dump_ui_hierarchy().await {
-            Ok(xml) => {
-                let filename = format!(
-                    "fail_{}_{}_cmd{}_{}.xml",
-                    safe_flow_name,
-                    timestamp,
-                    index,
-                    &uuid[..8]
-                );
-                let path = self.context.output_path(&filename);
-                if let Ok(_) = std::fs::write(&path, xml) {
-                    println!("  {} Saved UI Hierarchy: {}", "📄".green(), path.display());
-                    artifacts.ui_hierarchy_path = Some(path.display().to_string());
-                }
-            }
-            Err(e) => println!("  {} Failed to dump UI: {}", "⚠".yellow(), e),
-        }
+        // Evidence lives under this run's own session folder, split by kind
+        // (images/logs) so a device with many sessions doesn't end up with
+        // hundreds of loose fail_*.png/.xml/.log files mixed together with no
+        // indication of which session - or which kind of artifact - they are.
+        // The report (sessions/<id>/report/summary.html) links back into these.
+        let evidence_dir = self
+            .context
+            .output_path(&format!("sessions/{}/evidence", self.session.session_id));
+        let images_dir = evidence_dir.join("images");
+        let logs_dir = evidence_dir.join("logs");
+        let _ = std::fs::create_dir_all(&images_dir);
+        let _ = std::fs::create_dir_all(&logs_dir);
 
-        // 2. Screenshot
+        // 1. Screenshot
         let filename = format!(
             "fail_{}_{}_cmd{}_{}.png",
             safe_flow_name,
@@ -5329,7 +5330,7 @@ impl TestExecutor {
             index,
             &uuid[..8]
         );
-        let path = self.context.output_path(&filename);
+        let path = images_dir.join(&filename);
         let path_str = path.to_string_lossy().to_string();
 
         match self.driver.take_screenshot(&path_str).await {
@@ -5340,17 +5341,24 @@ impl TestExecutor {
             Err(e) => println!("  {} Failed to take screenshot: {}", "⚠".yellow(), e),
         }
 
-        // 3. Logcat (Recent 1000 lines)
+        // 2. Logcat (Recent 1000 lines)
         match self.driver.dump_logs(1000).await {
             Ok(logs) => {
+                // Must use safe_flow_name (slashes replaced with "_"), not the raw
+                // flow_name - a nested subflow's name (e.g. "subflows/select_home.yaml")
+                // contains "/", which `logs_dir.join(&filename)` treats as a real
+                // subdirectory separator that doesn't exist, silently failing the
+                // write. This is exactly why failure logs were missing from reports
+                // for subflow failures while the screenshot capture (which already
+                // used safe_flow_name) succeeded.
                 let filename = format!(
                     "fail_{}_{}_cmd{}_{}.log",
-                    flow_name,
+                    safe_flow_name,
                     timestamp,
                     index,
                     &uuid[..8]
                 );
-                let path = self.context.output_path(&filename);
+                let path = logs_dir.join(&filename);
                 if let Ok(_) = std::fs::write(&path, logs) {
                     println!("  {} Saved Recent Logs: {}", "📋".green(), path.display());
                     artifacts.log_path = Some(path.display().to_string());
@@ -5443,14 +5451,11 @@ impl TestExecutor {
         // Small delay to ensure SessionFinished event is processed before printing reports
         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
-        // Save JSON report
-        let report_path = self.context.output_path("test-results.json");
-        let json = serde_json::to_string_pretty(&report_data)?;
-        std::fs::write(&report_path, json)?;
-
-        // Generate and save HTML report
-        let html_path = self.context.output_path("report.html");
-        // Convert TestSessionReport to TestResults for HTML generator
+        // Convert TestSessionReport to TestResults (adds `generated_at`, which the
+        // `lumi-tester report <file>` subcommand requires when it later reads
+        // test-results.json back in - report_data/TestSessionReport doesn't carry
+        // that field, so writing test-results.json straight from report_data would
+        // silently produce a file that subcommand can't deserialize).
         let test_results = crate::report::types::TestResults {
             session_id: report_data.session_id.clone(),
             flows: report_data.flows.clone(),
@@ -5458,16 +5463,14 @@ impl TestExecutor {
             generated_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         };
 
-        crate::report::html::generate(&test_results, Some(&html_path)).await?;
+        // Save JSON report (machine-readable input for `lumi-tester report` and CI tooling)
+        let report_path = self.context.output_path("test-results.json");
+        let json = serde_json::to_string_pretty(&test_results)?;
+        std::fs::write(&report_path, json)?;
 
         // Generate Session-structured output folder matching "Phần mềm - Tool test thiết bị.md"
         let session_dir = self.context.output_path(&format!("sessions/{}", report_data.session_id));
-        let raw_results_dir = session_dir.join("raw-results");
-        let evidence_dir = session_dir.join("evidence");
         let report_dir = session_dir.join("report");
-
-        let _ = std::fs::create_dir_all(&raw_results_dir);
-        let _ = std::fs::create_dir_all(&evidence_dir);
         let _ = std::fs::create_dir_all(&report_dir);
 
         let session_info_path = session_dir.join("session.json");
@@ -5478,35 +5481,37 @@ impl TestExecutor {
         }))?;
         let _ = std::fs::write(&session_info_path, session_info_json);
 
-        let runs_jsonl_path = raw_results_dir.join("runs.jsonl");
-        let mut jsonl_content = String::new();
-        for flow in &report_data.flows {
-            for cmd in &flow.commands {
-                if let Ok(line) = serde_json::to_string(cmd) {
-                    jsonl_content.push_str(&line);
-                    jsonl_content.push('\n');
-                }
-            }
-        }
-        let _ = std::fs::write(&runs_jsonl_path, jsonl_content);
-
         let platform_str = self.driver.platform_name();
         let app_id_str = self.context.app_id.as_deref();
-        let session_result_path = report_dir.join("session-result.json");
-        let _ = crate::report::json::generate_standard_session_report(
-            &report_data,
+
+        // Default title to a name that identifies the WHOLE session rather than a
+        // generic label - makes the report identifiable in a browser tab/history
+        // when several are open at once, since "session_id" (a timestamped slug)
+        // isn't memorable on its own. For a single-flow run the flow's own name is
+        // the most specific and useful choice; for a directory/multi-file run
+        // (this session covers several unrelated top-level files) the FIRST flow's
+        // name is misleading (e.g. "subflows/launch_clean.yaml" for a 58-flow batch
+        // that ran the whole `lumi_life` workspace) - fall back to the target name
+        // baked into the session id instead (same extraction the sessions
+        // dashboard already uses in `html::generate_sessions_dashboard`).
+        let summary_title = if report_data.flows.len() == 1 {
+            report_data.flows.first().map(|f| f.flow_name.clone())
+        } else {
+            Some(crate::report::html::target_name_from_session_id(
+                &report_data.session_id,
+                report_data.flows.len(),
+            ))
+        };
+        let summary_html_path = report_dir.join("summary.html");
+        let _ = crate::report::summary_html::generate(
+            &test_results,
             app_id_str,
             Some(&platform_str),
-            &session_result_path,
-        );
-
-        let runs_json_path = report_dir.join("runs.json");
-        if let Ok(runs_json) = serde_json::to_string_pretty(&report_data.flows) {
-            let _ = std::fs::write(&runs_json_path, runs_json);
-        }
-
-        let session_html_path = report_dir.join("report.html");
-        let _ = crate::report::html::generate(&test_results, Some(&session_html_path)).await;
+            summary_title.as_deref(),
+            Some(&self.context.output_dir),
+            Some(&summary_html_path),
+        )
+        .await;
 
         // Generate and update Sessions History Dashboard (index.html)
         let _ = crate::report::html::generate_sessions_dashboard(&self.context.output_dir);
@@ -5529,14 +5534,9 @@ impl TestExecutor {
             to_file_url(&report_path).cyan()
         );
         println!(
-            "{} HTML report (Latest): {}",
-            "📊".blue(),
-            to_file_url(&html_path).cyan()
-        );
-        println!(
             "{} Session report: {}",
             "📋".blue(),
-            to_file_url(&session_html_path).cyan()
+            to_file_url(&summary_html_path).cyan()
         );
         println!(
             "{} Sessions Dashboard: {}",
