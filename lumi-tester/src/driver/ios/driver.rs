@@ -45,6 +45,10 @@ pub struct IosDriver {
     screen_size: (u32, u32),
     /// Mock location states keyed by name ("" for default)
     mock_states: Arc<Mutex<StdHashMap<String, IosMockLocationState>>>,
+    /// Last coordinate a selector-based `tap()` resolved to - lets `input_text`'s
+    /// retry loop re-tap the same spot (see its doc comment) without needing to
+    /// re-run selector resolution, mirroring the Android driver's identical field.
+    last_tap_point: Arc<Mutex<Option<(i32, i32)>>>,
     /// lm-ios-tester agent client - the sole UI-automation path (simulator and real
     /// device alike). `None` only when the agent couldn't be started at all, in which
     /// case UI-automation methods return an explicit error rather than silently no-op.
@@ -147,7 +151,11 @@ impl IosDriver {
         // or ambiguously share the first device's tunnel, the same class of cross-device
         // bug already found and fixed for Android's `adb forward`. See
         // `agent::agent_port_for`'s doc comment.
-        let port = super::agent::agent_port_for(&target.udid);
+        let port = if is_simulator {
+            super::agent::DEFAULT_AGENT_PORT
+        } else {
+            super::agent::agent_port_for(&target.udid)
+        };
         let agent_client = if super::agent_setup::ensure_agent_running(&target.udid, port).await {
             Some(AgentClient::new("localhost", port))
         } else {
@@ -173,6 +181,7 @@ impl IosDriver {
             current_recording_path: Arc::new(Mutex::new(None)),
             screen_size,
             mock_states: Arc::new(Mutex::new(StdHashMap::new())),
+            last_tap_point: Arc::new(Mutex::new(None)),
             agent_client: Arc::new(Mutex::new(agent_client)),
             agent_port: port,
             // Seed with "now" (not None) - we just attempted a launch above, so the
@@ -1027,6 +1036,47 @@ impl IosDriver {
         }
         Ok(None)
     }
+
+    /// Best-effort: does any element in a fresh hierarchy snapshot report a `value`
+    /// reflecting the text just typed? There's no explicit "is this element focused"
+    /// flag in the agent's hierarchy schema (`hierarchyDictForSnapshot` in
+    /// `LumiCommandHandler.m` doesn't expose one) to check *just* the focused field
+    /// the way the equivalent Android verification does, so this scans every
+    /// element's value instead - looser, but still catches the actual failure mode
+    /// (nothing anywhere reflects the typed text) without needing an agent-side
+    /// schema change to fix live.
+    ///
+    /// `SecureTextField`s need separate handling: their `value` is a run of masking
+    /// characters (`•`, confirmed live - a real device reported
+    /// `"••••••••••••••••••••••••••••••••••••••••••"` for a password field), never
+    /// the literal typed text, so `contains(text)` can never match one - every write
+    /// into a secure field was failing this check even when it had genuinely
+    /// succeeded (confirmed live: same real device, same field - `type_text`
+    /// reported success AND the masked value's length grew, but this function still
+    /// said "not landed" and the retry loop above kept re-typing on top of what was
+    /// already there before finally timing out). Length is the only signal a masked
+    /// value can give, so for those elements specifically, accept "the masked value
+    /// is at least as long as what we just typed" as landed.
+    async fn verify_text_landed(&self, text: &str) -> bool {
+        let Ok(json) = self.hierarchy_json().await else {
+            return true; // Inconclusive (e.g. a transient dump failure) - don't fail the command over that.
+        };
+        let Ok(elements) = accessibility::parse_ui_hierarchy(&json) else {
+            return true;
+        };
+        accessibility::flatten_elements(&elements).iter().any(|el| {
+            let Some(v) = el.value.as_deref() else { return false };
+            if v.contains(text) {
+                return true;
+            }
+            let is_secure = el
+                .element_type
+                .as_deref()
+                .map(|t| t.to_lowercase().contains("secure"))
+                .unwrap_or(false);
+            is_secure && !text.is_empty() && v.chars().count() >= text.chars().count()
+        })
+    }
 }
 
 #[async_trait]
@@ -1037,6 +1087,17 @@ impl PlatformDriver for IosDriver {
 
     fn device_serial(&self) -> Option<String> {
         Some(self.udid.clone())
+    }
+
+    async fn set_current_app_id(&self, app_id: &str) {
+        // Only fill in if unset - don't clobber the real bundle id a `launchApp`
+        // (this session or a prior one, e.g. a device left on-screen between test
+        // runs) already recorded with just the flow header's declared appId, which
+        // could be stale if the flow ever switches apps mid-run.
+        let mut current = self.current_app_id.lock().await;
+        if current.is_none() {
+            *current = Some(app_id.to_string());
+        }
     }
 
     async fn launch_app(&self, bundle_id: &str, clear_state: bool) -> Result<()> {
@@ -1103,6 +1164,7 @@ impl PlatformDriver for IosDriver {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Element not found for tap: {:?}", selector))?;
 
+        *self.last_tap_point.lock().await = Some(pos);
         self.agent_tap(pos.0, pos.1).await?;
         Ok(())
     }
@@ -1140,12 +1202,55 @@ impl PlatformDriver for IosDriver {
                 // Clipboard-paste fallback (simulator only: uses `xcrun simctl pbcopy`,
                 // which has no real-device equivalent) for when the agent can't type
                 // directly - e.g. non-ASCII text the keyboard-event path chokes on.
-                self.input_text_clipboard(text).await?;
+                return self.input_text_clipboard(text).await;
             } else {
                 anyhow::bail!("lm-ios-tester agent is not reachable - cannot type text");
             }
         }
-        Ok(())
+
+        // The agent's `type_text` synthesizes raw keyboard events via
+        // `XCSynthesizedEventRecord`/`XCPointerEventPath` (see `synthesizeTypeText:` in
+        // `LumiCommandHandler.m`) - a low-level event stream delivered to whatever
+        // currently has keyboard focus, entirely bypassing XCUITest's own public
+        // gesture APIs (and their built-in app-quiescence wait, by design - that wait
+        // is the ~650ms/call overhead this whole agent exists to avoid). It reports
+        // success as soon as the OS accepted the event stream, not once any field
+        // actually displays the characters. Confirmed live on a real device, and it's
+        // the SAME root cause as the Android tap-before-focus-settles race this
+        // codebase already hardened `input_text` against: a `tap()` immediately
+        // followed by `type_text` right after a screen *navigation* transition (not
+        // just a field gaining focus on an already-settled screen) can resolve/land
+        // the tap while the destination screen's transition animation is still
+        // playing - the tap event is delivered and "succeeds", but doesn't actually
+        // focus the field, so nothing is listening when the keystrokes arrive right
+        // after. A screenshot at the exact failure point showed the field with NO
+        // cursor/keyboard at all (not "focused but not yet receiving input" as
+        // initially assumed) - so recovery has to re-tap, not just retry typing;
+        // `last_tap_point` is the same coordinate `tap()` just resolved, so re-tapping
+        // it after a beat (letting the transition animation finish) re-attempts the
+        // exact same focus action rather than guessing at a new one.
+        for backoff_ms in [300u64, 600, 900, 1500] {
+            if self.verify_text_landed(text).await {
+                return Ok(());
+            }
+            tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+            if let Some((x, y)) = *self.last_tap_point.lock().await {
+                self.try_agent_tap(x, y).await;
+                tokio::time::sleep(Duration::from_millis(80)).await;
+            }
+            self.try_agent_type_text(text).await;
+        }
+        if self.verify_text_landed(text).await {
+            return Ok(());
+        }
+
+        anyhow::bail!(
+            "Failed to enter text: \"{}\" doesn't appear in any element's value after \
+             typing + 4 retries - the target field was likely still settling (e.g. \
+             keyboard entrance animation) when the agent sent the keystrokes and never \
+             actually received them",
+            text
+        )
     }
 
     async fn erase_text(&self, char_count: Option<u32>) -> Result<()> {
@@ -1197,11 +1302,27 @@ impl PlatformDriver for IosDriver {
     }
 
     async fn hide_keyboard(&self) -> Result<()> {
-        if !self.try_agent_press_key("RETURN").await {
-            // Alternative: tap outside the keyboard area
-            let (_, height) = self.screen_size;
-            let _ = self.agent_tap(50, (height / 4) as i32).await;
-        }
+        // RETURN used to be the *primary* strategy here, with tap-outside only as a
+        // fallback for when the agent couldn't even send the keypress. That's
+        // backwards: RETURN dismisses the keyboard only for a single-line field
+        // whose keyboard happens to have a "Done"/"Return" action wired to resign
+        // first responder - for most fields (numeric keypads with no return key at
+        // all, multi-line fields, fields wired to submit/navigate on return) it
+        // either does nothing to the keyboard or triggers an unintended action
+        // (form submission, navigating to the next field) instead. Sending the
+        // keystroke itself almost always "succeeds" at the transport level even
+        // when it has none of the intended dismiss effect, so the old code reported
+        // success while the keyboard visibly stayed up - confirmed live (this
+        // app's phone-number field uses a numeric keypad with no return key).
+        // Tapping outside the keyboard/any field is the actual OS-level dismiss
+        // gesture (resigns first responder) and works regardless of keyboard type,
+        // so it's the primary path now. Near the top-center of the screen: high in
+        // the view (keyboards occupy roughly the bottom half+), and centered rather
+        // than left/right-aligned to avoid a corner back/action button that a
+        // header commonly has.
+        let (width, height) = self.screen_size;
+        self.agent_tap((width / 2) as i32, (height as f64 * 0.06) as i32)
+            .await?;
 
         Ok(())
     }

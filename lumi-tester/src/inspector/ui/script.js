@@ -14,10 +14,62 @@ let scaleY = 1;
 let zoomLevel = 1.0;
 let lastSelectedBounds = null;
 
+// Device Bar: the Inspector server is bound to one device for its whole process
+// lifetime (switching means restarting it), so "switching" from in here just asks
+// whichever host embedded us (the VS Code extension's outer webview) to do that
+// restart - see requestDeviceSwitch() below. Device identity comes in via the query
+// string because the Rust HTTP server has no notion of a device "name", only the
+// serial/UDID it was started with.
+function initDeviceBar() {
+  const params = new URLSearchParams(window.location.search);
+  const deviceName = params.get('deviceName');
+  const platform = params.get('platform');
+  if (!deviceName) return; // standalone `lumi-tester inspect` tab - nothing to show
+
+  document.getElementById('deviceBarName').textContent = deviceName;
+  if (platform) document.getElementById('deviceBarPlatform').textContent = platform;
+  document.getElementById('deviceBar').style.display = 'flex';
+
+  // Only offer the switch action when actually embedded (there's a parent frame to
+  // ask) - a bare browser tab has nowhere to send the request.
+  document.getElementById('deviceBarSwitch').style.display = (window.parent !== window) ? '' : 'none';
+}
+
+function requestDeviceSwitch() {
+  if (window.parent === window) return;
+  window.parent.postMessage({ type: 'switchDevice' }, '*');
+}
+
+// Auto-attach to the app the open YAML test declares (`appId:`), passed in via the
+// query string by the VS Code extension. Android/iOS skip this entirely - the
+// backend now live-detects whatever's actually in the foreground on every dump
+// (see `resolve_bundle_id` in api.rs), which stays correct as the user navigates
+// between apps/screens; pinning to the YAML's `appId` here would fight that by
+// permanently overriding it via `/api/target-app`. macOS/Windows have no such
+// live-detection (multiple windows can be open at once, "the app on screen" is
+// inherently ambiguous there), so this is still their only auto-attach path.
+async function initTargetAppFromQuery() {
+  const params = new URLSearchParams(window.location.search);
+  const appId = params.get('appId');
+  const platform = params.get('platform');
+  if (!appId || platform === 'android' || platform === 'ios') return false;
+
+  await loadPackages();
+  const idx = allApps.findIndex(app => app.bundleId === appId);
+  if (idx === -1) return false;
+
+  await selectApp(idx);
+  return true;
+}
+
 // Initialization
-window.addEventListener('DOMContentLoaded', () => {
-  capture();
-  loadPackages();
+window.addEventListener('DOMContentLoaded', async () => {
+  initDeviceBar();
+  const autoAttached = await initTargetAppFromQuery();
+  if (!autoAttached) {
+    capture();
+    loadPackages();
+  }
 
   const overlay = document.getElementById('overlay');
   

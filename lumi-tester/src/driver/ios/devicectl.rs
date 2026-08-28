@@ -21,8 +21,8 @@ pub struct IosTarget {
     pub state: String,
 }
 
-/// List real devices via `xcrun xctrace list devices` (unchanged from the previous
-/// idb.rs implementation - this call was already idb-independent) and simulators via
+/// List real devices via `xcrun devicectl list devices` (see `list_real_devices`'s doc
+/// comment - replaces a much slower `xctrace`-based implementation) and simulators via
 /// `xcrun simctl list devices --json` (replaces idb's `list-targets --json`, which
 /// depended on `idb_companion` being alive - `simctl` talks to CoreSimulator directly).
 pub async fn list_targets() -> Result<Vec<IosTarget>> {
@@ -92,102 +92,172 @@ async fn list_simulators() -> Result<Vec<IosTarget>> {
     Ok(targets)
 }
 
+/// `xcrun devicectl list devices` (JSON) - replaces a previous `xcrun xctrace list
+/// devices` implementation that measured at ~2.6s per call (confirmed live,
+/// repeatedly) vs. this one's ~100-200ms. `xctrace` is Instruments' own device
+/// discovery, which does noticeably more probing than `devicectl`'s (CoreDevice,
+/// Apple's current first-party device-management stack, already used elsewhere in
+/// this file for install/uninstall/push/pull/terminate). Since `IosDriver::new`
+/// calls this on *every* `lumi-tester` invocation just to resolve a device by UDID,
+/// that 2.5s difference was pure per-command overhead - the exact "every command
+/// feels slow, worse than idb" symptom this was found chasing down.
 async fn list_real_devices() -> Result<Vec<IosTarget>> {
+    let json_path = std::env::temp_dir().join(format!("lumi_devicectl_{}.json", std::process::id()));
     let output = Command::new("xcrun")
-        .args(&["xctrace", "list", "devices"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .args([
+            "devicectl",
+            "list",
+            "devices",
+            "--json-output",
+            json_path.to_string_lossy().as_ref(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .output()
         .await
-        .context("Failed to run xcrun xctrace list devices")?;
+        .context("Failed to run xcrun devicectl list devices")?;
 
     if !output.status.success() {
+        let _ = std::fs::remove_file(&json_path);
         return Ok(Vec::new());
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let raw = std::fs::read_to_string(&json_path);
+    let _ = std::fs::remove_file(&json_path);
+    let Ok(raw) = raw else {
+        return Ok(Vec::new());
+    };
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return Ok(Vec::new());
+    };
+
     let mut devices = Vec::new();
-    let mut in_devices_section = false;
-    let mut in_offline_section = false;
-
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-
-        if trimmed == "== Devices ==" {
-            in_devices_section = true;
-            in_offline_section = false;
-            continue;
-        }
-        if trimmed == "== Devices Offline ==" {
-            in_devices_section = false;
-            in_offline_section = true;
-            continue;
-        }
-        if trimmed == "== Simulators ==" {
-            break;
-        }
-        if trimmed.is_empty() || trimmed.starts_with("==") {
-            continue;
-        }
-
-        if (in_devices_section || in_offline_section) && trimmed.contains('(') {
-            if let Some(device) = parse_xctrace_device_line(trimmed, in_offline_section) {
-                if !device.name.to_lowercase().contains("mac")
-                    && !device.name.to_lowercase().contains("apple watch")
-                {
-                    devices.push(device);
-                }
+    if let Some(list) = parsed["result"]["devices"].as_array() {
+        for dev in list {
+            let name = dev["deviceProperties"]["name"].as_str().unwrap_or("").to_string();
+            // `identifier` (top-level) is devicectl's own internal UUID, NOT the
+            // classic ECID-derived UDID (e.g. "00008101-...") every other tool in
+            // this codebase (idb historically, `xcrun devicectl device install`'s
+            // own `--device` flag, users' saved device IDs) actually uses - that
+            // one's under `hardwareProperties.udid` instead. Using the wrong one
+            // here silently broke every existing `--device <udid>` invocation
+            // ("Device with UDID ... not found") since nothing else in the
+            // codebase would ever produce or accept devicectl's internal UUID.
+            let udid = dev["hardwareProperties"]["udid"].as_str().unwrap_or("").to_string();
+            if name.is_empty() || udid.is_empty() {
+                continue;
             }
+            let lower = name.to_lowercase();
+            if lower.contains("mac") || lower.contains("apple watch") {
+                continue;
+            }
+            // Same "Booted"/"Offline" convention `IosDriver::new`'s no-UDID-given
+            // fallback picker already expects (borrowed from simctl's simulator
+            // terminology, kept for real devices too rather than introducing a
+            // second state vocabulary the picker would also need to understand).
+            let connected = dev["connectionProperties"]["tunnelState"].as_str() == Some("connected");
+            devices.push(IosTarget {
+                udid,
+                name,
+                target_type: "device".to_string(),
+                state: if connected { "Booted".to_string() } else { "Offline".to_string() },
+            });
         }
     }
 
     Ok(devices)
 }
 
-fn parse_xctrace_device_line(line: &str, is_offline: bool) -> Option<IosTarget> {
-    let mut depth = 0;
-    let mut last_paren_start = None;
-    let mut last_paren_end = None;
+/// Best-effort detection of whichever third-party app is currently on screen on a
+/// real device, so the Inspector can auto-attach instead of requiring a manual pick
+/// (unlike macOS/Windows, a mobile device only ever shows one app at a time). There
+/// is no public API for "the frontmost app" on an unjailbroken device, so this
+/// combines two `devicectl` calls:
+/// - `device info apps --include-all-apps` (the plain, no-flags version only lists
+///   apps *built by the connected Mac* - excludes TestFlight/App Store installs like
+///   the app actually under test) gives every installed app's bundle identifier and
+///   container `url`, e.g. `.../Application/<uuid>/GOFA.app/`.
+/// - `device info processes` gives every *running* process's executable path,
+///   `.../Application/<uuid>/GOFA.app/GOFA` for an app - the same `<uuid>` ties the
+///   two together, which is why this matches on that instead of the product/binary
+///   name: Flutter apps (e.g. Lumi Life+) all share the literal binary name
+///   `Runner`, so name-matching would confuse every Flutter app under test with
+///   every other one installed on the device.
+/// A backgrounded-but-not-yet-evicted app still shows up as "running" here (e.g.
+/// switching apps via a deep link leaves the previous one resident), so when
+/// several installed-app processes are alive at once this picks the one with the
+/// highest PID - empirically the most-recently-launched-or-resumed process, i.e.
+/// the one actually on screen, confirmed live: switching from Lumi Life+ into GOFA
+/// via deep link left both processes running, with GOFA's PID higher.
+pub async fn get_foreground_app(udid: &str) -> Result<Option<String>> {
+    let apps = fetch_devicectl_json(udid, &["device", "info", "apps", "--include-all-apps"]).await?;
+    let Some(apps) = apps else { return Ok(None) };
 
-    for (i, c) in line.char_indices() {
-        match c {
-            '(' => {
-                if depth == 0 {
-                    last_paren_start = Some(i);
-                }
-                depth += 1;
+    let uuid_re = regex::Regex::new(r"/Application/([0-9A-Fa-f-]{36})/").unwrap();
+    let mut uuid_to_bundle: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    if let Some(list) = apps["result"]["apps"].as_array() {
+        for app in list {
+            let (Some(url), Some(bundle_id)) = (app["url"].as_str(), app["bundleIdentifier"].as_str()) else {
+                continue;
+            };
+            if bundle_id == "com.lumi.LumiIOSAgentRunner.xctrunner" {
+                continue;
             }
-            ')' => {
-                depth -= 1;
-                if depth == 0 {
-                    last_paren_end = Some(i);
-                }
+            if let Some(caps) = uuid_re.captures(url) {
+                uuid_to_bundle.insert(caps[1].to_string(), bundle_id.to_string());
             }
-            _ => {}
+        }
+    }
+    if uuid_to_bundle.is_empty() {
+        return Ok(None);
+    }
+
+    let procs = fetch_devicectl_json(udid, &["device", "info", "processes"]).await?;
+    let Some(procs) = procs else { return Ok(None) };
+
+    let mut best: Option<(i64, String)> = None;
+    if let Some(list) = procs["result"]["runningProcesses"].as_array() {
+        for p in list {
+            let (Some(exe), Some(pid)) = (p["executable"].as_str(), p["processIdentifier"].as_i64()) else {
+                continue;
+            };
+            let Some(caps) = uuid_re.captures(exe) else { continue };
+            let Some(bundle_id) = uuid_to_bundle.get(&caps[1]) else { continue };
+            if best.as_ref().is_none_or(|(best_pid, _)| pid > *best_pid) {
+                best = Some((pid, bundle_id.clone()));
+            }
         }
     }
 
-    let udid_start = last_paren_start? + 1;
-    let udid_end = last_paren_end?;
-    let udid = line[udid_start..udid_end].to_string();
+    Ok(best.map(|(_, bundle_id)| bundle_id))
+}
 
-    if !udid.chars().all(|c| c.is_ascii_hexdigit() || c == '-') || udid.len() < 20 {
-        return None;
+async fn fetch_devicectl_json(udid: &str, subcommand: &[&str]) -> Result<Option<serde_json::Value>> {
+    let json_path = std::env::temp_dir().join(format!(
+        "lumi_devicectl_{}_{}.json",
+        subcommand.join("_"),
+        std::process::id()
+    ));
+    let output = Command::new("xcrun")
+        .arg("devicectl")
+        .args(subcommand)
+        .args(["--device", udid, "--json-output"])
+        .arg(&json_path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .await
+        .context("Failed to run xcrun devicectl")?;
+
+    if !output.status.success() {
+        let _ = std::fs::remove_file(&json_path);
+        return Ok(None);
     }
 
-    let name_part = line[..last_paren_start?].trim();
-    let name = if let Some(last_open) = name_part.rfind('(') {
-        name_part[..last_open].trim().to_string()
-    } else {
-        name_part.to_string()
-    };
-
-    Some(IosTarget {
-        udid,
-        name,
-        target_type: "device".to_string(),
-        state: if is_offline { "Offline".to_string() } else { "Booted".to_string() },
-    })
+    let raw = std::fs::read_to_string(&json_path);
+    let _ = std::fs::remove_file(&json_path);
+    let Ok(raw) = raw else { return Ok(None) };
+    Ok(serde_json::from_str(&raw).ok())
 }
 
 pub async fn install_app(udid: &str, app_path: &str, is_simulator: bool) -> Result<()> {

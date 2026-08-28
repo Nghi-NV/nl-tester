@@ -320,10 +320,12 @@ static NSString *LumiOrientationToString(UIDeviceOrientation o)
         BOOL known = YES;
         if ([name isEqualToString:@"home"]) {
           button = XCUIDeviceButtonHome;
+#if !TARGET_OS_SIMULATOR
         } else if ([name isEqualToString:@"volumeup"]) {
           button = XCUIDeviceButtonVolumeUp;
         } else if ([name isEqualToString:@"volumedown"]) {
           button = XCUIDeviceButtonVolumeDown;
+#endif
         } else {
           known = NO;
         }

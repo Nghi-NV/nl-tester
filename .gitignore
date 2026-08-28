@@ -51,6 +51,7 @@ config.local.yaml
 # Private/Sensitive data
 hardware_control_services/
 lumi-tester/e2e/workspaces/lumi_life/
+my_testing/
 my_testing/*
 .agent/*
 .gemini/*

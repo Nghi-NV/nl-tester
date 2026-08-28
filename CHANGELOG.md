@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.34] - 2026-08-28
+
+### 🚀 Highlights & Improvements
+
+#### 1. Inspector & Extension Device Bar Integration
+- **Dynamic Device Header Bar**: Added a status bar in Element Inspector displaying the connected device name and platform badge, with a 1-click "Switch Device" button.
+- **Dynamic Device Switching**: Changing target devices in VS Code status bar immediately refreshes and reconnects active Inspector panels.
+- **Target App Auto-Attach**: Passes `appId` and `platform` from YAML files into the Inspector iframe to auto-select and highlight the target application package.
+- **Authoritative Platform Warning**: Surfaces helpful warnings when the VS Code selected device conflicts with the flow's authoritative `platform:` declaration.
+
+#### 2. Zero-Setup iOS Automation (Auto-Extracted lm-ios-tester)
+- **Embedded iOS Agent Project**: Automatically unpacks and manages `lm-ios-tester` Xcode project to `~/.lumi-tester/lm-ios-tester/` on-demand (parity with Android APK automatic extraction).
+- **iOS Simulator / Real Device Enhancements**: Fixed runloop handling, physical device volume buttons, and process lifecycle stability.
+
+---
+
 ## [v0.1.33] - 2026-08-27
 
 ### 🚀 Highlights & Improvements

@@ -119,6 +119,21 @@ pub trait PlatformDriver: Send + Sync {
     /// * `clear_state` - If true, clear the app's data before launching
     async fn launch_app(&self, app_id: &str, clear_state: bool) -> Result<()>;
 
+    /// Tells the driver which app the flow targets, independent of whether
+    /// `launch_app` itself ever actually runs. Default no-op (most drivers don't
+    /// need it: Android's hierarchy dump isn't app-scoped, so it works regardless).
+    /// The iOS driver overrides this - its agent needs a bundle id to snapshot the
+    /// right `XCUIApplication` (see `IosDriver::current_app_id`'s doc comment), and
+    /// that id previously came *only* from `launch_app` actually running. Running a
+    /// single command via `--command-index` when `launchApp` isn't that command
+    /// (e.g. re-running just a `tap` while the app is already open, which is
+    /// exactly what `--command-index` is for) skipped it entirely, silently
+    /// defaulting to an empty bundle id - the agent falls back to SpringBoard, and
+    /// a selector for text that's genuinely on screen fails with "Element not
+    /// found" because it's looking at the wrong app. Called from
+    /// `update_from_flow`, which always runs regardless of `--command-index`.
+    async fn set_current_app_id(&self, _app_id: &str) {}
+
     /// Stop an application
     async fn stop_app(&self, app_id: &str) -> Result<()>;
 

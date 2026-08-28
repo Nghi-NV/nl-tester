@@ -28,6 +28,40 @@ pub struct AppState {
     pub cached_hierarchy: std::sync::Mutex<Option<CachedHierarchy>>,
 }
 
+/// Resolves which app to dump the hierarchy of. A manual pick (via `/api/target-app`)
+/// always wins when present - needed for macOS/Windows, where multiple windows can
+/// be open at once and "the app on screen" is inherently ambiguous, so those
+/// platforms must always be told explicitly. Android/iOS only ever show one app at a
+/// time, so instead of falling back to a manual-selection-required search box
+/// there (which silently dumped the home screen/status bar until the user picked
+/// something), live-detect whatever's actually in the foreground on every call.
+/// Deliberately NOT cached into `current_target_app` - re-detecting each call is
+/// what keeps this in sync as the user navigates between screens/apps on the device
+/// without ever touching the Inspector's search box.
+async fn resolve_bundle_id(platform: &str, state: &AppState) -> Option<String> {
+    // `current_target_app` is seeded with `device_serial` at server startup (see
+    // `server.rs::start`), not `None` - so "has a manual value" can't just mean
+    // "is Some": on a fresh Inspector session it's always Some(the device
+    // serial/UDID), which is not a real app selection and must be treated the
+    // same as unset (same reasoning `get_hierarchy_ios` already applies one layer
+    // down for the same seeded value).
+    let manual = state.current_target_app.lock().unwrap().clone();
+    if let Some(id) = manual.filter(|s| !s.trim().is_empty() && Some(s.as_str()) != state.device_serial.as_deref()) {
+        return Some(id);
+    }
+    match platform {
+        "android" => crate::driver::android::adb::get_foreground_package(state.device_serial.as_deref())
+            .await
+            .ok()
+            .flatten(),
+        "ios" => {
+            let udid = state.device_serial.as_deref()?;
+            crate::driver::ios::devicectl::get_foreground_app(udid).await.ok().flatten()
+        }
+        _ => None,
+    }
+}
+
 /// Cached parsed hierarchy
 pub struct CachedHierarchy {
     pub elements: Vec<uiautomator::UiElement>,
@@ -210,10 +244,8 @@ async fn get_screenshot(
     let skip_hierarchy = params.skip_hierarchy.unwrap_or(false);
 
     let platform = state.screen_capture.platform().to_string();
-    let target_app = {
-        let cur = state.current_target_app.lock().unwrap();
-        cur.clone().or_else(|| state.device_serial.clone())
-    };
+    let selected_bundle_id = resolve_bundle_id(&platform, &state).await;
+    let target_app = selected_bundle_id.clone().or_else(|| state.device_serial.clone());
     let target_app_clone = target_app.clone();
     let target = match platform.as_str() {
         "macos" => target_app.clone(),
@@ -225,7 +257,7 @@ async fn get_screenshot(
         if skip_hierarchy {
             Err("Skipped".to_string())
         } else {
-            screen_capture::get_hierarchy_for_platform(&platform, target.as_deref())
+            screen_capture::get_hierarchy_for_platform(&platform, target.as_deref(), selected_bundle_id.as_deref())
                 .await
                 .map_err(|e| e.to_string())
         }
@@ -279,24 +311,25 @@ async fn get_element_at(
         cache.as_ref().map(|c| c.elements.clone())
     };
 
-    let target_app = {
-        let cur = state.current_target_app.lock().unwrap();
-        cur.clone().or_else(|| state.device_serial.clone())
-    };
+    let platform = state.screen_capture.platform();
+    let selected_bundle_id = resolve_bundle_id(platform, &state).await;
+    let target_app = selected_bundle_id.clone().or_else(|| state.device_serial.clone());
 
     let elements = match cached_elements {
         Some(e) => e,
         None => {
             // No cache, need to dump (first time)
-            let platform = state.screen_capture.platform();
             let target = match platform {
                 "macos" => target_app.clone(),
                 _ => state.device_serial.clone(),
             };
-            let raw_hierarchy =
-                match screen_capture::get_hierarchy_for_platform(platform, target.as_deref())
-                    .await
-                {
+            let raw_hierarchy = match screen_capture::get_hierarchy_for_platform(
+                platform,
+                target.as_deref(),
+                selected_bundle_id.as_deref(),
+            )
+            .await
+            {
                     Ok(h) => h,
                     Err(_) => {
                         return Json(ElementResponse {
@@ -644,16 +677,14 @@ async fn get_hierarchy(State(state): State<Arc<AppState>>) -> impl IntoResponse 
         e
     } else {
         let platform = state.screen_capture.platform();
-        let target_app = {
-            let cur = state.current_target_app.lock().unwrap();
-            cur.clone().or_else(|| state.device_serial.clone())
-        };
+        let selected_bundle_id = resolve_bundle_id(platform, &state).await;
+        let target_app = selected_bundle_id.clone().or_else(|| state.device_serial.clone());
         let target = match platform {
             "macos" => target_app.clone(),
             _ => state.device_serial.clone(),
         };
         let (dim_w, dim_h) = state.screen_capture.dimensions();
-        match screen_capture::get_hierarchy_for_platform(platform, target.as_deref()).await {
+        match screen_capture::get_hierarchy_for_platform(platform, target.as_deref(), selected_bundle_id.as_deref()).await {
             Ok(raw) => screen_capture::parse_hierarchy_for_platform(
                 platform,
                 &raw,
@@ -1217,6 +1248,47 @@ async fn get_packages(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         {
             return Json(serde_json::json!({ "packages": Vec::<String>::new() })).into_response();
         }
+    }
+
+    if platform == "ios" {
+        // The Android fallback below (`adb shell pm list packages`) doesn't apply to
+        // iOS at all - `state.device_serial` there is a UDID, not an Android serial,
+        // and there previously was no "ios" branch here, so this always fell through
+        // to that Android path and failed with "adb: device '<udid>' not found".
+        // That meant the app-search dropdown could never list anything for iOS, so
+        // there was no way to select a target app - and without a selected app,
+        // `/api/hierarchy` falls back to a bundle id that resolves to nothing useful
+        // (see `get_hierarchy_ios`'s doc comment). `idb list-apps` works for both a
+        // real device and a simulator given `--udid`; filtered to `user` (third-party)
+        // apps only, matching the Android path's `-3` filter, so this doesn't get
+        // cluttered with hundreds of Apple system apps.
+        let udid = state.device_serial.clone().unwrap_or_default();
+        return match tokio::process::Command::new("idb")
+            .args(["list-apps", "--udid", &udid])
+            .output()
+            .await
+        {
+            Ok(out) if out.status.success() => {
+                let text = String::from_utf8_lossy(&out.stdout);
+                let packages: Vec<String> = text
+                    .lines()
+                    .filter_map(|line| {
+                        let parts: Vec<&str> = line.split('|').map(|s| s.trim()).collect();
+                        let (bundle_id, name, app_type) = (parts.first()?, parts.get(1)?, parts.get(2)?);
+                        if *app_type != "user" {
+                            return None;
+                        }
+                        // Reordered to "name | bundleId | path" - the shape
+                        // `loadPackages()` in script.js already parses (same
+                        // convention the macOS branch above uses).
+                        Some(format!("{} | {} | ", name, bundle_id))
+                    })
+                    .collect();
+                Json(serde_json::json!({ "packages": packages })).into_response()
+            }
+            Ok(out) => (StatusCode::INTERNAL_SERVER_ERROR, String::from_utf8_lossy(&out.stderr).to_string()).into_response(),
+            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to run idb list-apps: {}", e)).into_response(),
+        };
     }
 
     use crate::driver::android::adb;

@@ -33,6 +33,21 @@ async fn install_components(_all: bool) -> Result<()> {
     // where it's looked up afterwards.
     install_agent_apk(&install_dir)?;
 
+    // 3. Install the lm-ios-tester agent's Xcode project source (macOS only - iOS
+    // automation is only ever run from a Mac). Same rationale as the Android APK:
+    // `agent_setup::find_agent_project` previously only looked for this project
+    // relative to a monorepo checkout, so it was unreachable for anyone who
+    // installed lumi-tester via curl/Homebrew instead of cloning the source repo.
+    // Unlike the APK, this doesn't need code signing to run on a *simulator* (no
+    // Apple Developer account required) - `xcodebuild build-for-testing` compiles
+    // it fresh from this extracted source using whatever Xcode toolchain is
+    // already on the machine. Real *device* runs still need the user's own Team ID
+    // configured in Xcode - that's an Apple platform requirement, not something
+    // this extraction step can route around.
+    if cfg!(target_os = "macos") {
+        install_ios_agent_project(&install_dir)?;
+    }
+
     println!("\n{}", "All system components are ready!".green().bold());
     println!("Installation directory: {}", install_dir.display());
 
@@ -61,6 +76,66 @@ fn install_agent_apk(install_dir: &Path) -> Result<()> {
     fs::create_dir_all(&apk_dir)?;
     fs::write(&apk_path, AGENT_APK_BYTES).context("Failed to write agent APK")?;
     println!("{} Agent APK installed successfully.", "✓".green());
+    Ok(())
+}
+
+/// Bytes of the lm-ios-tester agent's Xcode project source, zipped from the
+/// tracked `resources/ios/lm_ios_tester.zip` (contents of `lm-ios-tester/` at the
+/// repo root - `project.yml`, `LumiIOSAgent.xcodeproj/`, `LumiIOSAgentRunner/`, no
+/// build artifacts). Rebuild+recommit that zip whenever `lm-ios-tester`'s source
+/// changes; nothing else needs to change. Regenerate with (from the repo root):
+///   cd lm-ios-tester && zip -r -X -q ../lumi-tester/resources/ios/lm_ios_tester.zip . -x "*.DS_Store"
+const IOS_AGENT_PROJECT_ZIP: &[u8] = include_bytes!("../../resources/ios/lm_ios_tester.zip");
+
+/// Extracts the embedded lm-ios-tester Xcode project to `~/.lumi-tester/lm-ios-tester/`
+/// if not already present there. Public (not just called from `system install`) so
+/// `agent_setup::find_agent_project` can call it lazily on first use too - matching
+/// the Android agent's on-demand-extraction parity (see
+/// `binary_resolver::find_apk`), so this works whether or not the user ever ran
+/// `lumi-tester system install --all` explicitly first.
+pub fn ensure_ios_agent_project_extracted() -> Result<PathBuf> {
+    let install_dir = get_install_dir()?;
+    let project_dir = install_dir.join("lm-ios-tester");
+    install_ios_agent_project(&install_dir)?;
+    Ok(project_dir)
+}
+
+fn install_ios_agent_project(install_dir: &Path) -> Result<()> {
+    let project_dir = install_dir.join("lm-ios-tester");
+    // Marker records the embedded zip's own byte length (not just presence) so an
+    // upgrade to a newer lumi-tester version - with different lm-ios-tester source
+    // baked in - re-extracts instead of silently keeping stale files forever, same
+    // staleness check the Android APK install uses (`install_agent_apk` above).
+    let marker_path = project_dir.join(".lumi_ios_agent_zip_len");
+    let expected_marker = IOS_AGENT_PROJECT_ZIP.len().to_string();
+
+    if marker_path.exists() {
+        if let Ok(existing) = fs::read_to_string(&marker_path) {
+            if existing.trim() == expected_marker {
+                println!("{} lm-ios-tester agent project is already installed.", "✓".green());
+                return Ok(());
+            }
+        }
+    }
+
+    println!("{} Installing lm-ios-tester agent project...", "⬇️".yellow());
+    // Clear out any previous version's files first - zip extraction only overwrites
+    // files present in the new archive, it wouldn't remove ones that existed in an
+    // older version but not this one.
+    let _ = fs::remove_dir_all(&project_dir);
+    fs::create_dir_all(&project_dir)?;
+
+    let tmp_zip = std::env::temp_dir().join(format!(
+        "lm_ios_tester_{}.zip",
+        std::process::id()
+    ));
+    fs::write(&tmp_zip, IOS_AGENT_PROJECT_ZIP).context("Failed to write embedded iOS agent zip")?;
+    let extract_result = extract_zip(&tmp_zip, &project_dir);
+    let _ = fs::remove_file(&tmp_zip);
+    extract_result.context("Failed to extract lm-ios-tester agent project")?;
+    fs::write(&marker_path, &expected_marker).context("Failed to write iOS agent version marker")?;
+
+    println!("{} Agent project installed successfully.", "✓".green());
     Ok(())
 }
 

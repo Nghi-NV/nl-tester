@@ -17,6 +17,19 @@
     <!-- Screen Panel (Left Viewport) -->
     <div class="screen-panel" id="screenPanel">
       
+      <!-- Device Bar: shows which device the Inspector is bound to, with a way to
+           switch it when embedded in the VS Code extension (hidden otherwise - a
+           bare `lumi-tester inspect` browser tab has no host to switch devices for). -->
+      <div class="device-bar" id="deviceBar" style="display:none">
+        <svg class="device-bar-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+          <line x1="12" y1="18" x2="12.01" y2="18"></line>
+        </svg>
+        <span class="device-bar-name" id="deviceBarName"></span>
+        <span class="device-bar-platform" id="deviceBarPlatform"></span>
+        <button class="device-bar-switch" id="deviceBarSwitch" onclick="requestDeviceSwitch()" title="Switch device">Switch device</button>
+      </div>
+
       <!-- Studio Header Toolbar (Compact Search & Refresh) -->
       <header class="studio-topbar">
         <div class="app-search-wrapper">
@@ -188,7 +201,6 @@
             <div class="empty-title">Select Any UI Element</div>
             <div class="empty-desc">Click anywhere on the device screen on the left to inspect hierarchy, attributes, and generate resilient selectors.</div>
           </div>
-        </div>
 
         <!-- VIEW 2: ATTRIBUTES -->
         <div id="attributesView" style="display:none">
@@ -196,7 +208,7 @@
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
             <input type="text" id="attrSearchInput" class="attr-filter-input" placeholder="Filter XML attributes..." oninput="filterAttributes()">
           </div>
-          
+
           <div class="attributes-grid" id="attributesGrid">
             <!-- Injected dynamically -->
           </div>

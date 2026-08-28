@@ -209,22 +209,54 @@ impl ScreenCapture {
         Ok((bytes, actual_w, actual_h))
     }
 
-    /// Capture iOS screenshot via the lm-ios-tester agent (idb/WDA removed - see
-    /// driver.rs for the full rationale: idb's screenshot service is confirmed broken on
-    /// newer iOS versions, WDA's own HTTP round trip is both slower and an extra
-    /// subsystem to keep alive).
+    async fn is_simulator(&self) -> bool {
+        let udid = self.device_serial.as_deref().unwrap_or("");
+        is_ios_simulator(udid).await
+    }
+
+    /// Capture iOS screenshot via the lm-ios-tester agent or simctl fallback
     async fn capture_ios_bytes(&self) -> Result<Vec<u8>> {
-        let client = crate::driver::ios::agent::AgentClient::new(
-            "localhost",
-            crate::driver::ios::agent::DEFAULT_AGENT_PORT,
-        );
+        let udid = self.device_serial.as_deref().unwrap_or("");
+        let is_sim = self.is_simulator().await;
+        let port = if is_sim || udid.is_empty() {
+            crate::driver::ios::agent::DEFAULT_AGENT_PORT
+        } else {
+            crate::driver::ios::agent::agent_port_for(udid)
+        };
+
+        let client = crate::driver::ios::agent::AgentClient::new("localhost", port);
         if let Some(base64_data) = client.screenshot_base64().await {
             if let Ok(bytes) = STANDARD.decode(&base64_data) {
                 return Ok(bytes);
             }
         }
 
-        anyhow::bail!("Failed to capture iOS screenshot via the lm-ios-tester agent")
+        // Fast fallback ONLY for iOS Simulator using native simctl
+        if is_sim && !udid.is_empty() {
+            let temp_path = std::env::temp_dir().join(format!("lumi_ios_screenshot_{}.png", uuid::Uuid::new_v4()));
+            let output = tokio::process::Command::new("xcrun")
+                .args(&["simctl", "io", udid, "screenshot", temp_path.to_str().unwrap()])
+                .output()
+                .await;
+            if let Ok(out) = output {
+                if out.status.success() && temp_path.exists() {
+                    let bytes = tokio::fs::read(&temp_path).await?;
+                    let _ = tokio::fs::remove_file(&temp_path).await;
+                    return Ok(bytes);
+                }
+            }
+        }
+
+        // Try ensuring agent running if not already started
+        if !udid.is_empty() && crate::driver::ios::agent_setup::ensure_agent_running(udid, port).await {
+            if let Some(base64_data) = client.screenshot_base64().await {
+                if let Ok(bytes) = STANDARD.decode(&base64_data) {
+                    return Ok(bytes);
+                }
+            }
+        }
+
+        anyhow::bail!("Failed to capture iOS screenshot via the lm-ios-tester agent on {}", udid)
     }
 
     /// Capture Windows desktop screenshot
@@ -353,13 +385,58 @@ pub async fn get_hierarchy_macos(app_target: Option<&str>) -> Result<String> {
     }
 }
 
+/// Helper to determine if a UDID belongs to an iOS Simulator
+pub async fn is_ios_simulator(udid: &str) -> bool {
+    if udid.is_empty() {
+        return true;
+    }
+    if udid.len() != 36 || udid.split('-').count() != 5 {
+        return false;
+    }
+    let output = tokio::process::Command::new("xcrun")
+        .args(&["simctl", "list", "devices"])
+        .output()
+        .await;
+    if let Ok(out) = output {
+        let text = String::from_utf8_lossy(&out.stdout);
+        return text.contains(udid);
+    }
+    false
+}
+
 /// Get UI hierarchy for iOS element picking
-pub async fn get_hierarchy_ios(_udid: Option<&str>) -> Result<String> {
-    let client = crate::driver::ios::agent::AgentClient::new(
-        "localhost",
-        crate::driver::ios::agent::DEFAULT_AGENT_PORT,
-    );
-    match client.hierarchy("").await {
+pub async fn get_hierarchy_ios(udid: Option<&str>, bundle_id: Option<&str>) -> Result<String> {
+    let target_udid = udid.unwrap_or("");
+    let is_sim = is_ios_simulator(target_udid).await;
+    let port = if is_sim || target_udid.is_empty() {
+        crate::driver::ios::agent::DEFAULT_AGENT_PORT
+    } else {
+        crate::driver::ios::agent::agent_port_for(target_udid)
+    };
+
+    let client = crate::driver::ios::agent::AgentClient::new("localhost", port);
+    if !client.is_ready().await && !target_udid.is_empty() {
+        let _ = crate::driver::ios::agent_setup::ensure_agent_running(target_udid, port).await;
+    }
+
+    // The agent's `hierarchy` command needs the target app's bundle id to snapshot
+    // the right `XCUIApplication` - passing "" (as this used to do unconditionally)
+    // makes it snapshot the wrong thing (confirmed live: got SpringBoard/status-bar
+    // content - clock, battery, "Không làm phiền" - instead of the actual
+    // foreground app), which is exactly what looks like "not capturing any text on
+    // screen" from the Inspector, since none of that system-level content matches
+    // anything a test would look for. `bundle_id` is the Inspector's
+    // `current_target_app`, which is *initialized* to the device serial (see
+    // `server.rs::start`) and only ever becomes a real bundle id once the user picks
+    // one from the app-search dropdown - so a bundle id that equals the device's own
+    // UDID means "nothing was actually selected", same as if it were empty. Treating
+    // it as unset here (falls back to SpringBoard - a coherent, if unhelpful, real
+    // snapshot) is safer than resolving `XCUIApplication` for a bundle id that's
+    // really a UDID, which returns a broken near-empty tree with no clear signal why.
+    let bundle_id = bundle_id
+        .filter(|id| *id != target_udid)
+        .unwrap_or("");
+    match client.hierarchy(bundle_id).await {
         Some(data) => Ok(serde_json::to_string(&data)?),
         None => anyhow::bail!("Failed to get iOS hierarchy via the lm-ios-tester agent"),
     }
@@ -459,11 +536,18 @@ pub async fn get_hierarchy_web() -> Result<String> {
 }
 
 /// Dispatcher to retrieve raw UI hierarchy for any supported platform
-pub async fn get_hierarchy_for_platform(platform: &str, target: Option<&str>) -> Result<String> {
+/// `bundle_id` is only consulted for the "ios" branch (the agent's `hierarchy`
+/// command needs it to snapshot the right app - see `get_hierarchy_ios`'s doc
+/// comment). Every other platform ignores it.
+pub async fn get_hierarchy_for_platform(
+    platform: &str,
+    target: Option<&str>,
+    bundle_id: Option<&str>,
+) -> Result<String> {
     match platform {
         "android" => get_hierarchy_android(target).await,
         "macos" => get_hierarchy_macos(target).await,
-        "ios" => get_hierarchy_ios(target).await,
+        "ios" => get_hierarchy_ios(target, bundle_id).await,
         "windows" => get_hierarchy_windows().await,
         "web" => get_hierarchy_web().await,
         _ => get_hierarchy_android(target).await,

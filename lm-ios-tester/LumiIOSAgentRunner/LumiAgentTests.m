@@ -48,7 +48,7 @@ static const uint16_t kLumiAgentPort = 8110;
   self.keepAlive = YES;
   NSRunLoop *runLoop = [NSRunLoop mainRunLoop];
   while (self.keepAlive &&
-         [runLoop runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantFuture]]) {
+         [runLoop runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.1]]) {
   }
 }
 

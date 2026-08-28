@@ -10,6 +10,18 @@ pub struct Device {
     pub state: String,
 }
 
+/// Package of whatever activity currently has focus on screen - `mFocusedApp` is
+/// the modern field (OEM `dumpsys` builds vary in exactly which lines they print),
+/// `mResumedActivity` is the older/fallback one many devices still report instead.
+/// Used by the Inspector to auto-attach to the app on screen for Android instead of
+/// requiring a manual pick, since unlike macOS/Windows there's exactly one app in
+/// the foreground at a time on a mobile device.
+pub async fn get_foreground_package(serial: Option<&str>) -> Result<Option<String>> {
+    let output = shell(serial, "dumpsys activity activities").await?;
+    let re = regex::Regex::new(r"m(?:FocusedApp|ResumedActivity)=ActivityRecord\{[^ ]+ u\d+ ([a-zA-Z0-9_.]+)/").unwrap();
+    Ok(re.captures(&output).map(|c| c[1].to_string()))
+}
+
 /// Get list of connected Android devices
 pub async fn get_devices() -> Result<Vec<Device>> {
     let adb_path = binary_resolver::find_adb()?;

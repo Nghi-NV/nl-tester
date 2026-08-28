@@ -49,6 +49,22 @@ export function parseYamlPlatform(filePath: string): string | undefined {
   return undefined;
 }
 
+export function parseYamlAppId(filePath: string): string | undefined {
+  try {
+    const fs = require('fs');
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, 'utf8');
+      const match = content.match(/^appId:\s*["']?([^"'\r\n]+)["']?\s*$/m);
+      if (match) {
+        return match[1].trim();
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return undefined;
+}
+
 export function buildRunInvocation(options: RunInvocationOptions): Invocation {
   // Always request report generation (JSON, report.html, summary.html, JUnit) -
   // the CLI treats `--report` as opt-in (so scripted/CI callers that just want

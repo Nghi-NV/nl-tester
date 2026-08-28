@@ -10,10 +10,16 @@ use tokio::process::Command;
 
 const SCHEME: &str = "LumiIOSAgentRunner";
 
-/// Locates the `lm-ios-tester/` checkout. Stage-A/dev-only: this project isn't packaged
-/// for distribution yet (unlike `lm-android-tester.apk`, which is bundled/resolved via
-/// `binary_resolver`), so this only works from within a checkout of this monorepo -
-/// `LUMI_IOS_AGENT_PROJECT` overrides for any other layout.
+/// Locates the `lm-ios-tester/` project. Checks a monorepo dev checkout first
+/// (relative to cwd/exe, or the hardcoded dev machine path - still useful when
+/// developing lumi-tester itself), then `~/.lumi-tester/lm-ios-tester/` - the
+/// embedded copy `system::ensure_ios_agent_project_extracted` writes out there (on
+/// demand right here if it isn't present yet, same on-demand-extraction parity as
+/// the Android agent APK via `binary_resolver::find_apk`). This is what makes iOS
+/// Simulator automation work for anyone who installed lumi-tester via
+/// curl/Homebrew - not just from a monorepo source checkout - since simulators
+/// don't require code signing. `LUMI_IOS_AGENT_PROJECT` overrides all of this for
+/// any other layout.
 fn find_agent_project() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("LUMI_IOS_AGENT_PROJECT") {
         let path = PathBuf::from(p);
@@ -23,10 +29,16 @@ fn find_agent_project() -> Option<PathBuf> {
     }
 
     let candidates = [
+        std::env::current_dir().ok().map(|d| d.join("lm-ios-tester")),
         std::env::current_dir().ok().map(|d| d.join("../lm-ios-tester")),
         std::env::current_exe()
             .ok()
             .and_then(|e| e.parent().map(|p| p.join("../../../../lm-ios-tester"))),
+        std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().map(|p| p.join("../../lm-ios-tester"))),
+        dirs::home_dir().map(|h| h.join("Desktop/MyOpenSource/nl-tester/lm-ios-tester")),
+        dirs::home_dir().map(|h| h.join(".lumi-tester/lm-ios-tester")),
     ];
     for candidate in candidates.into_iter().flatten() {
         let project = candidate.join("LumiIOSAgent.xcodeproj");
@@ -34,6 +46,13 @@ fn find_agent_project() -> Option<PathBuf> {
             return Some(candidate);
         }
     }
+
+    if let Ok(project_dir) = crate::utils::system::ensure_ios_agent_project_extracted() {
+        if project_dir.join("LumiIOSAgent.xcodeproj").exists() {
+            return Some(project_dir);
+        }
+    }
+
     None
 }
 
@@ -90,11 +109,13 @@ pub async fn ensure_agent_running(udid: &str, port: u16) -> bool {
         return true;
     }
 
-    let _ = start_iproxy(udid, port, super::agent::DEFAULT_AGENT_PORT).await;
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-    if client.is_ready().await {
-        println!("{} lm-ios-tester agent reachable via existing session", "✓".green());
-        return true;
+    if port != super::agent::DEFAULT_AGENT_PORT {
+        let _ = start_iproxy(udid, port, super::agent::DEFAULT_AGENT_PORT).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        if client.is_ready().await {
+            println!("{} lm-ios-tester agent reachable via existing session", "✓".green());
+            return true;
+        }
     }
 
     let Some(project_dir) = find_agent_project() else {

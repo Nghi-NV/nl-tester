@@ -2,7 +2,7 @@ import * as child_process from 'child_process';
 import * as net from 'net';
 import * as vscode from 'vscode';
 import { buildInspectInvocation } from './commandInvocation';
-import { Device } from './deviceManager';
+import { Device, DeviceManager } from './deviceManager';
 import { LumiRuntime } from './runtimeResolver';
 
 export class InspectorPanel {
@@ -14,14 +14,18 @@ export class InspectorPanel {
   private _port: number = 9333;
   private _disposables: vscode.Disposable[] = [];
   private _selectedDevice: Device | undefined;
+  private _appId: string | undefined;
   private _outputChannel: vscode.OutputChannel;
 
-  public static async show(context: vscode.ExtensionContext, runtime: LumiRuntime, device?: Device) {
+  public static async show(context: vscode.ExtensionContext, runtime: LumiRuntime, device?: Device, appId?: string) {
     const column = vscode.ViewColumn.Beside;
 
     // If we already have a panel, show it
     if (InspectorPanel.currentPanel) {
       InspectorPanel.currentPanel._runtime = runtime;
+      if (appId) {
+        InspectorPanel.currentPanel._appId = appId;
+      }
       if (device) {
         InspectorPanel.currentPanel.setDevice(device);
       }
@@ -41,17 +45,19 @@ export class InspectorPanel {
       }
     );
 
-    InspectorPanel.currentPanel = new InspectorPanel(panel, context, runtime, device);
+    InspectorPanel.currentPanel = new InspectorPanel(panel, context, runtime, device, appId);
   }
 
   private constructor(
     panel: vscode.WebviewPanel,
     private context: vscode.ExtensionContext,
     private _runtime: LumiRuntime,
-    device?: Device
+    device?: Device,
+    appId?: string
   ) {
     this._panel = panel;
     this._selectedDevice = device;
+    this._appId = appId;
     this._outputChannel = vscode.window.createOutputChannel('Lumi Inspector');
 
     // Listen for when the panel is disposed
@@ -67,6 +73,13 @@ export class InspectorPanel {
           case 'copySelector':
             await vscode.env.clipboard.writeText(message.selector);
             break;
+          case 'switchDevice': {
+            const device = await DeviceManager.getInstance().showDevicePicker();
+            if (device) {
+              this.setDevice(device);
+            }
+            break;
+          }
         }
       },
       null,
@@ -201,6 +214,16 @@ export class InspectorPanel {
   }
 
   private _getInspectorHtml(): string {
+    const frameParams = new URLSearchParams();
+    if (this._selectedDevice) {
+      frameParams.set('deviceName', this._selectedDevice.name);
+      frameParams.set('platform', this._selectedDevice.platform);
+    }
+    if (this._appId) {
+      frameParams.set('appId', this._appId);
+    }
+    const frameSrc = `http://localhost:${this._port}${frameParams.toString() ? '?' + frameParams.toString() : ''}`;
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -225,7 +248,7 @@ export class InspectorPanel {
     </style>
 </head>
 <body>
-    <iframe src="http://localhost:${this._port}" id="inspectorFrame" allow="clipboard-read; clipboard-write"></iframe>
+    <iframe src="${frameSrc}" id="inspectorFrame" allow="clipboard-read; clipboard-write"></iframe>
     <script>
         const vscode = acquireVsCodeApi();
         // Listen for messages from iframe
@@ -242,6 +265,9 @@ export class InspectorPanel {
                         command: 'copySelector',
                         selector: event.data.value
                     });
+                }
+                if (event.data.type === 'switchDevice') {
+                    vscode.postMessage({ command: 'switchDevice' });
                 }
             }
         });

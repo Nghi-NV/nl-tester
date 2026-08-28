@@ -292,6 +292,13 @@ impl TestExecutor {
         // Update context from flow header
         self.context.update_from_flow(&flow);
 
+        // Let the driver know the target app even if `launchApp` itself never runs
+        // this session (e.g. `--command-index` re-running a single later command
+        // while the app is already open) - see `PlatformDriver::set_current_app_id`.
+        if let Some(app_id) = self.context.app_id.clone() {
+            self.driver.set_current_app_id(&app_id).await;
+        }
+
         // Pick up camera (hardware verification) configs; reset prior streams
         // when this flow declares its own cameras.
         if let Some(cameras) = flow.cameras.clone() {

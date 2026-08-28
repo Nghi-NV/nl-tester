@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { getMacosApplications } from './appDiscovery';
 import { LumiCodeLensProvider } from './codeLensProvider';
-import { buildRunInvocation, parseYamlPlatform } from './commandInvocation';
+import { buildRunInvocation, parseYamlAppId, parseYamlPlatform } from './commandInvocation';
 import { LumiCompletionProvider } from './completionProvider';
 import { LumiDecorationProvider } from './decorationProvider';
 import { parseAdbDevices } from './deviceDiscovery';
@@ -127,7 +127,16 @@ export function activate(context: vscode.ExtensionContext) {
   // Device selection commands
   context.subscriptions.push(
     vscode.commands.registerCommand('lumi-tester.selectDevice', async () => {
-      await deviceManager?.showDevicePicker();
+      const device = await deviceManager?.showDevicePicker();
+      // The Inspector panel binds to a device at startup (it's a whole separate
+      // `lumi-tester inspect` process) and has no way to find out on its own that
+      // the picker changed - `InspectorPanel.setDevice` (restart against the new
+      // device) already existed for exactly this, it just wasn't wired up here, so
+      // picking a new device here left an already-open Inspector panel silently
+      // still pointed at the old one.
+      if (device && InspectorPanel.currentPanel) {
+        InspectorPanel.currentPanel.setDevice(device);
+      }
     })
   );
 
@@ -233,7 +242,8 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         const device = deviceManager?.getSelectedDevice() || undefined;
-        await InspectorPanel.show(context, runtime, device);
+        const appId = parseYamlAppId(uri.fsPath);
+        await InspectorPanel.show(context, runtime, device, appId);
         console.log('Lumi: InspectorPanel.show() completed');
       } catch (error) {
         console.error('Lumi: Error showing inspector panel:', error);
@@ -645,13 +655,34 @@ async function executeRunTask(
 ): Promise<void> {
   try {
     const targetPlatform = parseYamlPlatform(uri.fsPath);
+    const selectedDevice = deviceManager?.getSelectedDevice() ?? undefined;
+
+    // A YAML's `platform:` header is authoritative (selectors/appId/gestures are
+    // platform-specific - the CLI can't run an iOS-authored flow "on Android" just
+    // because that's the status-bar selection), so buildRunInvocation intentionally
+    // drops the device override on a mismatch and lets the CLI fall back to the
+    // file's own platform. That fallback used to be silent, which reads as "I picked
+    // Android but it ran on iOS anyway" with no explanation - surface why here.
+    if (
+      targetPlatform &&
+      !['macos', 'windows', 'desktop', 'web'].includes(targetPlatform) &&
+      selectedDevice &&
+      targetPlatform !== selectedDevice.platform.toLowerCase()
+    ) {
+      vscode.window.showWarningMessage(
+        `${uri.fsPath.split('/').pop()} khai báo "platform: ${targetPlatform}" nên vẫn chạy trên ${targetPlatform}, ` +
+        `bỏ qua thiết bị ${selectedDevice.platform} đang chọn (${selectedDevice.name}). ` +
+        `Đổi "platform:" trong file nếu muốn chạy ${selectedDevice.platform}.`
+      );
+    }
+
     const invocation = buildRunInvocation({
       runtime,
       testFilePath: uri.fsPath,
       commandIndex,
       fromCommandIndex,
       targetPlatform,
-      device: deviceManager?.getSelectedDevice() ?? undefined
+      device: selectedDevice
     });
     const execution = new vscode.ProcessExecution(
       invocation.executable,

@@ -27,3 +27,4 @@ env:
     unicode: true
 - hideKeyboard
 - takeScreenshot: "lumi_life_login_filled.png"
+

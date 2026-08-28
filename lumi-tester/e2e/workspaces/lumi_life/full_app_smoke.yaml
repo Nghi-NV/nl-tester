@@ -1,4 +1,4 @@
-platform: ios
+platform: android
 appId: com.lumi.lumilife
 name: Lumi Life full app smoke
 tags:
