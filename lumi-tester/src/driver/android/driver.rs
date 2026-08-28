@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, OnceCell};
@@ -126,8 +126,13 @@ impl Default for MockLocationState {
 pub struct AndroidDriver {
     serial: Option<String>,
     screen_size: (u32, u32),
-    recording_process: Arc<Mutex<Option<tokio::process::Child>>>,
     current_recording_path: Arc<Mutex<Option<String>>>,
+    /// Set by `stop_recording` to tell the background segment-chaining loop (see
+    /// `start_recording`) not to start another segment once the current one ends.
+    recording_stop: Arc<AtomicBool>,
+    /// The loop task itself - `stop_recording` awaits it to get back the full list of
+    /// remote segment paths it recorded, once it notices `recording_stop` and exits.
+    recording_task: Arc<Mutex<Option<tokio::task::JoinHandle<Vec<String>>>>>,
     /// Mock location states keyed by name ("" for default)
     mock_states: Arc<Mutex<HashMap<String, MockLocationState>>>,
     /// Target display ID (default 0)
@@ -177,6 +182,57 @@ pub struct AndroidDriver {
     /// if it lands mid-entrance-animation, since a Flutter widget's semantics bounds can be
     /// finalized before its RenderObject is actually paintable/hit-testable at that position.
     last_tap_point: Arc<Mutex<Option<(i32, i32)>>>,
+}
+
+/// Concatenates video segments (in order) into `output` using ffmpeg's concat
+/// demuxer with `-c copy` (stream copy - the segments all share the same codec/
+/// bitrate from `screenrecord`, so this is fast and lossless, not a re-encode).
+/// Returns `false` on any failure (ffmpeg not resolvable, or the process itself
+/// failing) so the caller can fall back to keeping at least one segment.
+async fn concat_videos_ffmpeg(segments: &[std::path::PathBuf], output: &std::path::Path) -> bool {
+    // `binary_resolver::find_ffmpeg()` prioritizes the ffmpeg bundled with Playwright
+    // (`~/.lumi-tester/playwright/ffmpeg`), built with `--disable-everything` and only
+    // the codecs/muxers Playwright's own webm screen-capture needs enabled - it has no
+    // `concat` demuxer at all ("Unrecognized option 'safe'", confirmed live), so it
+    // can't do this. A general-purpose system ffmpeg (Homebrew/apt/etc., if present)
+    // can - try that first and only fall back to the bundled one as a last resort.
+    let ffmpeg_path = match which::which("ffmpeg") {
+        Ok(path) => path,
+        Err(_) => match crate::utils::binary_resolver::find_ffmpeg() {
+            Ok(path) => path,
+            Err(_) => return false,
+        },
+    };
+
+    let list_path = output.with_extension("concat_list.txt");
+    let list_contents = segments
+        .iter()
+        .map(|p| format!("file '{}'", p.to_string_lossy().replace('\'', "'\\''")))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if std::fs::write(&list_path, list_contents).is_err() {
+        return false;
+    }
+
+    let result = tokio::process::Command::new(ffmpeg_path)
+        .args([
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+        ])
+        .arg(&list_path)
+        .args(["-c", "copy"])
+        .arg(output)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await;
+
+    let _ = std::fs::remove_file(&list_path);
+    matches!(result, Ok(status) if status.success())
 }
 
 impl AndroidDriver {
@@ -241,8 +297,9 @@ impl AndroidDriver {
         Ok(Self {
             serial: selected_serial,
             screen_size,
-            recording_process: Arc::new(Mutex::new(None)),
             current_recording_path: Arc::new(Mutex::new(None)),
+            recording_stop: Arc::new(AtomicBool::new(false)),
+            recording_task: Arc::new(Mutex::new(None)),
             mock_states: Arc::new(Mutex::new(HashMap::new())),
             display_id: AtomicU64::new(0),
             speed_profile,
@@ -2028,58 +2085,81 @@ impl PlatformDriver for AndroidDriver {
     }
 
     async fn start_recording(&self, path: &str) -> Result<()> {
-        let remote_path = "/sdcard/screenrecord.mp4";
-        let local_path = path.to_string();
+        self.recording_stop.store(false, Ordering::SeqCst);
+        self.current_recording_path.lock().await.replace(path.to_string());
 
-        // Start recording in background
-        let child = tokio::process::Command::new("adb")
-            .args(&[
-                "-s",
-                self.serial.as_deref().unwrap_or(""),
-                "shell",
-                "screenrecord",
-                "--bit-rate",
-                "4000000",
-                remote_path,
-            ])
-            .spawn()?;
+        let serial = self.serial.clone();
+        let stop_flag = self.recording_stop.clone();
 
-        *self.recording_process.lock().await = Some(child);
-        self.current_recording_path.lock().await.replace(local_path);
+        // Android's on-device `screenrecord` silently caps a single recording at 3
+        // minutes when no --time-limit is given (and on many OS versions that's the
+        // hard ceiling regardless of what --time-limit asks for) - a test run
+        // longer than that lost video for everything past the 3-minute mark with no
+        // warning at all. Chain fresh 170s segments (10s margin below the 180s
+        // wall) instead, and stitch them back together in `stop_recording`.
+        let task = tokio::spawn(async move {
+            let mut segments = Vec::new();
+            let mut idx = 0u32;
+            loop {
+                let remote_path = format!("/sdcard/lumi_rec_{}.mp4", idx);
+                let Ok(mut child) = tokio::process::Command::new("adb")
+                    .args(&[
+                        "-s",
+                        serial.as_deref().unwrap_or(""),
+                        "shell",
+                        "screenrecord",
+                        "--bit-rate",
+                        "4000000",
+                        "--time-limit",
+                        "170",
+                        &remote_path,
+                    ])
+                    .spawn()
+                else {
+                    break;
+                };
+                let _ = child.wait().await;
+                segments.push(remote_path);
 
+                if stop_flag.load(Ordering::SeqCst) {
+                    break;
+                }
+                idx += 1;
+            }
+            segments
+        });
+
+        *self.recording_task.lock().await = Some(task);
         Ok(())
     }
 
     async fn stop_recording(&self) -> Result<()> {
-        if let Some(mut child) = self.recording_process.lock().await.take() {
-            // Gracefully stop screenrecord on device using SIGINT (Ctrl+C)
-            // This ensures the MP4 file is finalized correctly.
-            let _ = adb::shell(self.serial.as_deref(), "pkill -2 screenrecord").await;
+        let Some(task) = self.recording_task.lock().await.take() else {
+            return Ok(());
+        };
 
-            // Wait for the local adb process to exit
-            match tokio::time::timeout(tokio::time::Duration::from_secs(3), child.wait()).await {
-                Ok(_) => {}
-                Err(_) => {
-                    println!(
-                        "{} screenrecord did not exit gracefully, force killing...",
-                        "⚠️".yellow()
-                    );
-                    let _ = child.kill().await;
-                }
+        self.recording_stop.store(true, Ordering::SeqCst);
+        // Gracefully stop the in-progress segment on-device using SIGINT (Ctrl+C) -
+        // this finalizes its MP4 correctly and is what makes the loop's
+        // `child.wait()` return so it can notice `recording_stop` and exit.
+        let _ = adb::shell(self.serial.as_deref(), "pkill -2 screenrecord").await;
+
+        let segments = match tokio::time::timeout(tokio::time::Duration::from_secs(5), task).await {
+            Ok(Ok(segments)) => segments,
+            _ => {
+                println!(
+                    "{} screenrecord did not exit gracefully, some video may be lost",
+                    "⚠️".yellow()
+                );
+                Vec::new()
             }
+        };
 
-            // Wait for file system to settle
-            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+        // Wait for file system to settle
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
-            // Pull the file
-            if let Some(local_path) = self.current_recording_path.lock().await.take() {
-                adb::exec(
-                    self.serial.as_deref(),
-                    &["pull", "/sdcard/screenrecord.mp4", &local_path],
-                )
-                .await?;
-                println!("  {} Saved Video Recording: {}", "🎥".green(), local_path);
-            }
+        if let Some(local_path) = self.current_recording_path.lock().await.take() {
+            self.finish_recording(segments, &local_path).await;
         }
 
         Ok(())
@@ -3399,6 +3479,66 @@ fn map_android_type(t: &str) -> &str {
 }
 
 impl AndroidDriver {
+    /// Pulls the recorded segment(s) off the device and, if there's more than one
+    /// (the test ran past Android's ~3-minute `screenrecord` limit - see
+    /// `start_recording`), stitches them into a single file with ffmpeg's concat
+    /// demuxer (stream-copy, no re-encode - all segments share the same codec
+    /// settings). Falls back to keeping just the last segment if ffmpeg isn't
+    /// available or the concat fails, rather than losing the recording entirely.
+    async fn finish_recording(&self, segments: Vec<String>, local_path: &str) {
+        if segments.is_empty() {
+            return;
+        }
+
+        if segments.len() == 1 {
+            if adb::exec(self.serial.as_deref(), &["pull", &segments[0], local_path])
+                .await
+                .is_ok()
+            {
+                println!("  {} Saved Video Recording: {}", "🎥".green(), local_path);
+            }
+            let _ = adb::shell(self.serial.as_deref(), &format!("rm -f {}", segments[0])).await;
+            return;
+        }
+
+        let tmp_dir = std::env::temp_dir().join(format!("lumi_rec_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&tmp_dir);
+        let mut local_segments = Vec::new();
+        for (i, remote) in segments.iter().enumerate() {
+            let local = tmp_dir.join(format!("seg_{}.mp4", i));
+            if adb::exec(self.serial.as_deref(), &["pull", remote, &local.to_string_lossy()])
+                .await
+                .is_ok()
+            {
+                local_segments.push(local);
+            }
+            let _ = adb::shell(self.serial.as_deref(), &format!("rm -f {}", remote)).await;
+        }
+
+        if local_segments.is_empty() {
+            let _ = std::fs::remove_dir_all(&tmp_dir);
+            return;
+        }
+
+        if concat_videos_ffmpeg(&local_segments, std::path::Path::new(local_path)).await {
+            println!(
+                "  {} Saved Video Recording ({} segments merged, run exceeded Android's 3-minute screenrecord limit): {}",
+                "🎥".green(),
+                local_segments.len(),
+                local_path
+            );
+        } else if let Some(last) = local_segments.last() {
+            let _ = std::fs::copy(last, local_path);
+            println!(
+                "  {} Recording spanned {} segments (Android's 3-minute screenrecord limit) - ffmpeg concat failed, kept only the last segment",
+                "⚠️".yellow(),
+                local_segments.len()
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
     async fn wait_for_location(
         &self,
         name: Option<String>,

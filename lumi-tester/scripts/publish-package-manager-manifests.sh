@@ -69,7 +69,10 @@ publish_repo_file() {
     if [ "$DRY_RUN" = "1" ]; then
       echo "Dry run enabled; not pushing $repo"
     else
-      git push
+      if [ -n "${GH_TOKEN:-}" ]; then
+        git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${repo}.git"
+      fi
+      git push origin HEAD
     fi
   )
 
