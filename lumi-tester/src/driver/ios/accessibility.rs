@@ -176,9 +176,13 @@ where
 }
 
 impl IosElement {
-    /// Returns primary display text (label or name or value)
+    /// Returns primary display text (label or name or value or placeholder)
     pub fn display_text(&self) -> Option<&str> {
-        self.label.as_deref().or(self.name.as_deref()).or(self.value.as_deref())
+        self.label
+            .as_deref()
+            .or(self.name.as_deref())
+            .or(self.value.as_deref())
+            .or(self.placeholder.as_deref())
     }
 
     /// Check if element matches the given text exactly (case-sensitive)
@@ -195,6 +199,16 @@ impl IosElement {
         }
         if let Some(value) = &self.value {
             if value == text {
+                return true;
+            }
+        }
+        // Confirmed live on GOFA: an unfocused/empty TextField (e.g. the search
+        // bar) reports "" for label/name/value and carries its only visible text
+        // - the hint shown on screen - in `placeholder` instead. Without this, a
+        // `tap: "<visible hint text>"` selector for such a field never resolves to
+        // anything, even though the text is right there on screen.
+        if let Some(placeholder) = &self.placeholder {
+            if placeholder == text {
                 return true;
             }
         }
@@ -224,6 +238,13 @@ impl IosElement {
                 return true;
             }
         }
+        if let Some(placeholder) = &self.placeholder {
+            if placeholder.to_lowercase() == text_lower
+                || placeholder.to_lowercase().contains(&text_lower)
+            {
+                return true;
+            }
+        }
         false
     }
 
@@ -241,6 +262,11 @@ impl IosElement {
         }
         if let Some(value) = &self.value {
             if pattern.is_match(value) {
+                return true;
+            }
+        }
+        if let Some(placeholder) = &self.placeholder {
+            if pattern.is_match(placeholder) {
                 return true;
             }
         }
@@ -390,11 +416,29 @@ pub fn find_by_text<'a>(
     index: usize,
 ) -> Option<&'a IosElement> {
     let flat = flatten_elements(elements);
-    let matches: Vec<_> = flat
+    // Exact matches first, substring/case-insensitive matches only as a fallback
+    // when nothing matches exactly - confirmed live this matters on GOFA (a Flutter
+    // app): `matches_text`'s substring fallback made `find_by_text(.., "Số điện
+    // thoại", 0)` match a leftover "Đăng nhập với số điện thoại" button/label from
+    // the *previous* screen (still present in the snapshot mid-transition/if Flutter
+    // hadn't unmounted it yet) ahead of the real "Số điện thoại" TextField, because
+    // both satisfy `matches_text` and tree order put the stale button first. That
+    // produced a coordinate nowhere near the actual field - not a timing bug, a
+    // wrong-element bug that LOOKED intermittent only because whether the previous
+    // screen's elements still lingered varied run to run.
+    let exact: Vec<_> = flat
+        .iter()
+        .filter(|e| e.visible && e.matches_text_exact(text))
+        .copied()
+        .collect();
+    if !exact.is_empty() {
+        return exact.get(index).copied();
+    }
+    let fuzzy: Vec<_> = flat
         .into_iter()
         .filter(|e| e.visible && e.matches_text(text))
         .collect();
-    matches.get(index).copied()
+    fuzzy.get(index).copied()
 }
 
 /// Find elements matching text regex

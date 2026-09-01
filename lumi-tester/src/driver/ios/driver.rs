@@ -507,8 +507,26 @@ impl IosDriver {
         let text = text.to_string();
         let engine_clone = engine.clone();
 
+        // Screenshot pixels vs. the point-space every tap/frame coordinate in this
+        // driver is expressed in (see `screen_size`, sourced from the agent's own
+        // XCUIElement frame API - always points) differ by the device's Retina
+        // scale factor (3x on this iPhone 17 Pro: a 402x874-point screen captures
+        // as a 1206x2622-pixel screenshot). Confirmed live this was never being
+        // converted: an OCR tap resolved to point (905, 1079) - x alone is more
+        // than double the 402-point screen width, so the touch synthesized at that
+        // "point" landed off-screen and did nothing. `screen_size` is the ground
+        // truth to scale against since it's already in the coordinate space taps
+        // need, whatever the actual screenshot resolution turns out to be.
+        let (screen_w, screen_h) = self.screen_size;
+
         // Run match in blocking task
         let result = tokio::task::spawn_blocking(move || {
+            let (png_w, png_h) = image::load_from_memory(&png_data)
+                .map(|img| (img.width(), img.height()))
+                .unwrap_or((screen_w, screen_h));
+            let scale_x = if screen_w > 0 { png_w as f64 / screen_w as f64 } else { 1.0 };
+            let scale_y = if screen_h > 0 { png_h as f64 / screen_h as f64 } else { 1.0 };
+
             // Crop image if region specified
             let (cropped_data, offset_x, offset_y) = if region_clone != ImageRegion::Full {
                 let img = image::load_from_memory(&png_data)?;
@@ -526,8 +544,16 @@ impl IosDriver {
             let match_opt =
                 engine_clone.find_text_at_index(&cropped_data, &text, is_regex, index)?;
 
-            // Adjust coordinates back to full screen
-            Ok::<_, anyhow::Error>(match_opt.map(|m| (m.x + offset_x, m.y + offset_y)))
+            // Adjust coordinates back to full screen (still pixels), then scale
+            // pixels -> points.
+            Ok::<_, anyhow::Error>(match_opt.map(|m| {
+                let px = m.x + offset_x;
+                let py = m.y + offset_y;
+                (
+                    (px as f64 / scale_x).round() as i32,
+                    (py as f64 / scale_y).round() as i32,
+                )
+            }))
         })
         .await??;
 
@@ -565,9 +591,15 @@ impl IosDriver {
 
         // Match
         let match_start = Instant::now();
+        let (screen_w, screen_h) = self.screen_size;
         let result = tokio::task::spawn_blocking(move || -> Result<Option<(i32, i32)>> {
             let img_screen = image::open(&screenshot_path)?.to_luma8();
             let img_template = image::open(&template_path_buf)?.to_luma8();
+            // Same pixel-vs-point scaling as `find_ocr_text` - the screenshot is
+            // pixels, every tap coordinate this driver uses is points.
+            let (png_w, png_h) = img_screen.dimensions();
+            let scale_x = if screen_w > 0 { png_w as f64 / screen_w as f64 } else { 1.0 };
+            let scale_y = if screen_h > 0 { png_h as f64 / screen_h as f64 } else { 1.0 };
 
             // Cleanup
             let _ = std::fs::remove_file(&screenshot_path);
@@ -581,7 +613,10 @@ impl IosDriver {
             let match_result = find_template(&img_screen, &img_template, &config)?;
 
             match match_result {
-                Some(result) => Ok(Some((result.x, result.y))),
+                Some(result) => Ok(Some((
+                    (result.x as f64 / scale_x).round() as i32,
+                    (result.y as f64 / scale_y).round() as i32,
+                ))),
                 None => Ok(None),
             }
         })
@@ -703,6 +738,32 @@ impl IosDriver {
             return self
                 .find_ocr_text(text, *index, *is_regex, region.as_deref())
                 .await;
+        }
+
+        // For text selectors specifically: an exact label/name/value match is
+        // trustworthy, but the substring-matching fallback in `find_by_text` can
+        // land on a completely different, unrelated element that merely CONTAINS
+        // the search text - confirmed live on GOFA (Flutter): searching "Số điện
+        // thoại" (the phone-number field) sometimes only found "Đăng nhập với số
+        // điện thoại" (a *different* screen's leftover button, still lingering in
+        // the snapshot) because the real field's own semantics node hadn't been
+        // included in that particular snapshot yet - a genuine tree-not-ready race,
+        // not a coordinate bug. Retrying a few times gives Flutter's semantics
+        // binding a chance to catch up and expose the real element so an exact
+        // match becomes available, rather than committing to a fuzzy match that's
+        // proven live to sometimes be flat-out wrong.
+        if let Selector::Text(text, _index, _) = selector {
+            for attempt in 0..4 {
+                let el = self.find_element_internal(selector).await?;
+                let is_exact = el
+                    .as_ref()
+                    .map(|e| e.matches_text_exact(text))
+                    .unwrap_or(false);
+                if is_exact || attempt == 3 {
+                    return Ok(el.map(|e| e.frame.center()));
+                }
+                tokio::time::sleep(Duration::from_millis(400)).await;
+            }
         }
 
         let el = self.find_element_internal(selector).await?;
@@ -1058,24 +1119,49 @@ impl IosDriver {
     /// value can give, so for those elements specifically, accept "the masked value
     /// is at least as long as what we just typed" as landed.
     async fn verify_text_landed(&self, text: &str) -> bool {
-        let Ok(json) = self.hierarchy_json().await else {
-            return true; // Inconclusive (e.g. a transient dump failure) - don't fail the command over that.
-        };
-        let Ok(elements) = accessibility::parse_ui_hierarchy(&json) else {
+        let accessibility_says_landed = async {
+            let Ok(json) = self.hierarchy_json().await else {
+                return None; // Inconclusive (e.g. a transient dump failure).
+            };
+            let Ok(elements) = accessibility::parse_ui_hierarchy(&json) else {
+                return None;
+            };
+            Some(accessibility::flatten_elements(&elements).iter().any(|el| {
+                let Some(v) = el.value.as_deref() else { return false };
+                if v.contains(text) {
+                    return true;
+                }
+                let is_secure = el
+                    .element_type
+                    .as_deref()
+                    .map(|t| t.to_lowercase().contains("secure"))
+                    .unwrap_or(false);
+                is_secure && !text.is_empty() && v.chars().count() >= text.chars().count()
+            }))
+        }
+        .await;
+        if accessibility_says_landed == Some(true) {
             return true;
-        };
-        accessibility::flatten_elements(&elements).iter().any(|el| {
-            let Some(v) = el.value.as_deref() else { return false };
-            if v.contains(text) {
-                return true;
-            }
-            let is_secure = el
-                .element_type
-                .as_deref()
-                .map(|t| t.to_lowercase().contains("secure"))
-                .unwrap_or(false);
-            is_secure && !text.is_empty() && v.chars().count() >= text.chars().count()
-        })
+        }
+
+        // Fall back to OCR (reads the actual rendered pixels) rather than trusting a
+        // negative accessibility-tree result outright - confirmed live on GOFA
+        // (Flutter): the tree can omit a focused TextField's `value` entirely for
+        // several seconds at a stretch even while the typed text is genuinely and
+        // correctly showing on screen the whole time, which made this check produce
+        // false negatives that drove pointless (and sometimes harmful - see the
+        // re-tap comment above) retries for text that had already landed correctly
+        // on the very first attempt. A secure/password field masks its characters as
+        // dots so OCR can't read the text back there - the accessibility check above
+        // already has its own dot-count fallback for that case, so only try OCR for
+        // non-empty plain text.
+        if text.is_empty() {
+            return accessibility_says_landed.unwrap_or(true);
+        }
+        if let Ok(Some(_)) = self.find_ocr_text(text, 0, false, None).await {
+            return true;
+        }
+        accessibility_says_landed.unwrap_or(true)
     }
 }
 
@@ -1110,28 +1196,46 @@ impl PlatformDriver for IosDriver {
         // can't drive the app afterward, so UI automation will still fail until the
         // agent comes back.
         self.ensure_agent_ready().await;
-        let agent_launched = {
+
+        // Terminate first (both the agent path and the devicectl fallback), THEN
+        // clear state while the app is confirmed not running, THEN launch - never
+        // clear-while-running. Confirmed live this ordering bug was real: the code
+        // used to launch the app back up first and clear its Documents/Library/tmp
+        // folders out from under the now-running, freshly-launched process
+        // afterward - deleting an app's own data files while it's actively reading
+        // them during startup (prefs, cache, config) is exactly the kind of thing
+        // that can wedge or crash a process, and that tracked live with this
+        // session's intermittent "agent is not reachable" failures immediately
+        // after a `clearState: true` launch (the AGENT itself stayed up throughout
+        // - it's a separate process/bundle - it was specifically GOFA that had just
+        // had its own data pulled out from under it that stopped responding).
+        let agent_terminated = {
             let guard = self.agent_client.lock().await;
             match guard.as_ref() {
                 Some(agent) => {
                     agent.terminate_app(bundle_id).await;
-                    tokio::time::sleep(Duration::from_millis(300)).await;
-                    Some(agent.launch_app(bundle_id).await)
+                    true
                 }
-                None => None,
+                None => false,
             }
         };
-
-        if agent_launched.is_none() {
+        if !agent_terminated {
             let _ = devicectl::terminate_app(&self.udid, bundle_id, self.is_simulator).await;
-            tokio::time::sleep(Duration::from_millis(500)).await;
         }
+        tokio::time::sleep(Duration::from_millis(300)).await;
 
         if clear_state {
             self.clear_app_state_impl(bundle_id).await;
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
 
+        let agent_launched = {
+            let guard = self.agent_client.lock().await;
+            match guard.as_ref() {
+                Some(agent) => Some(agent.launch_app(bundle_id).await),
+                None => None,
+            }
+        };
         if agent_launched.is_none() {
             devicectl::launch_app(&self.udid, bundle_id, self.is_simulator).await?;
         }
@@ -1139,6 +1243,32 @@ impl PlatformDriver for IosDriver {
         // Wait longer for app to fully stabilize (especially after clear state)
         let wait_time = if clear_state { 2000 } else { 1000 };
         tokio::time::sleep(Duration::from_millis(wait_time)).await;
+
+        // Confirmed live (this dev machine under real system memory pressure):
+        // `agent.launch_app` above can itself complete successfully, yet the VERY
+        // NEXT unrelated command (e.g. the first `tap` of the next YAML step)
+        // then fails outright with "agent is not reachable" - the single-threaded
+        // on-device socket server (`LumiSocketServer.m`) apparently doesn't loop
+        // back to `accept()` promptly right after a slow `[XCUIApplication
+        // launch]` under system-wide sluggishness, and `AgentClient::send`'s own
+        // reconnect backoff (~2.4s of sleeping plus up to four 1.5s connect
+        // attempts) isn't always enough to outlast that window. Rather than
+        // surface that as a failure on whatever command happens to run next
+        // (which "commands should correctly recognize their own state" argues
+        // against papering over with a YAML-level wait), poll the agent's own
+        // `is_ready` here - bounded, and a genuine readiness check rather than a
+        // blind sleep - so `launchApp` itself doesn't return until the agent is
+        // confirmed reachable again.
+        if let Some(agent) = self.agent_client.lock().await.as_ref() {
+            for attempt in 0..6 {
+                if agent.is_ready().await {
+                    break;
+                }
+                if attempt < 5 {
+                    tokio::time::sleep(Duration::from_millis(1000)).await;
+                }
+            }
+        }
 
         Ok(())
     }
@@ -1229,13 +1359,32 @@ impl PlatformDriver for IosDriver {
         // `last_tap_point` is the same coordinate `tap()` just resolved, so re-tapping
         // it after a beat (letting the transition animation finish) re-attempts the
         // exact same focus action rather than guessing at a new one.
+        //
+        // The re-tap is a `long_press` (900ms) rather than a repeat of the same
+        // short `tap()` this codebase used to send here. Investigated live on GOFA's
+        // (a Flutter app) phone-number field on iOS Simulator: whether a touch at
+        // this point focuses the field is INTERMITTENT and, as far as this session
+        // could establish, not reducible to a deterministic rule - a long-press that
+        // focuses it cleanly in one run can fail in the next run of the *exact same*
+        // flow (same simulator, same build, no code change in between), and a
+        // universal longer default `tap()` duration didn't make it deterministic
+        // either. That intermittency, on Simulator specifically, is consistent with
+        // Flutter's engine/semantics-binding warm-up racing the synthesized touch
+        // rather than a fixed gesture-arena timing threshold - not yet verified
+        // whether real hardware shows the same flakiness. A `long_press` is still a
+        // strictly better retry than repeating the original short tap (confirmed:
+        // the short tap alone never once focused this field across many attempts),
+        // so it stays as the retry action, but this loop cannot guarantee success -
+        // callers should expect this specific failure mode to require an occasional
+        // re-run on iOS Simulator until the agent's touch delivery is made to wait
+        // for actual engine readiness instead of a fixed duration.
         for backoff_ms in [300u64, 600, 900, 1500] {
             if self.verify_text_landed(text).await {
                 return Ok(());
             }
             tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
             if let Some((x, y)) = *self.last_tap_point.lock().await {
-                self.try_agent_tap(x, y).await;
+                self.try_agent_long_press(x, y, 900).await;
                 tokio::time::sleep(Duration::from_millis(80)).await;
             }
             self.try_agent_type_text(text).await;

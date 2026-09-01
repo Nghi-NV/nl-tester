@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.35] - 2026-09-01
+
+### 🐛 Fixes
+
+#### 1. iOS Driver Reliability
+- **Placeholder Text Matching**: Text selectors now also match a `TextField`'s `placeholder` (hint text), not just its label/name/value - fixes taps on unfocused fields (e.g. search boxes) whose only visible text was the hint.
+- **Post-Launch Agent Readiness**: `launchApp` now polls the on-device agent's own readiness before returning, instead of assuming it's immediately available - fixes intermittent "agent is not reachable" failures on the command right after a `clearState` launch under system load.
+- **Login Submit Tap Retry**: Retries the final login-submit tap once if the login screen is still showing afterward - guards against the same Flutter gesture-arena tap drop already mitigated elsewhere in the driver.
+
+#### 2. lm-ios-tester Agent
+- **Tap Duration**: Increased the synthesized tap's touch-down/up duration from 50ms to 300ms - a short touch could intermittently lose Flutter's gesture-arena resolution and never fire the widget's tap handler, even though the touch itself reported success. 300ms stays well under the ~500ms long-press threshold. Bundled the updated agent into the auto-extracted zip shipped with the CLI.
+
+---
+
 ## [v0.1.34] - 2026-08-28
 
 ### 🚀 Highlights & Improvements

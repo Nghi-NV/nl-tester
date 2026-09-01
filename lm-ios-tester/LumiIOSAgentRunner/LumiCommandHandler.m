@@ -264,7 +264,20 @@ static NSString *LumiOrientationToString(UIDeviceOrientation o)
 
       } else if ([cmd isEqualToString:@"tap"]) {
         CGPoint p = CGPointMake([req[@"x"] doubleValue], [req[@"y"] doubleValue]);
-        success = [self synthesizeTouchDownAt:p liftAfter:0.05 moveTo:CGPointZero hasMoveTo:NO];
+        // GOFA (Flutter) has repeatedly shown live that a short touch-down/up
+        // doesn't reliably win Flutter's gesture arena - confirmed on many
+        // distinct elements across this session (nav links, the final login
+        // submit button, dialog buttons), each time intermittently: the
+        // touch is delivered and this call reports success, but the
+        // widget's own tap handler sometimes just doesn't fire. Tried 50ms
+        // and 120ms, both still dropped taps live. 300ms stays comfortably
+        // under both iOS's and Flutter's ~500ms long-press threshold (so it
+        // still resolves as a tap everywhere else, not a long-press, and no
+        // unintended long-press-specific behavior - context menus, drag-init
+        // - has been observed on any element tapped this session at this or
+        // longer durations) while reliably clearing the arena-resolution
+        // window that was dropping taps at the shorter durations.
+        success = [self synthesizeTouchDownAt:p liftAfter:0.3 moveTo:CGPointZero hasMoveTo:NO];
 
       } else if ([cmd isEqualToString:@"long_press"]) {
         CGPoint p = CGPointMake([req[@"x"] doubleValue], [req[@"y"] doubleValue]);

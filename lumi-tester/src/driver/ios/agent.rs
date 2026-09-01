@@ -79,15 +79,32 @@ impl AgentClient {
 
         let mut stream_guard = self.stream.lock().await;
         if stream_guard.is_none() {
+            // `LumiSocketServer.m`'s accept loop is single-threaded and handles one
+            // client fully synchronously (see its `handleClient:` call sitting
+            // inline in the loop, not dispatched to its own thread) - if it's still
+            // finishing a slow previous command (confirmed live: `launchApp` under
+            // real system memory pressure on this dev machine can run long) when a
+            // new connection attempt arrives, that connect can time out even though
+            // the agent process is completely healthy and about to be free. A short
+            // retry-with-backoff here (up to ~2s total extra) covers that transient
+            // busy window instead of the whole command failing outright as "agent
+            // is not reachable" - confirmed live this exact failure mode happened
+            // repeatedly right after a `clearState` launch.
             let addr = format!("{}:{}", self.host, self.port);
-            let stream = tokio::time::timeout(
-                Duration::from_millis(1000),
-                TcpStream::connect(&addr),
-            )
-            .await
-            .ok()?
-            .ok()?;
-            *stream_guard = Some(stream);
+            let mut connected = None;
+            for backoff_ms in [0u64, 400, 800, 1200] {
+                if backoff_ms > 0 {
+                    tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                }
+                if let Ok(Ok(stream)) =
+                    tokio::time::timeout(Duration::from_millis(1500), TcpStream::connect(&addr))
+                        .await
+                {
+                    connected = Some(stream);
+                    break;
+                }
+            }
+            *stream_guard = Some(connected?);
         }
         let stream = stream_guard.as_mut()?;
 
