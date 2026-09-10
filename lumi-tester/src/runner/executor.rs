@@ -1184,18 +1184,18 @@ impl TestExecutor {
         std::fs::create_dir_all(&dir)
             .with_context(|| format!("failed to create camera evidence dir: {}", dir.display()))?;
 
-        evidence
-            .raw
-            .save(dir.join("raw.png"))
+        crate::utils::image_convert::save_rgb_as_webp_lossless(&evidence.raw, &dir.join("raw.webp"))
             .context("failed to save camera raw frame")?;
-        evidence
-            .warped
-            .save(dir.join("warped.png"))
-            .context("failed to save camera warped frame")?;
-        evidence
-            .annotated
-            .save(dir.join("annotated.png"))
-            .context("failed to save camera annotated frame")?;
+        crate::utils::image_convert::save_rgb_as_webp_lossless(
+            &evidence.warped,
+            &dir.join("warped.webp"),
+        )
+        .context("failed to save camera warped frame")?;
+        crate::utils::image_convert::save_rgb_as_webp_lossless(
+            &evidence.annotated,
+            &dir.join("annotated.webp"),
+        )
+        .context("failed to save camera annotated frame")?;
         let crop_artifact = target_region.and_then(|region| {
             let button = session.profile().button(region)?;
             let (iw, ih) = evidence.warped.dimensions();
@@ -1214,8 +1214,9 @@ impl TestExecutor {
                     }
                 })
                 .collect::<String>();
-            let file_name = format!("crop_{}.png", safe_region);
-            crop.save(dir.join(&file_name)).ok()?;
+            let file_name = format!("crop_{}.webp", safe_region);
+            crate::utils::image_convert::save_rgb_as_webp_lossless(&crop, &dir.join(&file_name))
+                .ok()?;
             Some(file_name)
         });
         let captured_at_ms = evidence
@@ -1234,9 +1235,9 @@ impl TestExecutor {
             "frameAgeMs": frame_age_ms,
             "state": evidence.state,
             "artifacts": {
-                "raw": "raw.png",
-                "warped": "warped.png",
-                "annotated": "annotated.png",
+                "raw": "raw.webp",
+                "warped": "warped.webp",
+                "annotated": "annotated.webp",
                 "crop": crop_artifact
             }
         }))?;
@@ -2149,28 +2150,61 @@ impl TestExecutor {
                     .driver
                     .take_screenshot(output_path.to_str().unwrap())
                     .await;
-                if res.is_ok() {
-                    self.emitter.emit(TestEvent::Log {
-                        message: format!(
-                            "{} Saved screenshot to: {}",
-                            "📸".blue(),
-                            output_path.display().to_string().cyan()
-                        ),
-                        depth: self.depth,
-                    });
+                match res {
+                    Ok(_) => {
+                        // Re-encode as lossless WebP for storage, same as failure
+                        // evidence - all screenshots this tool writes to disk end
+                        // up WebP, not just the ones captured on failure. Falls
+                        // back to keeping the original file (whatever extension
+                        // the flow asked for) if conversion fails for any reason.
+                        let final_path = match crate::utils::image_convert::convert_to_webp_in_place(
+                            &output_path,
+                        ) {
+                            Ok(webp_path) => webp_path,
+                            Err(e) => {
+                                self.emitter.emit(TestEvent::Log {
+                                    message: format!(
+                                        "{} Failed to convert screenshot to WebP, keeping original: {}",
+                                        "⚠".yellow(),
+                                        e
+                                    ),
+                                    depth: self.depth,
+                                });
+                                output_path.clone()
+                            }
+                        };
+                        self.emitter.emit(TestEvent::Log {
+                            message: format!(
+                                "{} Saved screenshot to: {}",
+                                "📸".blue(),
+                                final_path.display().to_string().cyan()
+                            ),
+                            depth: self.depth,
+                        });
+                        Ok(())
+                    }
+                    Err(e) => Err(e),
                 }
-                res
             }
 
             TestCommand::AssertScreenshot(name) => {
-                let filename = if name.ends_with(".png") {
-                    name.clone()
+                // An explicit extension in the testcase is respected literally
+                // (e.g. an older baseline checked in as `.png`). Otherwise prefer
+                // a `.webp` baseline - what `screenshot:` now creates - falling
+                // back to `.png` so repos with pre-existing PNG baselines keep
+                // working without needing to regenerate them.
+                let reference_path = if name.ends_with(".png") || name.ends_with(".webp") {
+                    self.context.resolve_path(&format!("screenshots/{}", name))
                 } else {
-                    format!("{}.png", name)
+                    let webp_ref = self
+                        .context
+                        .resolve_path(&format!("screenshots/{}.webp", name));
+                    if webp_ref.exists() {
+                        webp_ref
+                    } else {
+                        self.context.resolve_path(&format!("screenshots/{}.png", name))
+                    }
                 };
-                let reference_path = self
-                    .context
-                    .resolve_path(&format!("screenshots/{}", filename));
 
                 if !reference_path.exists() {
                     anyhow::bail!(
@@ -5347,8 +5381,26 @@ impl TestExecutor {
 
         match self.driver.take_screenshot(&path_str).await {
             Ok(_) => {
-                println!("  {} Saved Screenshot: {}", "📸".green(), path.display());
-                artifacts.screenshot_path = Some(path.display().to_string());
+                // Re-encode as lossless WebP for storage - evidence accumulates
+                // fast across a long-running --snapshot run, and WebP lands
+                // meaningfully smaller than PNG for this flat-fill, sharp-edge
+                // UI content while keeping every pixel exact. Fall back to the
+                // original PNG on any conversion error rather than losing the
+                // evidence.
+                let final_path = match crate::utils::image_convert::convert_to_webp_in_place(&path)
+                {
+                    Ok(webp_path) => webp_path,
+                    Err(e) => {
+                        println!(
+                            "  {} Failed to convert screenshot to WebP, keeping PNG: {}",
+                            "⚠".yellow(),
+                            e
+                        );
+                        path.clone()
+                    }
+                };
+                println!("  {} Saved Screenshot: {}", "📸".green(), final_path.display());
+                artifacts.screenshot_path = Some(final_path.display().to_string());
             }
             Err(e) => println!("  {} Failed to take screenshot: {}", "⚠".yellow(), e),
         }

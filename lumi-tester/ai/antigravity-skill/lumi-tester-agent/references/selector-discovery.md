@@ -329,7 +329,7 @@ Then inspect:
 
 - `output/run.json` for failed command and artifact paths.
 - `fail_*_cmdN_*.xml` for native hierarchy.
-- `fail_*_cmdN_*.png` for visual confirmation.
+- `fail_*_cmdN_*.webp` for visual confirmation.
 
 In UI XML, look for:
 

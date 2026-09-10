@@ -124,6 +124,19 @@ because you got absorbed in one flow.
    dialogs for this app" - do not silently stop and imply completeness).
    Report the budget and the remaining unexplored-edge count if you stop
    early; do not claim full coverage you did not reach.
+
+   **Default budget when none is given.** If the user did not state a time
+   box or scope, do not stop after an arbitrary small number of screens on
+   your own judgment - that under-delivers silently. Default to: visit every
+   top-level navigation destination (every tab/menu entry reachable from the
+   first screen) at least once and record it in the screen map with a
+   `smoke`-level test, before stopping. Only leave a top-level destination at
+   `status: partial`/unvisited if it is genuinely out of scope (destructive,
+   needs unavailable data/role) or you explicitly ask the user whether to go
+   deeper - never because time ran out without saying so. Depth *within* a
+   given destination (every sub-page, every list item) is where "state your
+   budget and stop" applies; breadth *across* top-level destinations is not
+   optional by default.
 9. **One traversal is one role/state - repeat it, do not assume it
    generalizes.** A single BFS pass only maps what one account/data state can
    see. `Actors/roles` and `States` in the Coverage Model below are not just
@@ -555,6 +568,15 @@ XML/accessibility tree/DOM, then validate before running.
 - For permission testcases, write separate flows for allow and deny behavior.
 - For clear-state testcases, make the reset explicit in the testcase name and
   expected assertions.
+- End every flow file by navigating back to one known, documented screen
+  (e.g. the app's home screen) - never assume the next flow file in the
+  suite will re-establish state on its own. Discovered live: a flow that
+  tapped deep into a settings sub-page and ended there (no return-to-home
+  step) made the *next* flow's first assertion fail, even though each flow
+  passed 100% in isolation - the failure only showed up when running the
+  whole suite in sequence. Verify this with a full-suite run
+  (`lumi-tester run <dir> --continue-on-failure`), not just running each
+  file alone - isolation-only testing hides this class of bug.
 
 ## Coverage Matrix Template
 

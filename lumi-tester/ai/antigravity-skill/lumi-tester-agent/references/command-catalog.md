@@ -277,11 +277,14 @@ Use `evalScript` for inline JavaScript expressions.
 
 ## Artifacts And Media
 
-`screenshot`: capture a screenshot.
+`screenshot`: capture a screenshot. Written to disk as lossless WebP
+regardless of the extension given in `path` (storage is lighter than PNG
+with no pixel loss) - `assertScreenshot` looks up a same-named `.webp`
+baseline first, falling back to `.png` for older committed baselines.
 
 ```yaml
 - screenshot:
-    path: "login_screen.png"
+    path: "login_screen.webp"
 ```
 
 `startRecording`, `stopRecording`: record video.

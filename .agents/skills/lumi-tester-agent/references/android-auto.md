@@ -36,7 +36,7 @@ defaultTimeout: 15000
 - tap:
     point: "50%,80%"
 - press: navigation
-- screenshot: output/android-auto-smoke.png
+- screenshot: output/android-auto-smoke.webp
 - stopApp
 ```
 

@@ -87,7 +87,7 @@ tags:
     timeout: 5000
 - setClipboard: "lumi desktop macos smoke"
 - assertClipboard: "lumi desktop macos smoke"
-- screenshot: output/calculator.png
+- screenshot: output/calculator.webp
 ```
 
 macOS requirements:
@@ -113,7 +113,7 @@ tags:
 - waitUntilVisible:
     text: "Hello from lumi-tester"
     timeout: 5000
-- screenshot: output/notepad.png
+- screenshot: output/notepad.webp
 ```
 
 Windows requirements:

@@ -16,7 +16,9 @@ Use this reference when a run fails and the user wants a diagnosis or a patch.
    finalization.
 2. `test-results.json`: report-mode session data for HTML/JUnit generation.
 3. `events.jsonl`: event stream. Useful for timing/order issues.
-4. `fail_*_cmdN_*.png`: screenshot at failure.
+4. `fail_*_cmdN_*.webp`: screenshot at failure (lossless WebP, not PNG - all
+   screenshots this tool writes to disk are re-encoded to WebP for lighter
+   storage; `image::open`/most viewers/browsers read it like any other image).
 5. `fail_*_cmdN_*.xml`: UI hierarchy at failure.
 6. `fail_*_cmdN_*.log`: recent device/browser logs.
 
@@ -36,7 +38,7 @@ signals:
 
 ```bash
 rg -n '"status": ?"failed"|"commandFailed"|screenshotPath|uiHierarchyPath|logPath|error' ./output
-find ./output -maxdepth 1 -type f \( -name 'fail_*_cmd*.png' -o -name 'fail_*_cmd*.xml' -o -name 'fail_*_cmd*.log' \) -print
+find ./output -maxdepth 1 -type f \( -name 'fail_*_cmd*.webp' -o -name 'fail_*_cmd*.xml' -o -name 'fail_*_cmd*.log' \) -print
 ```
 
 Only rerun the failed command after identifying its index with `list --json` or

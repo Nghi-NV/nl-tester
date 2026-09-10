@@ -49,7 +49,7 @@ defaultTimeout: 10000
 - tap:
     accessibilityId: "Primary action"
 - waitForAnimationToEnd
-- screenshot: "current_app_smoke.png"
+- screenshot: "current_app_smoke.webp"
 ```
 
 Adaptation rules:

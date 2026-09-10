@@ -676,11 +676,7 @@ fn embed_image_thumb(path: &str, report_dir: &Path) -> String {
     let thumb_uri = thumb_uri.unwrap_or_else(|| {
         // Fallback if decoding failed for some reason (unsupported format, corrupt
         // file) - still show the original rather than nothing.
-        let mime = if path.to_lowercase().ends_with(".jpg") || path.to_lowercase().ends_with(".jpeg") {
-            "image/jpeg"
-        } else {
-            "image/png"
-        };
+        let mime = crate::utils::image_convert::guess_image_mime(path);
         format!("data:{};base64,{}", mime, STANDARD.encode(&bytes))
     });
 

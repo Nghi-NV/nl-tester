@@ -466,7 +466,8 @@ fn generate_html(results: &TestResults) -> String {
 
                     let screenshot_box = if let Some(path) = &cmd.screenshot_path {
                         let img_src = if let Ok(bytes) = std::fs::read(path) {
-                            format!("data:image/png;base64,{}", STANDARD.encode(&bytes))
+                            let mime = crate::utils::image_convert::guess_image_mime(path);
+                            format!("data:{};base64,{}", mime, STANDARD.encode(&bytes))
                         } else {
                             std::path::Path::new(path)
                                 .file_name()

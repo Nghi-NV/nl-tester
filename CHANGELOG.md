@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.40] - 2026-09-10
+
+### 🚀 Improvements
+
+- **Every screenshot the CLI writes to disk is now lossless WebP, not PNG** - meaningfully lighter storage (~20-25% smaller on real device screenshots, verified live) with zero pixel loss, since this is debugging/comparison evidence where lossy compression would undermine the point:
+  - `--snapshot` failure-evidence screenshots (`fail_*.webp`, was `.png`).
+  - The `screenshot:` YAML command - the file is written as WebP regardless of the extension given in `path` (the actual extension is corrected to match the real bytes, so a `.png`-named path never silently contains WebP data).
+  - Camera evidence frames (`raw`/`warped`/`annotated`/`crop_*.webp`, was `.png`).
+  - `assertScreenshot: <name>` (no extension given) now looks up a `<name>.webp` baseline first, falling back to `<name>.png` - existing repos with committed PNG baselines keep working unchanged; an explicit `.png`/`.webp` extension in the testcase is always respected literally.
+- New shared `utils::image_convert` module (`convert_to_webp_in_place`, `save_rgb_as_webp_lossless`, `guess_image_mime`) backing all of the above, with unit tests for the lossless round-trip, failure-leaves-original-untouched behavior, and MIME guessing.
+- Fixed two report-generation spots (`report::html`, `report::summary_html`) that previously hard-coded `image/png` as the embedded-image MIME type regardless of the actual file - they now detect the real format from the file extension, so WebP evidence renders correctly in HTML reports.
+
+### 📚 AI Skill Documentation
+
+- Updated `debug-artifacts.md`, `command-catalog.md`, `commands.csv`, `patterns.md`, `desktop.md`, `android-auto.md`, and `selector-discovery.md` to reflect the WebP change (`fail_*.webp` instead of `.png`, corrected `screenshot`/`assertScreenshot` examples and lookup-order notes).
+- Added a rule to `testcase-design.md`'s "YAML Authoring Rules From Testcases": every flow file must end by navigating back to one known, documented screen rather than assuming the next flow in the suite will re-establish state - found live when a flow that ended mid-navigation made the *next* flow's first assertion fail only when the suite ran end-to-end (not when each file ran alone). Verify with a full-suite run, not just per-file runs.
+
 ## [v0.1.39] - 2026-09-10
 
 ### 🐛 Fixes
