@@ -836,6 +836,13 @@ pub enum TestCommand {
     // Media
     #[serde(alias = "openLink", alias = "deepLink")]
     OpenLink(String),
+    /// Desktop only (macOS/Windows): switch which already-running app/window
+    /// subsequent selectors resolve against, without launching or relaunching
+    /// it. Value is a bundle id/app name (macOS) or process name/window title
+    /// substring (Windows). Does not change the flow's `appId` used by
+    /// `launchApp`/`stopApp`.
+    #[serde(alias = "switchApp")]
+    FocusApp(String),
     #[serde(alias = "assertScreenshot")]
     AssertScreenshot(String),
     TakeScreenshot(ScreenshotParamsInput),
@@ -3137,6 +3144,9 @@ impl TestCommand {
             }
             TestCommand::OpenLink(url) => {
                 format!("openLink(\"{}\")", url)
+            }
+            TestCommand::FocusApp(target) => {
+                format!("focusApp(\"{}\")", target)
             }
             TestCommand::AssertScreenshot(name) => {
                 format!("assertScreenshot(\"{}\")", name)

@@ -117,6 +117,12 @@ impl WindowsDriver {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
+    /// Coordinate-based click - the physical fallback used only when no UIA
+    /// pattern-based non-intrusive action matched (see `invoke_element_action`).
+    /// Restores the real cursor to its pre-click position afterwards, and
+    /// bails instead of clicking at all if the cursor is moving right before
+    /// the click (the user is actively using the mouse) - best-effort, not a
+    /// hard guarantee: it only protects the instant right before the click.
     fn click_at(x: i32, y: i32, right_click: bool, double_click: bool) -> Result<()> {
         let button_down = if right_click { "0x0008" } else { "0x0002" };
         let button_up = if right_click { "0x0010" } else { "0x0004" };
@@ -127,10 +133,26 @@ Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 public class LumiMouse {{
+  [DllImport("user32.dll")] public struct POINT {{ public int X; public int Y; }}
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
+  [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT lpPoint);
   [DllImport("user32.dll")] public static extern void mouse_event(int dwFlags, int dx, int dy, int cButtons, int dwExtraInfo);
 }}
 "@
+$origPos = New-Object LumiMouse+POINT
+[LumiMouse]::GetCursorPos([ref]$origPos) | Out-Null
+
+$p1 = New-Object LumiMouse+POINT
+[LumiMouse]::GetCursorPos([ref]$p1) | Out-Null
+Start-Sleep -Milliseconds 80
+$p2 = New-Object LumiMouse+POINT
+[LumiMouse]::GetCursorPos([ref]$p2) | Out-Null
+$moved = [Math]::Sqrt([Math]::Pow($p2.X - $p1.X, 2) + [Math]::Pow($p2.Y - $p1.Y, 2))
+if ($moved -gt 15) {{
+  Write-Output "USER_ACTIVE"
+  exit 2
+}}
+
 [LumiMouse]::SetCursorPos({x}, {y}) | Out-Null
 for ($i = 0; $i -lt {repeat}; $i++) {{
   [LumiMouse]::mouse_event({button_down}, 0, 0, 0, 0)
@@ -138,10 +160,39 @@ for ($i = 0; $i -lt {repeat}; $i++) {{
   [LumiMouse]::mouse_event({button_up}, 0, 0, 0, 0)
   Start-Sleep -Milliseconds 80
 }}
+[LumiMouse]::SetCursorPos($origPos.X, $origPos.Y) | Out-Null
 "#
         );
-        Self::powershell(&script)?;
-        Ok(())
+        match Self::powershell(&script) {
+            Ok(_) => Ok(()),
+            Err(e) if e.to_string().contains("USER_ACTIVE") => {
+                anyhow::bail!(
+                    "Skipped a physical click: the real mouse moved right before it - you \
+                     appear to be actively using this PC. Rerun once you're not touching the \
+                     mouse, or check whether the target element supports a non-intrusive UI \
+                     Automation action instead."
+                )
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Non-intrusive click: re-locates the element live via UI Automation and
+    /// invokes it directly through whichever control pattern it supports
+    /// (Invoke/Toggle/SelectionItem/ExpandCollapse), without moving the real
+    /// cursor at all. Returns `Ok(false)` (not an error) when no matching
+    /// element exposes a usable pattern, so the caller can fall back to
+    /// `click_at`. Only handles plain exact/substring/`|`-alternation text or
+    /// AutomationId queries (mirrors macOS's `perform_element_action`); regex
+    /// selectors always fall through to the physical click.
+    fn invoke_element_action(&self, query: &str, by_id: bool, index: usize) -> Result<bool> {
+        let handle = *self
+            .active_window_handle
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Windows active window handle lock poisoned"))?;
+        let script = windows_uia_invoke_script(handle, query, by_id, index);
+        let out = Self::powershell(&script)?;
+        Ok(out.contains("UIA_ACTION_SUCCESS"))
     }
 
     fn send_keys(keys: &str) -> Result<()> {
@@ -321,6 +372,43 @@ $process.Refresh()
         Ok(())
     }
 
+    /// Switches which already-running window subsequent selectors resolve
+    /// against, by process name or window title substring. Deliberately does
+    /// NOT call `SetForegroundWindow` - UI Automation can query a window's
+    /// tree without it being visually frontmost, and actually foregrounding
+    /// it would yank the user's own screen away from whatever they're doing,
+    /// which is exactly the disruption this command exists to avoid.
+    async fn focus_app(&self, target: &str) -> Result<()> {
+        Self::ensure_windows_host()?;
+        let out = Self::powershell(&format!(
+            r#"
+$query = {}
+$proc = Get-Process | Where-Object {{
+  $_.MainWindowHandle -ne [IntPtr]::Zero -and (
+    $_.ProcessName -like "*$query*" -or $_.MainWindowTitle -like "*$query*"
+  )
+}} | Select-Object -First 1
+if ($null -ne $proc) {{
+  "$([int64]$proc.MainWindowHandle)"
+}}
+"#,
+            ps_string(target)
+        ))?;
+        let handle = out.trim().parse::<isize>().ok().filter(|h| *h != 0);
+        let Some(handle) = handle else {
+            anyhow::bail!(
+                "No running window found matching process name or title '{}'",
+                target
+            );
+        };
+        *self
+            .active_window_handle
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Windows active window handle lock poisoned"))? =
+            Some(handle);
+        Ok(())
+    }
+
     async fn stop_app(&self, app_id: &str) -> Result<()> {
         Self::ensure_windows_host()?;
 
@@ -371,6 +459,15 @@ foreach ($process in $processes) {{
             return Self::click_at(*x, *y, false, false);
         }
 
+        // Non-intrusive first: invoke the live UIA element directly (no real
+        // cursor movement at all) when the selector shape and the element's
+        // supported patterns allow it.
+        if let Some((query, by_id, index)) = uia_query_for_selector(selector) {
+            if self.invoke_element_action(&query, by_id, index)? {
+                return Ok(());
+            }
+        }
+
         if let Some(element) = self.find_element(selector)? {
             return Self::click_at(
                 (element.x + element.width / 2.0).round() as i32,
@@ -402,23 +499,58 @@ Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 public class LumiMouse {{
+  [DllImport("user32.dll")] public struct POINT {{ public int X; public int Y; }}
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
+  [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT lpPoint);
   [DllImport("user32.dll")] public static extern void mouse_event(int dwFlags, int dx, int dy, int cButtons, int dwExtraInfo);
 }}
 "@
+$origPos = New-Object LumiMouse+POINT
+[LumiMouse]::GetCursorPos([ref]$origPos) | Out-Null
+
+$p1 = New-Object LumiMouse+POINT
+[LumiMouse]::GetCursorPos([ref]$p1) | Out-Null
+Start-Sleep -Milliseconds 80
+$p2 = New-Object LumiMouse+POINT
+[LumiMouse]::GetCursorPos([ref]$p2) | Out-Null
+$moved = [Math]::Sqrt([Math]::Pow($p2.X - $p1.X, 2) + [Math]::Pow($p2.Y - $p1.Y, 2))
+if ($moved -gt 15) {{
+  Write-Output "USER_ACTIVE"
+  exit 2
+}}
+
 [LumiMouse]::SetCursorPos({x}, {y}) | Out-Null
 [LumiMouse]::mouse_event(0x0002, 0, 0, 0, 0)
 Start-Sleep -Milliseconds {duration_ms}
 [LumiMouse]::mouse_event(0x0004, 0, 0, 0, 0)
+[LumiMouse]::SetCursorPos($origPos.X, $origPos.Y) | Out-Null
 "#
         );
-        Self::powershell(&script)?;
-        Ok(())
+        match Self::powershell(&script) {
+            Ok(_) => Ok(()),
+            Err(e) if e.to_string().contains("USER_ACTIVE") => {
+                anyhow::bail!(
+                    "Skipped a physical long-press: the real mouse moved right before it - you \
+                     appear to be actively using this PC."
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     async fn double_tap(&self, selector: &Selector) -> Result<()> {
         if let Selector::Point { x, y } = selector {
             return Self::click_at(*x, *y, false, true);
+        }
+
+        // Non-intrusive first (best-effort): Windows UIA has no distinct
+        // "double-click" pattern, so reuse the same Invoke/Toggle/etc. action
+        // as a single-activation approximation before falling back to a
+        // real double-click.
+        if let Some((query, by_id, index)) = uia_query_for_selector(selector) {
+            if self.invoke_element_action(&query, by_id, index)? {
+                return Ok(());
+            }
         }
 
         if let Some(element) = self.find_element(selector)? {
@@ -895,6 +1027,22 @@ fn selector_index(selector: &Selector) -> Option<usize> {
     }
 }
 
+/// Extracts a (query, by_automation_id, index) triple for the non-intrusive
+/// UIA-invoke path, for the selector shapes it supports. Regex-based
+/// selectors return `None` so the caller falls straight through to a
+/// physical click - the invoke script only does exact/substring/`|`-alternation
+/// matching, mirroring macOS's `perform_element_action`.
+fn uia_query_for_selector(selector: &Selector) -> Option<(String, bool, usize)> {
+    match selector {
+        Selector::Text(t, idx, _) => Some((t.clone(), false, *idx)),
+        Selector::Id(id, idx) => Some((id.clone(), true, *idx)),
+        Selector::Description(d, idx) | Selector::Placeholder(d, idx) => {
+            Some((d.clone(), false, *idx))
+        }
+        _ => None,
+    }
+}
+
 fn element_matches_selector(element: &WindowsUiElement, selector: &Selector) -> Result<bool> {
     if element.is_offscreen || element.width <= 0.0 || element.height <= 0.0 {
         return Ok(false);
@@ -984,6 +1132,20 @@ fn first_non_empty<'a>(values: impl IntoIterator<Item = &'a str>) -> Option<&'a 
 
 fn windows_uia_dump_script(handle: Option<isize>) -> String {
     WINDOWS_UIA_DUMP_SCRIPT.replace("__LUMI_HANDLE__", &handle.unwrap_or(0).to_string())
+}
+
+/// Escapes a string for embedding inside a PowerShell single-quoted literal
+/// (double every embedded single quote).
+fn ps_single_quoted(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn windows_uia_invoke_script(handle: Option<isize>, query: &str, by_id: bool, index: usize) -> String {
+    WINDOWS_UIA_INVOKE_SCRIPT
+        .replace("__LUMI_HANDLE__", &handle.unwrap_or(0).to_string())
+        .replace("__LUMI_QUERY__", &ps_single_quoted(query))
+        .replace("__LUMI_BY_ID__", if by_id { "$true" } else { "$false" })
+        .replace("__LUMI_INDEX__", &index.to_string())
 }
 
 fn windows_window_element_script(handle: Option<isize>) -> String {
@@ -1179,6 +1341,130 @@ if ($null -eq $root) {
 Dump-Tree $root 700 50
 "#;
 
+/// Non-intrusive click: re-locates a matching element live via UI Automation
+/// (same handle-resolution + BFS tree walk as `WINDOWS_UIA_DUMP_SCRIPT`) and
+/// invokes whichever control pattern it supports - `InvokePattern` (buttons,
+/// menu items), `TogglePattern` (checkboxes), `SelectionItemPattern`
+/// (radio buttons, list items), `ExpandCollapsePattern` (combo boxes, tree
+/// nodes) - in that priority order, without any `SetCursorPos`/`mouse_event`
+/// call. Prints "UIA_ACTION_SUCCESS" on success; prints nothing and exits 0
+/// otherwise so the caller falls back to a physical click.
+const WINDOWS_UIA_INVOKE_SCRIPT: &str = r#"
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class LumiWin32 {
+  [DllImport("user32.dll")]
+  public static extern IntPtr GetForegroundWindow();
+}
+"@
+
+$lumiHandleOverride = [IntPtr]__LUMI_HANDLE__
+$query = __LUMI_QUERY__
+$byId = __LUMI_BY_ID__
+$targetIndex = __LUMI_INDEX__
+
+function String-Property($element, $property) {
+  try {
+    $value = $element.Current.$property
+    if ($null -eq $value) { return "" }
+    return [string]$value
+  } catch {
+    return ""
+  }
+}
+
+function Matches([string]$value, [string]$q) {
+  if ([string]::IsNullOrEmpty($value)) { return $false }
+  $tokens = $q -split '\|' | Where-Object { $_ -ne "" }
+  foreach ($t in $tokens) {
+    if ($value -eq $t) { return $true }
+  }
+  foreach ($t in $tokens) {
+    if ($value.ToLowerInvariant().Contains($t.ToLowerInvariant())) { return $true }
+  }
+  return $false
+}
+
+$handle = $lumiHandleOverride
+if ($handle -eq [IntPtr]::Zero) {
+  $handle = [LumiWin32]::GetForegroundWindow()
+}
+$root = $null
+if ($handle -ne [IntPtr]::Zero) {
+  $root = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
+}
+if ($null -eq $root) {
+  $root = [System.Windows.Automation.AutomationElement]::RootElement
+}
+
+$candidates = New-Object 'System.Collections.Generic.List[object]'
+$queue = New-Object 'System.Collections.Generic.Queue[object]'
+$queue.Enqueue($root)
+$visited = 0
+while ($queue.Count -gt 0 -and $visited -lt 2000) {
+  $element = $queue.Dequeue()
+  $visited += 1
+  $name = String-Property $element "Name"
+  $automationId = String-Property $element "AutomationId"
+  $field = if ($byId) { $automationId } else { $name }
+  if (Matches $field $query) {
+    $candidates.Add($element)
+  }
+  try {
+    $children = $element.FindAll(
+      [System.Windows.Automation.TreeScope]::Children,
+      [System.Windows.Automation.Condition]::TrueCondition
+    )
+    foreach ($child in $children) {
+      $queue.Enqueue($child)
+    }
+  } catch {
+    continue
+  }
+}
+
+if ($candidates.Count -eq 0) { exit 0 }
+$idx = if ($targetIndex -lt $candidates.Count) { $targetIndex } else { $candidates.Count - 1 }
+$target = $candidates[$idx]
+
+$patternTries = @(
+  [System.Windows.Automation.InvokePattern]::Pattern,
+  [System.Windows.Automation.TogglePattern]::Pattern,
+  [System.Windows.Automation.SelectionItemPattern]::Pattern,
+  [System.Windows.Automation.ExpandCollapsePattern]::Pattern
+)
+foreach ($patternId in $patternTries) {
+  $pattern = $null
+  if ($target.TryGetCurrentPattern($patternId, [ref]$pattern)) {
+    try {
+      if ($pattern -is [System.Windows.Automation.InvokePattern]) {
+        $pattern.Invoke()
+      } elseif ($pattern -is [System.Windows.Automation.TogglePattern]) {
+        $pattern.Toggle()
+      } elseif ($pattern -is [System.Windows.Automation.SelectionItemPattern]) {
+        $pattern.Select()
+      } elseif ($pattern -is [System.Windows.Automation.ExpandCollapsePattern]) {
+        if ($pattern.Current.ExpandCollapseState -eq [System.Windows.Automation.ExpandCollapseState]::Collapsed) {
+          $pattern.Expand()
+        } else {
+          $pattern.Collapse()
+        }
+      } else {
+        continue
+      }
+      Write-Output "UIA_ACTION_SUCCESS"
+      exit 0
+    } catch {
+      continue
+    }
+  }
+}
+exit 0
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1271,6 +1557,62 @@ mod tests {
         let script = windows_uia_dump_script(Some(12345));
         assert!(script.contains("$lumiHandleOverride = [IntPtr]12345"));
         assert!(!script.contains("__LUMI_HANDLE__"));
+    }
+
+    #[test]
+    fn windows_uia_invoke_script_injects_query_and_no_placeholders_remain() {
+        let script = windows_uia_invoke_script(Some(999), "Save As|Lưu", false, 1);
+        assert!(script.contains("$lumiHandleOverride = [IntPtr]999"));
+        assert!(script.contains("$query = 'Save As|Lưu'"));
+        assert!(script.contains("$byId = $false"));
+        assert!(script.contains("$targetIndex = 1"));
+        assert!(!script.contains("__LUMI_HANDLE__"));
+        assert!(!script.contains("__LUMI_QUERY__"));
+        assert!(!script.contains("__LUMI_BY_ID__"));
+        assert!(!script.contains("__LUMI_INDEX__"));
+        // Non-intrusive by design: never touches the real cursor.
+        assert!(!script.contains("SetCursorPos"));
+        assert!(!script.contains("mouse_event"));
+    }
+
+    #[test]
+    fn ps_single_quoted_escapes_embedded_quotes() {
+        assert_eq!(ps_single_quoted("O'Brien"), "'O''Brien'");
+        assert_eq!(ps_single_quoted("plain"), "'plain'");
+    }
+
+    #[test]
+    fn uia_query_for_selector_supports_text_id_description() {
+        assert_eq!(
+            uia_query_for_selector(&Selector::Text("Login".to_string(), 0, true)),
+            Some(("Login".to_string(), false, 0))
+        );
+        assert_eq!(
+            uia_query_for_selector(&Selector::Id("btnSave".to_string(), 2)),
+            Some(("btnSave".to_string(), true, 2))
+        );
+        assert_eq!(
+            uia_query_for_selector(&Selector::Placeholder("Search".to_string(), 0)),
+            Some(("Search".to_string(), false, 0))
+        );
+    }
+
+    #[test]
+    fn uia_query_for_selector_skips_regex_selectors() {
+        // Regex matching isn't implemented in the invoke script's PowerShell
+        // matcher - these must fall straight through to a physical click.
+        assert_eq!(
+            uia_query_for_selector(&Selector::TextRegex("Order #\\d+".to_string(), 0)),
+            None
+        );
+        assert_eq!(
+            uia_query_for_selector(&Selector::IdRegex("^btn.*".to_string(), 0)),
+            None
+        );
+        assert_eq!(
+            uia_query_for_selector(&Selector::Point { x: 10, y: 20 }),
+            None
+        );
     }
 
     #[test]

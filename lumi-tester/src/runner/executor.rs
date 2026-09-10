@@ -1476,6 +1476,11 @@ impl TestExecutor {
                     .await
             }
 
+            TestCommand::FocusApp(target) => {
+                let substituted = self.context.substitute_vars(target);
+                self.driver.focus_app(&substituted).await
+            }
+
             TestCommand::TapOn(params_input) => {
                 let params = self.resolve_tap_params(params_input);
                 // If point is specified, use TapAt

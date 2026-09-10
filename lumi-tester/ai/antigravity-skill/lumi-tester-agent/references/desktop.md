@@ -6,6 +6,8 @@ Use this reference for native desktop flows using `platform: macos` or
 ## Contents
 
 - Platform model
+- Non-intrusive execution (verified)
+- Sensitive text redaction (verified)
 - macOS flow
 - Windows flow
 - Desktop state reset
@@ -26,6 +28,49 @@ Use this reference for native desktop flows using `platform: macos` or
   semantic selectors when exposed. For custom-rendered/canvas apps, use
   screenshot/pixel checks for assertions and `point` only when no semantic
   selector exists.
+
+## Non-Intrusive Execution (Verified)
+
+Clicks try a non-intrusive Accessibility/UI Automation action first (macOS:
+`AXPress`/`AXOpen`/`AXShowMenu` via `AXUIElementPerformAction`; Windows:
+`InvokePattern`/`TogglePattern`/`SelectionItemPattern`/`ExpandCollapsePattern`
+via `TryGetCurrentPattern`) - this never moves the real cursor at all, so a
+person can keep using the mouse while a test runs. Only when no matching
+element exposes one of these does it fall back to a real synthetic click,
+which then restores the cursor to its exact pre-click position afterward
+(macOS: always did this; Windows: added alongside the non-intrusive path).
+
+Every physical-fallback click also checks, right before clicking, whether the
+real cursor is moving on its own (sampled twice ~80ms apart) - if so, it skips
+the click and returns a clear error instead of fighting the person actively
+using the mouse. This is best-effort, not a guarantee: it only protects the
+instant right before a click, and apps with no Accessibility/UI Automation
+support at all still need a real click as the only option.
+
+`focusApp`/`switchApp: <target>` switches which already-running app/window
+selectors resolve against (macOS: bundle id/app name; Windows: process name/
+window title substring), without launching it and **without bringing it to
+the foreground** - same non-disruptive philosophy. Verified live on macOS
+with a positive control (target found while a third app was frontmost) and a
+negative control (an unrelated selector correctly fails to resolve after
+switching away). On macOS this also reaches non-`.regular`-activation-policy
+processes like `com.apple.dock` by direct bundle-id match, even though they
+are excluded from app discovery - `focusApp: "com.apple.dock"` then a normal
+`tap`/`see` on a Dock icon works, verified live.
+
+## Sensitive Text Redaction (Verified)
+
+Visible text read back from macOS/Windows hierarchy dumps (Inspector,
+`suggest_selectors`, hierarchy dumps) is redacted before it reaches any
+consumer, not filtered afterward - a real "secure field" signal from the OS
+(macOS `AXSecureTextField`) always wins; otherwise a shape heuristic (mixed
+letters+digits ≥6 chars, a digit run ≥4 even with separators like
+`4242 4242 4242 4242` or `555-123-4567`, or an email address) replaces the
+value with the fixed placeholder `***MASKED***` - never a partial/truncated
+version, so no partial leak is possible. Verified live against a real macOS
+app's on-screen digit display. Windows does not yet surface a native
+`IsPassword` signal into its hierarchy dump, so Windows text currently relies
+on the shape heuristic only.
 
 ## macOS Flow
 

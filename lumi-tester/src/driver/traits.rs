@@ -107,6 +107,18 @@ pub trait PlatformDriver: Send + Sync {
     /// Set active application identifier or path for the current flow.
     fn set_active_app(&self, _app_id: Option<&str>) {}
 
+    /// Desktop-only (macOS/Windows): switch which ALREADY-RUNNING app/window
+    /// subsequent selectors resolve against, without launching/relaunching
+    /// it and without changing the flow's `launchApp`/`stopApp` target.
+    /// `target` is a bundle id/app name (macOS) or process name/window title
+    /// substring (Windows). Default no-op for platforms without a
+    /// multi-app desktop model (mobile/web only ever have one active
+    /// context).
+    async fn focus_app(&self, target: &str) -> Result<()> {
+        self.set_active_app(Some(target));
+        Ok(())
+    }
+
     /// Set or resize application/browser window dimensions (width, height)
     async fn set_window_size(&self, _width: u32, _height: u32) -> Result<()> {
         Ok(())

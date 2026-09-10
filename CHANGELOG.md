@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.38] - 2026-09-10
+
+### 🚀 Highlights & Improvements
+
+#### 1. Non-Intrusive Desktop Automation (macOS + Windows)
+- **Windows now tries a non-intrusive UI Automation action first** (`InvokePattern`/`TogglePattern`/`SelectionItemPattern`/`ExpandCollapsePattern`) before falling back to a real `SetCursorPos`/`mouse_event` click - matching the pattern macOS's `tap` already used (`AXPress`). Windows previously always did a real physical click with no non-intrusive path at all.
+- **Extended macOS's non-intrusive path** to `double_tap` (`AXOpen`) and `right_click` (`AXShowMenu`), not just `tap`.
+- **Cursor restoration added to Windows**: every physical-fallback click now saves and restores the real cursor position afterward, matching macOS's existing behavior (which Windows previously had none of).
+- **User-activity guard (both platforms)**: right before any physical-fallback click, samples the real cursor position twice ~80ms apart - if it's moving on its own, skips the click with a clear error instead of fighting a person actively using the mouse. Best-effort, not a hard guarantee: it can't protect actions where no non-intrusive path exists at all.
+- **New `focusApp`/`switchApp: <target>` command** (macOS/Windows): switches which already-running app/window subsequent selectors resolve against, without launching it and **without bringing it to the foreground** - same non-disruptive philosophy as the click changes above. Verified live with positive and negative controls. On macOS this also reaches non-`.regular`-activation-policy processes like `com.apple.dock` by direct bundle-id match (excluded from normal app discovery, but reachable directly) - `focusApp: "com.apple.dock"` then a normal `tap`/`see` on a Dock icon works, verified live against the real Dock.
+
+#### 2. Sensitive Text Redaction for Desktop Hierarchy Reads
+- Visible text read back from macOS/Windows hierarchy dumps (Inspector, `suggest_selectors`, hierarchy dumps) is now redacted at the source - before it reaches any consumer - not filtered downstream. A real "secure field" signal from the OS (macOS `AXSecureTextField`) always wins; otherwise a shape heuristic catches password-like strings, digit runs ≥4 (including formatted numbers like `4242 4242 4242 4242` or `555-123-4567`), and email addresses, replacing them with a fixed placeholder (`***MASKED***`) rather than a partial/truncated value.
+- New shared `utils::redact` module (separate from the existing `record`-command credential masking, whose tested output format is unchanged).
+
+### 🐛 Fixes
+
+- Live testing while building the redaction feature found and fixed a real gap: the initial digit-run heuristic missed formatted numbers because separators (`.`, `-`, `,`, space) reset the run count - a decimal/grouped number displayed on a real app (`512.345`) was not redacted. Separators inside an in-progress digit run no longer reset it.
+
+### 🔧 Known Limitations (Documented, Not Yet Closed)
+- Windows changes in this release are code-complete and unit-tested but not live-verified on a real Windows host (none available in this environment) - macOS changes were all verified live.
+- Windows hierarchy dumps do not yet surface a native `IsPassword` signal, so Windows text redaction currently relies on the shape heuristic only.
+- App menu bars (File/Edit/View) are not yet reachable via the non-intrusive action path - only each app's windows are walked, not its `AXMenuBar`.
+
 ## [v0.1.37] - 2026-09-10
 
 ### 🚀 Highlights & Improvements

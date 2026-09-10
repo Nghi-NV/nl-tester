@@ -830,6 +830,28 @@ pub fn parse_xml_elements_to_ui_elements(
 }
 
 /// Parse raw UI hierarchy into unified UiElement list for any platform
+/// Redacts sensitive-looking visible text on macOS/Windows elements - every
+/// consumer of the parsed hierarchy (Inspector, `suggest_selectors`, hierarchy
+/// dumps) gets the protection automatically, since redaction happens at the
+/// single point where the raw OS accessibility dump becomes `UiElement`s,
+/// not filtered downstream in each individual consumer. `el.password` is the
+/// real "secure field" signal already set by the macOS parser (`AXSecureTextField`
+/// role); when unset (currently always false for Windows - the dump script
+/// does not yet surface UI Automation's `IsPassword` property), only the
+/// shape-based heuristics in `utils::redact` apply. Scoped to macOS/Windows
+/// only - Android/iOS/Web hierarchy parsing is unchanged.
+fn redact_desktop_elements(
+    mut elements: Vec<crate::driver::android::uiautomator::UiElement>,
+) -> Vec<crate::driver::android::uiautomator::UiElement> {
+    for el in &mut elements {
+        let is_secure = el.password;
+        el.text = crate::utils::redact::redact_if_sensitive(&el.text, is_secure).0;
+        el.content_desc = crate::utils::redact::redact_if_sensitive(&el.content_desc, is_secure).0;
+        el.hint = crate::utils::redact::redact_if_sensitive(&el.hint, is_secure).0;
+    }
+    elements
+}
+
 pub fn parse_hierarchy_for_platform(
     platform: &str,
     raw_data: &str,
@@ -843,7 +865,7 @@ pub fn parse_hierarchy_for_platform(
     }
 
     match platform {
-        "macos" => parse_macos_hierarchy_to_ui_elements(trimmed, target_app),
+        "macos" => redact_desktop_elements(parse_macos_hierarchy_to_ui_elements(trimmed, target_app)),
         "ios" => {
             if trimmed.starts_with('{') || trimmed.starts_with('[') {
                 parse_ios_hierarchy_to_ui_elements(trimmed, screen_width, screen_height)
@@ -851,7 +873,7 @@ pub fn parse_hierarchy_for_platform(
                 parse_xml_elements_to_ui_elements(trimmed, "ios")
             }
         }
-        "windows" => parse_xml_elements_to_ui_elements(trimmed, "windows"),
+        "windows" => redact_desktop_elements(parse_xml_elements_to_ui_elements(trimmed, "windows")),
         "web" => parse_xml_elements_to_ui_elements(trimmed, "web"),
         _ => {
             if let Ok(elements) = crate::driver::android::uiautomator::parse_hierarchy(trimmed) {

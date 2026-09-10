@@ -1127,6 +1127,14 @@ fn parse_command_with_params(
             TestCommand::OpenLink(s)
         }
 
+        "focusApp" | "switchApp" => {
+            let s = match params {
+                serde_yaml::Value::String(s) => s.clone(),
+                _ => serde_yaml::from_value(params.clone())?,
+            };
+            TestCommand::FocusApp(s)
+        }
+
         "navigate" => {
             let p = if params.is_string() {
                 crate::parser::types::NavigateParams {

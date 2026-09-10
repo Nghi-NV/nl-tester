@@ -54,6 +54,47 @@ impl MacosBridge {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 
+    /// Swift snippet checked into any script that is about to move the real
+    /// hardware cursor: samples cursor position twice 80ms apart and bails
+    /// (prints "USER_ACTIVE", exits 2) if it moved more than a few pixels -
+    /// i.e. a real person is actively using the mouse right now. Best-effort,
+    /// not a hard guarantee: it only protects the instant right before a
+    /// synthetic click, not the whole action.
+    const USER_ACTIVITY_GUARD: &str = r#"
+let __guardP1 = CGEvent(source: nil)?.location ?? CGPoint.zero
+Thread.sleep(forTimeInterval: 0.08)
+let __guardP2 = CGEvent(source: nil)?.location ?? CGPoint.zero
+if hypot(__guardP2.x - __guardP1.x, __guardP2.y - __guardP1.y) > 15 {
+    print("USER_ACTIVE")
+    exit(2)
+}
+"#;
+
+    /// Splices `USER_ACTIVITY_GUARD` into a script body at its `%%GUARD%%`
+    /// marker (must appear after the script's own `import` lines, since Swift
+    /// requires imports first).
+    fn guarded_script(body: &str) -> String {
+        body.replacen("%%GUARD%%", Self::USER_ACTIVITY_GUARD, 1)
+    }
+
+    /// Like `run_swift`, but translates the `USER_ACTIVITY_GUARD`'s bail
+    /// (exit 2, "USER_ACTIVE") into a clear, specific error instead of the
+    /// generic "Swift script failed" message.
+    fn run_guarded_swift(script: &str, args: &[&str]) -> Result<String> {
+        match Self::run_swift(script, args) {
+            Ok(out) => Ok(out),
+            Err(e) if e.to_string().contains("USER_ACTIVE") => {
+                anyhow::bail!(
+                    "Skipped a physical click/keypress: the real mouse moved right before it - \
+                     you appear to be actively using this Mac. Rerun the command once you're not \
+                     touching the mouse, or check whether the target element supports a \
+                     non-intrusive Accessibility action instead."
+                )
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     /// Execute an AppleScript snippet via osascript
     pub fn run_osascript(script: &str) -> Result<String> {
         let output = Command::new("osascript")
@@ -389,7 +430,7 @@ exit(1)
 
     /// Perform coordinate click with instant cursor restoration
     pub fn click_at(x: i32, y: i32, restore_cursor: bool) -> Result<()> {
-        const SCRIPT: &str = r#"
+        const BODY: &str = r#"
 import CoreGraphics
 import Foundation
 
@@ -401,6 +442,8 @@ let restore = CommandLine.arguments[3] == "true"
 let clickPoint = CGPoint(x: x, y: y)
 let origPos = CGEvent(source: nil)?.location ?? clickPoint
 let src = CGEventSource(stateID: .hidSystemState)
+
+%%GUARD%%
 
 CGWarpMouseCursorPosition(clickPoint)
 Thread.sleep(forTimeInterval: 0.02)
@@ -420,7 +463,8 @@ exit(0)
         let x_str = x.to_string();
         let y_str = y.to_string();
         let r_str = restore_cursor.to_string();
-        Self::run_swift(SCRIPT, &[&x_str, &y_str, &r_str])?;
+        let script = Self::guarded_script(BODY);
+        Self::run_guarded_swift(&script, &[&x_str, &y_str, &r_str])?;
         Ok(())
     }
 
@@ -433,7 +477,7 @@ exit(0)
 
     /// Perform coordinate right click
     pub fn right_click_at(x: i32, y: i32) -> Result<()> {
-        const SCRIPT: &str = r#"
+        const BODY: &str = r#"
 import CoreGraphics
 import Foundation
 
@@ -444,6 +488,8 @@ let y = Double(CommandLine.arguments[2]) ?? 0
 let clickPoint = CGPoint(x: x, y: y)
 let origPos = CGEvent(source: nil)?.location ?? clickPoint
 let src = CGEventSource(stateID: .hidSystemState)
+
+%%GUARD%%
 
 if let down = CGEvent(mouseEventSource: src, mouseType: .rightMouseDown, mouseCursorPosition: clickPoint, mouseButton: .right),
    let up = CGEvent(mouseEventSource: src, mouseType: .rightMouseUp, mouseCursorPosition: clickPoint, mouseButton: .right) {
@@ -456,13 +502,14 @@ exit(0)
 "#;
         let x_str = x.to_string();
         let y_str = y.to_string();
-        Self::run_swift(SCRIPT, &[&x_str, &y_str])?;
+        let script = Self::guarded_script(BODY);
+        Self::run_guarded_swift(&script, &[&x_str, &y_str])?;
         Ok(())
     }
 
     /// Perform long press at coordinate
     pub fn long_press_at(x: i32, y: i32, duration_ms: u64) -> Result<()> {
-        const SCRIPT: &str = r#"
+        const BODY: &str = r#"
 import CoreGraphics
 import Foundation
 
@@ -474,6 +521,8 @@ let duration = Double(CommandLine.arguments[3]) ?? 1.0
 let clickPoint = CGPoint(x: x, y: y)
 let origPos = CGEvent(source: nil)?.location ?? clickPoint
 let src = CGEventSource(stateID: .hidSystemState)
+
+%%GUARD%%
 
 if let down = CGEvent(mouseEventSource: src, mouseType: .leftMouseDown, mouseCursorPosition: clickPoint, mouseButton: .left),
    let up = CGEvent(mouseEventSource: src, mouseType: .leftMouseUp, mouseCursorPosition: clickPoint, mouseButton: .left) {
@@ -487,7 +536,8 @@ exit(0)
         let x_str = x.to_string();
         let y_str = y.to_string();
         let d_str = (duration_ms as f64 / 1000.0).to_string();
-        Self::run_swift(SCRIPT, &[&x_str, &y_str, &d_str])?;
+        let script = Self::guarded_script(BODY);
+        Self::run_guarded_swift(&script, &[&x_str, &y_str, &d_str])?;
         Ok(())
     }
 

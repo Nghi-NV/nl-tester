@@ -205,6 +205,23 @@ Real-device findings that are easy to misdiagnose as selector or tool bugs:
   this CORS setting before assuming a device/connection problem - and check
   which `lumi-tester` binary the IDE actually resolves via PATH (a stale
   separately-installed copy is a more common cause than the code itself).
+- **macOS Dock/system processes are reachable with no special command**: the
+  Dock (`com.apple.dock`) and other non-`.regular`-activation-policy
+  processes are excluded from app *discovery* (`devices`/app pickers), but
+  `focusApp: "com.apple.dock"` followed by an ordinary `tap`/`see` works -
+  element resolution matches by bundle id directly and does not filter by
+  activation policy. Verified live: `focusApp: "com.apple.dock"` then
+  `tap: "Finder"` clicks the real Dock icon. The app's menu bar (File/Edit/
+  View) is a separate, currently-unverified case - `tap`/`press_element`
+  only walks each app's windows, not its `AXMenuBar`.
+- **macOS `focusApp`/`switchApp` never brings the target to the foreground on
+  purpose** - it only changes which app subsequent selectors query via
+  Accessibility/UI Automation, so it does not yank the user's screen away
+  from whatever they're doing. Verified live with a positive control (target
+  app found and tapped while a third, unrelated app was frontmost) and a
+  negative control (an unambiguous nonsense selector correctly fails to
+  resolve after switching away from the app that would have matched it) -
+  guards against silently falling back to whatever happens to be frontmost.
 
 ## Inspector Workflow
 

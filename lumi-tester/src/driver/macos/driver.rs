@@ -250,6 +250,18 @@ impl PlatformDriver for MacosDriver {
     }
 
     async fn double_tap(&self, selector: &Selector) -> Result<()> {
+        if !matches!(selector, Selector::Point { .. }) {
+            // Non-intrusive first: "AXOpen" is the double-click-equivalent
+            // action (e.g. Finder icons, list rows configured to open on
+            // double-click) - doesn't touch the real cursor at all.
+            let app_target = self.active_target();
+            if self
+                .accessibility
+                .perform_element_action(&app_target, selector, "AXOpen")?
+            {
+                return Ok(());
+            }
+        }
         let (x, y) = if let Selector::Point { .. } = selector {
             Self::selector_point(selector)?
         } else if let Some(element) = self.find_element(selector)? {
@@ -262,6 +274,17 @@ impl PlatformDriver for MacosDriver {
     }
 
     async fn right_click(&self, selector: &Selector) -> Result<()> {
+        if !matches!(selector, Selector::Point { .. }) {
+            // Non-intrusive first: "AXShowMenu" is the right-click-equivalent
+            // action on elements that expose a context menu via Accessibility.
+            let app_target = self.active_target();
+            if self
+                .accessibility
+                .perform_element_action(&app_target, selector, "AXShowMenu")?
+            {
+                return Ok(());
+            }
+        }
         let (x, y) = if let Selector::Point { .. } = selector {
             Self::selector_point(selector)?
         } else if let Some(element) = self.find_element(selector)? {

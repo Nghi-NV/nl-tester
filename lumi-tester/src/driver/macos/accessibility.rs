@@ -466,15 +466,31 @@ print("</hierarchy>")
 
     /// Perform semantic AXPress action directly on matching button or interactive element
     pub fn press_element(&self, app_target: &str, selector: &Selector) -> Result<bool> {
+        self.perform_element_action(app_target, selector, "AXPress")
+    }
+
+    /// Perform a named non-intrusive Accessibility action (e.g. "AXPress",
+    /// "AXOpen" for double-click-equivalent, "AXShowMenu" for
+    /// right-click-equivalent) directly on a matching element, without
+    /// touching the real hardware cursor at all. Returns `false` (not an
+    /// error) when no matching element exposes that action, so callers can
+    /// fall back to a physical click.
+    pub fn perform_element_action(
+        &self,
+        app_target: &str,
+        selector: &Selector,
+        action_name: &str,
+    ) -> Result<bool> {
         const SCRIPT: &str = r#"
 import AppKit
 import ApplicationServices
 import Foundation
 
-guard CommandLine.arguments.count >= 3 else { exit(1) }
+guard CommandLine.arguments.count >= 4 else { exit(1) }
 let appParam = CommandLine.arguments[1]
 let query = CommandLine.arguments[2]
-let targetIndex = CommandLine.arguments.count > 3 ? (Int(CommandLine.arguments[3]) ?? 0) : 0
+let actionName = CommandLine.arguments[3]
+let targetIndex = CommandLine.arguments.count > 4 ? (Int(CommandLine.arguments[4]) ?? 0) : 0
 
 var targetApp: NSRunningApplication?
 if !appParam.isEmpty {
@@ -558,12 +574,12 @@ func collectButtons(_ element: AXUIElement) {
     }
     
     var actions: CFArray?
-    var hasPress = false
+    var hasAction = false
     if AXUIElementCopyActionNames(element, &actions) == .success, let actionList = actions as? [String] {
-        hasPress = actionList.contains("AXPress")
+        hasAction = actionList.contains(actionName)
     }
-    
-    if hasPress {
+
+    if hasAction {
         if matchesExact(titleStr) || matchesExact(descStr) || matchesExact(valStr) || matchesExact(idStr) {
             exactPressables.append(element)
         } else if matchesSubstring(titleStr) || matchesSubstring(descStr) || matchesSubstring(valStr) || matchesSubstring(idStr) {
@@ -591,9 +607,9 @@ if AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &w
 let candidates = !exactPressables.isEmpty ? exactPressables : substringPressables
 if !candidates.isEmpty {
     let target = targetIndex < candidates.count ? candidates[targetIndex] : candidates.last!
-    let res = AXUIElementPerformAction(target, kAXPressAction as CFString)
+    let res = AXUIElementPerformAction(target, actionName as CFString)
     if res == .success {
-        print("AX_PRESS_SUCCESS")
+        print("AX_ACTION_SUCCESS")
         exit(0)
     }
 }
@@ -610,8 +626,10 @@ exit(1)
         };
 
         let idx_str = target_idx.to_string();
-        if let Ok(out) = MacosBridge::run_swift(SCRIPT, &[app_target, &query, &idx_str]) {
-            if out.contains("AX_PRESS_SUCCESS") {
+        if let Ok(out) =
+            MacosBridge::run_swift(SCRIPT, &[app_target, &query, action_name, &idx_str])
+        {
+            if out.contains("AX_ACTION_SUCCESS") {
                 return Ok(true);
             }
         }
