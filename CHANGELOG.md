@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.36] - 2026-09-10
+
+### 🚀 Highlights & Improvements
+
+#### 1. Inspector: Hex Color Picker
+- **Click-to-Sample Color**: Clicking anywhere on the device screenshot now also reads the pixel color at that point (via an offscreen sampling canvas kept in sync with every capture) and shows it as a swatch + hex code in the status bar, next to "Selected X at (x, y)".
+- **Click to Copy**: Clicking the swatch/hex badge copies the hex code, using the same reliable dual-path copy (native `vscode.env.clipboard` via the extension host, not just the browser's `navigator.clipboard`) as the existing selector-copy feature - the browser API alone is unreliable inside an embedded webview iframe.
+
+### 🐛 Fixes
+
+#### 1. Inspector Reliability
+- **Stale Screenshot on Capture Failure**: A failed screen capture used to leave whatever image was already on screen untouched, indistinguishable from a genuinely successful-but-stale frame - now clears it and shows a clear "Screen Capture Failed" state with the real error reason.
+- **Private Network Access CORS**: Newer Chromium-based hosts (confirmed live: Antigravity IDE) enforce a CORS preflight before allowing a page to `fetch()` a private-network address like `localhost` - the Inspector's server now opts in (`allow_private_network(true)`), fixing "Failed to fetch" errors that only affected JS-initiated requests (the initial iframe navigation was never gated by this) and only showed up on certain Chromium-based editors, not upstream VS Code.
+- **Device-Switch Iframe Cache-Busting**: Added a cache-busting nonce to the Inspector iframe's URL on every device switch to rule out the webview reusing a previous navigation's DOM.
+
+#### 2. iOS Driver
+- **Mock Location Speed Control**: The VS Code extension's GPS Speed Control panel writes live speed/pause adjustments to `/tmp/lumi-gps-control.json` - Android's `mockLocation` playback already read this file, but iOS's never did, making the speed slider a silent no-op for every iOS run. iOS now reads it too.
+
+---
+
 ## [v0.1.35] - 2026-09-01
 
 ### 🐛 Fixes

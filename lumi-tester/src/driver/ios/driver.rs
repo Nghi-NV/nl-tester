@@ -2268,8 +2268,41 @@ impl PlatformDriver for IosDriver {
                     let lat = point.lat;
                     let lon = point.lon;
 
-                    // Check for pause
+                    // Check for pause and external control file
                     loop {
+                        // Read external control file for VSCode GPS Speed Control panel
+                        // integration - confirmed live this was missing entirely on iOS
+                        // (Android's start_mock_location already reads this same path;
+                        // the VS Code panel writes to it regardless of which platform's
+                        // test is running, so without this the speed slider was a
+                        // silent no-op for every iOS mockLocation run).
+                        let control_path = "/tmp/lumi-gps-control.json";
+                        if let Ok(content) = std::fs::read_to_string(control_path) {
+                            if let Ok(ctrl) = serde_json::from_str::<serde_json::Value>(&content) {
+                                let mut states = mock_states.lock().await;
+                                if let Some(state) = states.get_mut(&instance_key) {
+                                    if let Some(speed) = ctrl.get("speed").and_then(|v| v.as_f64())
+                                    {
+                                        state.speed = Some(speed);
+                                    }
+                                    if let Some(paused) =
+                                        ctrl.get("paused").and_then(|v| v.as_bool())
+                                    {
+                                        state.paused = paused;
+                                    }
+                                    if let Some(mode) =
+                                        ctrl.get("speedMode").and_then(|v| v.as_str())
+                                    {
+                                        state.speed_mode = match mode {
+                                            "noise" => SpeedMode::Noise,
+                                            _ => SpeedMode::Linear,
+                                        };
+                                    }
+                                }
+                                let _ = std::fs::remove_file(control_path);
+                            }
+                        }
+
                         let is_paused = {
                             let states = mock_states.lock().await;
                             states.get(&instance_key).map(|s| s.paused).unwrap_or(false)

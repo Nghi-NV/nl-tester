@@ -60,10 +60,22 @@ impl InspectorServer {
         });
 
         // Build router
+        //
+        // `.allow_private_network(true)` matters specifically for newer
+        // Chromium-based hosts (confirmed live: Antigravity IDE, likely a newer
+        // Electron/Chromium than upstream VS Code) that enforce Private Network
+        // Access - a CORS preflight requiring the server to explicitly opt in
+        // before a page can fetch a private-network address like `localhost`.
+        // `.permissive()` alone doesn't set this, so `curl`/direct requests to
+        // this server worked fine while every `fetch()` call from inside the
+        // Inspector's embedded webview iframe failed outright with "Failed to
+        // fetch" - the initial iframe navigation isn't gated by PNA, only the
+        // JS-initiated subresource requests afterward, which is exactly the
+        // failure pattern this surfaced as.
         let app = Router::new()
             .route("/", get(serve_index))
             .merge(api::api_router())
-            .layer(CorsLayer::permissive())
+            .layer(CorsLayer::permissive().allow_private_network(true))
             .with_state(state);
 
         let addr = SocketAddr::from(([0, 0, 0, 0], self.config.port));

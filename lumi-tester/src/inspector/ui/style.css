@@ -463,6 +463,39 @@ body {
   transition: opacity 0.1s ease;
 }
 
+.color-picker-badge {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  /* Pushes the badge to the far right of the status bar, i.e. below the
+     canvas and to the right of "Selected X at (x, y)" (#statusText) which
+     sits immediately to its left in normal document flow. */
+  margin-left: auto;
+  color: var(--text-primary, #fff);
+  font-size: 9.5px;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.color-picker-swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  flex-shrink: 0;
+}
+
+.color-picker-hex {
+  letter-spacing: 0.02em;
+}
+
+.color-picker-copy-hint {
+  opacity: 0.55;
+  font-size: 9px;
+}
+
 /* Zoom Dock */
 .canvas-zoom-dock {
   position: absolute;

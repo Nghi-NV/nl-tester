@@ -222,7 +222,16 @@ export class InspectorPanel {
     if (this._appId) {
       frameParams.set('appId', this._appId);
     }
-    const frameSrc = `http://localhost:${this._port}${frameParams.toString() ? '?' + frameParams.toString() : ''}`;
+    // Cache-busting nonce: even though the port usually changes on every device
+    // switch too, forcing a genuinely distinct query string here rules out any
+    // possibility of the webview/iframe reusing a previous navigation's DOM
+    // (e.g. the exact same port getting freed and reclaimed) instead of loading
+    // the new device's page fresh - the concrete failure mode this guards
+    // against is a stale screenshot from the PREVIOUS platform/device staying
+    // visible after switching, which is otherwise very hard to tell apart from
+    // "the new capture is just failing silently" from the outside.
+    frameParams.set('_r', Date.now().toString());
+    const frameSrc = `http://localhost:${this._port}?${frameParams.toString()}`;
 
     return `<!DOCTYPE html>
 <html lang="en">

@@ -13,6 +13,14 @@ let scaleX = 1;
 let scaleY = 1;
 let zoomLevel = 1.0;
 let lastSelectedBounds = null;
+let lastPickedHex = null;
+
+// Offscreen canvas holding the raw screenshot pixels, kept in sync with
+// #screen every time a capture succeeds - separate from #overlay, which only
+// ever holds drawn selection boxes/tap rings, never the actual screenshot
+// pixels, so it can't be used to sample color.
+const pixelSampleCanvas = document.createElement('canvas');
+const pixelSampleCtx = pixelSampleCanvas.getContext('2d', { willReadFrequently: true });
 
 // Device Bar: the Inspector server is bound to one device for its whole process
 // lifetime (switching means restarting it), so "switching" from in here just asks
@@ -78,7 +86,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     const rect = overlay.getBoundingClientRect();
     const x = (e.clientX - rect.left) / scaleX / zoomLevel;
     const y = (e.clientY - rect.top) / scaleY / zoomLevel;
-    inspectAt(Math.round(x), Math.round(y), (e.clientX - rect.left) / zoomLevel, (e.clientY - rect.top) / zoomLevel);
+    const clickX = (e.clientX - rect.left) / zoomLevel;
+    const clickY = (e.clientY - rect.top) / zoomLevel;
+    inspectAt(Math.round(x), Math.round(y), clickX, clickY);
+    pickColorAt(Math.round(x), Math.round(y));
   });
 
   // Mouse move for hover tooltip
@@ -257,6 +268,11 @@ async function capture() {
   if (btn) btn.disabled = true;
   if (statusText) statusText.textContent = 'Capturing device screen & hierarchy...';
 
+  // A picked color from the previous frame is meaningless once the screen has
+  // moved on - hide it rather than let it point at stale pixels.
+  const colorBadge = document.getElementById('colorPickerBadge');
+  if (colorBadge) colorBadge.style.display = 'none';
+
   try {
     const r = await fetch(`/api/screenshot?skip_hierarchy=false`);
     if (!r.ok) {
@@ -282,6 +298,13 @@ async function capture() {
     img.style.display = 'block';
     if (placeholder) placeholder.style.display = 'none';
 
+    // Mirror the freshly-loaded screenshot into the offscreen sampling canvas
+    // so color-picking always reads the pixels currently on screen, not a
+    // stale frame from before this capture.
+    pixelSampleCanvas.width = img.naturalWidth;
+    pixelSampleCanvas.height = img.naturalHeight;
+    pixelSampleCtx.drawImage(img, 0, 0);
+
     // Fetch hierarchy
     try {
       const h = await fetch('/api/hierarchy');
@@ -301,6 +324,30 @@ async function capture() {
     const reason = (e && e.message) ? e.message : 'Screen capture failed';
     if (statusText) statusText.textContent = 'Screen capture failed';
     showToast(reason);
+
+    // Confirmed real bug: a failed capture used to leave whatever image was
+    // already on screen untouched - after switching device/platform (a fresh
+    // page load, one capture() call on DOMContentLoaded) that's still the
+    // browser's default blank state so it's harmless, but on a manual Refresh
+    // after a device/app switch that failed to attach, the PREVIOUS device's
+    // last-good screenshot stayed fully visible with only a toast (which
+    // auto-dismisses in ~2s) and a small status-line change to say otherwise -
+    // easy to misread as "still showing the old device" rather than "this
+    // capture attempt failed". Show the placeholder instead so a failure is
+    // visually unmistakable rather than indistinguishable from stale success.
+    const img = document.getElementById('screen');
+    const placeholder = document.getElementById('placeholder');
+    if (img) {
+      img.removeAttribute('src');
+      img.style.display = 'none';
+    }
+    if (placeholder) {
+      const title = placeholder.querySelector('.placeholder-title');
+      const sub = placeholder.querySelector('.placeholder-sub');
+      if (title) title.textContent = 'Screen Capture Failed';
+      if (sub) sub.textContent = reason;
+      placeholder.style.display = 'flex';
+    }
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -481,6 +528,57 @@ async function inspectAt(x, y, clickX, clickY) {
     showToast('Inspection failed');
     if (statusText) statusText.textContent = 'Inspection failed';
   }
+}
+
+// Reads the pixel color at the clicked point (native screenshot coordinates,
+// same space as inspectAt's x/y) from the offscreen sampling canvas kept in
+// sync with every successful capture(), and shows it as a hex-code badge in
+// the status bar, to the right of the "Selected X at (x, y)" text inspectAt
+// writes into #statusText right next to it.
+function pickColorAt(x, y) {
+  const badge = document.getElementById('colorPickerBadge');
+  if (!badge) return;
+
+  if (!pixelSampleCanvas.width || !pixelSampleCanvas.height) {
+    badge.style.display = 'none';
+    return;
+  }
+
+  const clampedX = Math.min(Math.max(x, 0), pixelSampleCanvas.width - 1);
+  const clampedY = Math.min(Math.max(y, 0), pixelSampleCanvas.height - 1);
+
+  let pixel;
+  try {
+    pixel = pixelSampleCtx.getImageData(clampedX, clampedY, 1, 1).data;
+  } catch (e) {
+    // Canvas tainted (cross-origin screenshot source) or not ready yet.
+    console.error('Color pick failed', e);
+    badge.style.display = 'none';
+    return;
+  }
+
+  const toHex = (n) => n.toString(16).padStart(2, '0');
+  const hex = `#${toHex(pixel[0])}${toHex(pixel[1])}${toHex(pixel[2])}`.toUpperCase();
+  lastPickedHex = hex;
+
+  document.getElementById('colorPickerSwatch').style.background = hex;
+  document.getElementById('colorPickerHex').textContent = hex;
+  badge.style.display = 'flex';
+}
+
+function copyPickedColor() {
+  if (!lastPickedHex) return;
+  // Same dual-path copy as copyTextDirect(): the browser's own
+  // navigator.clipboard is often blocked inside an embedded webview iframe
+  // (confirmed live: this was the actual cause of "copy failed" here, same
+  // class of restriction as the Private Network Access fetch issue) - the
+  // postMessage relay to the host, which writes via the extension's native
+  // vscode.env.clipboard.writeText(), is the one that reliably works.
+  navigator.clipboard.writeText(lastPickedHex).catch(() => {});
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: 'copySelector', value: lastPickedHex }, '*');
+  }
+  showToast(`Copied ${lastPickedHex}`);
 }
 
 function clearDetails() {
