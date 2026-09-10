@@ -12,7 +12,6 @@ import {
   resolveOutputFile,
   runLumiJson,
   runProcess,
-  suggestSelectorsFromAndroidXml,
 } from "./core.js";
 
 const server = new McpServer({
@@ -291,27 +290,60 @@ server.registerTool(
   {
     title: "Suggest Lumi Selectors",
     description:
-      "Suggest stable Lumi selectors from a UI hierarchy XML artifact. Supports Android UIAutomator XML today.",
+      "Suggest ranked, cross-platform-correct selectors (Android/iOS/macOS/Windows/Web) for UI elements " +
+      "matching a query and/or near a point. Backed by the same SelectorScorer the recorder and Inspector " +
+      "use, so index/uniqueness/id-stability are computed from the real element list, not guessed. " +
+      "Provide outputDir+file (plus platform) to read a saved hierarchy dump, or omit them to query a " +
+      "running Lumi Inspector at baseUrl.",
     inputSchema: {
-      outputDir: z.string().describe("Lumi output directory containing the XML artifact."),
-      file: z.string().describe("XML artifact file relative to outputDir."),
-      query: z.string().optional().describe("Optional text/id/description/class substring to filter by."),
-      point: z.string().optional().describe("Optional absolute point like '540,960' to prioritize containing elements."),
+      ...workspaceSchema,
+      platform: z
+        .enum(["android", "ios", "macos", "windows", "web"])
+        .optional()
+        .describe("Required when using outputDir/file. Ignored when querying a running Inspector (it already knows its platform)."),
+      outputDir: z.string().optional().describe("Lumi output directory containing a saved hierarchy dump (e.g. a debug artifact)."),
+      file: z.string().optional().describe("Hierarchy dump file relative to outputDir. Requires platform."),
+      baseUrl: z
+        .string()
+        .default("http://127.0.0.1:9333")
+        .describe("Running Lumi Inspector base URL, used when outputDir/file are omitted."),
+      query: z.string().optional().describe("Optional text/id/content-desc/class substring to filter by."),
+      point: z.string().optional().describe("Optional 'x,y' point (e.g. from a screenshot click) to prioritize containing/nearby elements."),
       limit: z.number().int().positive().max(50).default(10),
       includeNonClickable: z.boolean().default(false),
     },
   },
-  async ({ outputDir, file, query, point, limit, includeNonClickable }) => {
-    const resolved = resolveOutputFile(outputDir, file);
-    const xml = await readTextArtifact(resolved, 2_000_000);
-    return jsonText(
-      suggestSelectorsFromAndroidXml(xml, {
-        query,
-        point,
-        limit,
-        includeNonClickable,
-      }),
-    );
+  async ({ workspace, platform, outputDir, file, baseUrl, query, point, limit, includeNonClickable }) => {
+    if (outputDir && file) {
+      if (!platform) {
+        throw new Error("platform is required when using outputDir/file");
+      }
+      const resolved = resolveOutputFile(outputDir, file);
+      const args = ["--platform", platform, "--file", resolved, "--limit", String(limit), "--json"];
+      if (query) args.push("--query", query);
+      if (point) args.push("--point", point);
+      if (includeNonClickable) args.push("--include-non-clickable");
+
+      const result = await runLumiJson({ workspace, command: "suggest-selectors", args });
+      if (result.json) return jsonText(result.json);
+      throw new Error(
+        `suggest-selectors failed (exit ${result.code}${result.timedOut ? ", timed out" : ""}): ${result.stderr || result.stdout || "no output"}`,
+      );
+    }
+
+    const url = new URL("/api/suggest-selectors", baseUrl);
+    if (query) url.searchParams.set("query", query);
+    if (point) url.searchParams.set("point", point);
+    if (limit) url.searchParams.set("limit", String(limit));
+    if (includeNonClickable) url.searchParams.set("include_non_clickable", "true");
+
+    const response = await fetch(url);
+    const text = await response.text();
+    try {
+      return jsonText(JSON.parse(text));
+    } catch {
+      return jsonText({ status: response.status, body: text });
+    }
   },
 );
 

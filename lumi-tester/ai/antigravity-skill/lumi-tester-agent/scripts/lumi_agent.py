@@ -17,6 +17,7 @@ LUMI_COMMANDS = [
     "camera",
     "devices",
     "doctor",
+    "docs",
     "inspect",
     "jig",
     "list",
@@ -25,10 +26,12 @@ LUMI_COMMANDS = [
     "run",
     "schema",
     "shell",
+    "suggest-selectors",
     "system",
     "update",
     "validate",
     "version",
+    "which",
 ]
 
 AGENT_COMMANDS = [

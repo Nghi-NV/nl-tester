@@ -140,11 +140,17 @@ and exits with the Lumi command exit code.
    or `waitSee`; do not use a fixed delay as launch readiness. Android Auto is
    the exception because DHU has no UI hierarchy; use bounded `wait` plus
    screenshot/log assertions there.
-15. Write YAML in canonical `header --- commands` format.
-16. Run validation before any device/browser/desktop execution.
-17. Use `list --json` to discover command indexes.
-18. Run with reports, snapshots, and event JSONL for debug-friendly artifacts.
-19. On failure, inspect artifacts and rerun the smallest failing command index.
+15. **Before writing `tap`/`see`/any selector-based command for a screen not
+   already inspected in this flow, inspect it first** - use a running
+   Inspector, `suggest_selectors`, or a `--snapshot` run to see the real
+   hierarchy. Do not guess a selector from a variable name, a screenshot
+   alone, or a similar-looking screen elsewhere in the app; wrong guesses cost
+   more retries than one inspect pass. See `references/selector-discovery.md`.
+16. Write YAML in canonical `header --- commands` format.
+17. Run validation before any device/browser/desktop execution.
+18. Use `list --json` to discover command indexes.
+19. Run with reports, snapshots, and event JSONL for debug-friendly artifacts.
+20. On failure, inspect artifacts and rerun the smallest failing command index.
 
 ## Preflight Before Running
 
@@ -308,6 +314,43 @@ For text entry, focus first, then type:
 
 Do not put selector fields inside `inputText` unless the local parser explicitly
 supports that form.
+
+## Terse YAML Style
+
+Prefer the shortest form that still expresses the selector correctly: a bare
+string on `tap`/`longPress`/`doubleTap`, `see`/`assertVisible`/
+`assertNotVisible`/`waitUntilVisible`/`waitUntilNotVisible`,
+`scrollUntilVisible`, `drag.from`/`drag.to`, and the `rightOf`/`leftOf`/
+`above`/`below` anchor sub-fields auto-resolves to `regex` (if it has a regex
+metacharacter) or plain `text` otherwise - so try the shorthand first and let
+the parser classify it, instead of writing `regex:`/`text:` by hand.
+Escalate to the full object form only for fields the shorthand can't express
+(`index > 0`, `exact`, `timeout`, `soft`, a platform-specific field). Omit
+`index: 0` (it's the default). `wait`/`ocr` have their own separate
+plain-value shorthand (not regex-related); `copyTextFrom` has none. See
+`references/selector-discovery.md`'s "Terse YAML Style" section for the full
+metacharacter list and before/after examples - run `validate --json` after
+simplifying an existing flow to confirm behavior didn't change.
+
+## Secrets And Reusable Flows
+
+Never write real credentials, tokens, phone numbers, or other sensitive
+values directly into a YAML flow. Reference them with `${VAR_NAME}` and
+supply the value via a real OS environment variable (export before running -
+preferred for CI) or the header's `env: { file: ".env" }` syntax (reads a
+local dotenv file). Commit only a placeholder `.env.example`; add the real
+`.env` to `.gitignore`. See `references/testcase-design.md`'s "Grouping
+Strategy" and "Generated Suite Example" sections for exact per-shell export
+commands, the full `.env` pattern, and a worked example.
+
+Extract any block reused by more than one test (login, permission grant,
+seeded data, GPS setup, cleanup) into its own file under a `subflows/`
+directory and call it with `runFlow`, instead of duplicating commands into
+every leaf test. `setup.yaml`/`teardown.yaml` only run for the exact folder
+passed to `run` - they do **not** cascade into nested feature folders even
+though `run` still executes every file found recursively underneath. See
+`references/testcase-design.md`'s "Grouping Strategy" for the exact hook-scope
+rule, the suite-wide-vs-per-feature pattern, and the full folder convention.
 
 ## App Identity Discovery
 

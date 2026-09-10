@@ -22,9 +22,11 @@ Tài liệu tra cứu chi tiết và đầy đủ nhất về tất cả các c�
 | **`report`** | Tái tạo báo cáo HTML Dashboard từ file kết quả JSON có sẵn | `lumi-tester report ./output/test-results.json` |
 | **`shell`** | Mở terminal tương tác để gửi trực tiếp từng câu lệnh tới thiết bị | `lumi-tester shell --platform android` |
 | **`system`** | Tự động cài đặt / cập nhật các driver và package hệ thống | `lumi-tester system install --all` |
-| **`ai`** | Cài đặt các AI Skill vào Codex, Antigravity, Claude, Cursor | `lumi-tester ai install` |
+| **`ai`** | Cài đặt các AI Skill vào Codex, Antigravity, Claude Code | `lumi-tester ai install` |
 | **`camera`** | Bộ công cụ kiểm thử thị giác & nhận diện trạng thái LED qua RTSP | `lumi-tester camera doctor` |
 | **`jig`** | Kiểm tra cổng Serial và giao tiếp với mạch kiểm thử Jig phần cứng | `lumi-tester jig ping COM5 --node 1` |
+| **`docs`** | Mở trang tài liệu web chính thức trên trình duyệt mặc định | `lumi-tester docs` |
+| **`which`** (alias `where`) | Hiện đường dẫn binary đang chạy, binary trên PATH, và các thư mục AI skill/config | `lumi-tester which --json` |
 
 ---
 
@@ -260,6 +262,29 @@ lumi-tester camera check --profile device_led_profile.json --watch
 ### 3.8. `ai` - Cài đặt Skill cho AI Coding Agent
 Cài đặt trực tiếp bộ công cụ và hướng dẫn thiết kế test case vào các trợ lý AI:
 ```bash
-# Tự động cài đặt vào Codex, Antigravity, Claude, Cursor
+# Tự động cài đặt vào Codex (~/.codex/skills), Claude Code (~/.claude/skills),
+# và Antigravity (workspace ./.agents/skills + global ~/.gemini/config/skills)
 lumi-tester ai install
 ```
+
+### 3.9. `docs` - Mở Tài liệu Web
+Mở trang tài liệu chính thức (https://nghi-nv.github.io/nl-tester/) trên trình duyệt mặc định:
+```bash
+lumi-tester docs
+
+# Chỉ in URL ra terminal thay vì mở trình duyệt (dùng cho môi trường headless/CI)
+lumi-tester docs --print
+```
+
+### 3.10. `which` - Kiểm tra Binary & Thư mục Đang Dùng
+Hiện đường dẫn binary đang thực thi, đường dẫn binary mà PATH sẽ resolve tới, và
+các thư mục AI skill/config liên quan. Hữu ích khi một IDE/MCP client có vẻ
+đang dùng một bản `lumi-tester` cũ (build khác với bản vừa cập nhật):
+```bash
+lumi-tester which
+lumi-tester where          # alias
+lumi-tester which --json   # đầu ra JSON máy đọc được
+```
+Nếu binary đang chạy khác với binary mà PATH resolve tới, lệnh sẽ cảnh báo
+rõ ràng (`pathMismatch: true` trong JSON) - đây chính xác là nguyên nhân phổ
+biến khiến một bản fix "không có tác dụng" trong IDE dù đã build lại CLI.

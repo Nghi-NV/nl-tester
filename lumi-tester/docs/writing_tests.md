@@ -44,7 +44,7 @@ Phần Header nằm phía trên dấu `---`. Nếu không có dấu `---`, các 
 | `url` | - | String | URL khởi tạo (Web). |
 | `platform` | - | String | `android`, `android_auto`, `ios`, `web`, `macos`, `windows`. |
 | `desktopState` | - | Map | Cấu hình xóa state cho desktop; dùng `desktopState.clear` cùng `launchApp: { clearState: true }` trên macOS/Windows. |
-| `env` | `vars`, `var`| Map | Định nghĩa biến môi trường (Key-Value) hoặc load từ file (`file: path`). |
+| `env` | `vars`, `var`| Map | `env: { KEY: "value" }` định nghĩa biến trực tiếp, hoặc `env: { file: ".env" }` đọc từ file `.env` thật (khuyên dùng cho dữ liệu nhạy cảm - xem mục "Biến môi trường & Dữ liệu nhạy cảm" bên dưới). |
 | `data` | - | String | Path tới file dữ liệu (CSV/JSON). |
 | `defaultTimeout` | - | Number | Thời gian chờ mặc định (ms) cho các lệnh. |
 | `tags` | - | Array | Danh sách nhãn phân loại test. |
@@ -397,18 +397,113 @@ lumi-tester run path/to/test.yaml --repeat 5
 
 ---
 
+## 🔐 Biến môi trường & Dữ liệu nhạy cảm
+
+Không bao giờ viết trực tiếp mật khẩu, token, số điện thoại... vào file YAML.
+Tham chiếu bằng `${TEN_BIEN}` ở bất kỳ trường chuỗi nào (giá trị selector,
+`inputText`, header), rồi cấp giá trị bằng 1 trong 2 cách:
+
+1. **Biến môi trường OS thật** (khuyên dùng cho CI/secret dùng chung) - export
+   trước khi chạy, giá trị không bao giờ nằm trên đĩa trong repo:
+
+   ```bash
+   # bash/zsh (macOS/Linux) - tồn tại cho cả phiên shell
+   export USER_EMAIL="test@example.com"
+   export USER_PASSWORD="replace-with-secret"
+   lumi-tester run ./test.yaml --platform android
+
+   # bash/zsh - chỉ áp dụng cho đúng lệnh này
+   USER_EMAIL="test@example.com" USER_PASSWORD="replace-with-secret" \
+     lumi-tester run ./test.yaml --platform android
+   ```
+
+   ```powershell
+   # Windows PowerShell
+   $env:USER_EMAIL = "test@example.com"
+   $env:USER_PASSWORD = "replace-with-secret"
+   lumi-tester run .\test.yaml --platform android
+   ```
+
+   ```cmd
+   :: Windows cmd.exe
+   set USER_EMAIL=test@example.com
+   set USER_PASSWORD=replace-with-secret
+   lumi-tester run test.yaml --platform android
+   ```
+
+   Trên CI, khai báo cùng tên biến này ở phần secrets/variables của pipeline
+   (GitHub Actions `env:`/`secrets.*`, GitLab CI variables...) - file YAML
+   không đổi giữa local và CI, chỉ nguồn giá trị đổi.
+
+2. **File `.env` cục bộ** (tiện cho dev local): trỏ header vào file bằng cú
+   pháp đặc biệt `env: { file: ".env" }` - Lumi tự đọc file đó (định dạng
+   chuẩn `KEY=value`, comment bằng `#`, có thể có tiền tố `export `) và biến
+   mỗi key thành `${KEY}` dùng được trong flow:
+
+   ```yaml
+   platform: android
+   appId: com.example.app
+   env: { file: ".env" }
+   ---
+   - tap:
+       accessibilityId: "Email"
+   - inputText: "${USER_EMAIL}"
+   - tap:
+       accessibilityId: "Password"
+   - inputText: "${USER_PASSWORD}"
+   ```
+
+   Chỉ commit file mẫu (`.env.example`) kèm placeholder, thêm `.env` thật vào
+   `.gitignore` - **không bao giờ** commit file `.env` chứa credential thật.
+   Không dùng `env: { KEY: "value" }` (map thường) cho dữ liệu nhạy cảm vì
+   giá trị sẽ nằm thẳng trong YAML đã commit.
+
 ## 🤝 Best Practices
 
 1.  **Sử dụng `setup.yaml` & `teardown.yaml`**: Để tái sử dụng code login/logout.
 2.  **Tránh Tọa độ Cứng**: Luôn ưu tiên Text, ID, hoặc `align`/`offset`. Nếu dùng tọa độ, hãy dùng percentage.
 3.  **Sâu chuỗi sub-flows**: Dùng `runFlow` để module hóa kịch bản.
+4.  **Không hardcode dữ liệu nhạy cảm**: Dùng `${VAR}` + biến môi trường/`.env` - xem mục "Biến môi trường & Dữ liệu nhạy cảm" phía trên.
 
 ## 📁 Tổ chức thư mục
 
 ```text
 tests/
-├── setup.yaml
+├── setup.yaml          # tự chạy 1 lần trước các file chính
+├── teardown.yaml       # tự chạy 1 lần sau các file chính
 ├── data/
-├── common/             # Sub-flows (Login.yaml)
+├── subflows/            # Sub-flows (login.yaml...) - gọi bằng `runFlow`
 └── scenarios/          # Test chính
 ```
+
+`subflows/` (và `screens/` nếu dùng cho định nghĩa selector theo màn hình) là
+2 tên thư mục đặc biệt duy nhất bị bỏ qua khi `run` thu thập file - đặt đúng
+tên này thì các file bên trong mới không bị chạy như 1 test độc lập, chỉ chạy
+được qua `runFlow`. Đặt tên khác (ví dụ `common/`) sẽ khiến file trong đó bị
+chạy như test bình thường.
+
+**Phạm vi của `setup.yaml`/`teardown.yaml` (đã kiểm chứng qua source code)**:
+chỉ chạy khi nằm đúng ở thư mục được truyền trực tiếp vào `run` - **không**
+tự động áp dụng cho các thư mục con lồng bên trong, dù `run` vẫn duyệt đệ quy
+và chạy hết file yaml trong các thư mục con đó.
+
+```text
+auto_test/
+├── setup.yaml           # chạy 1 lần NẾU bạn `run auto_test/`
+└── android/
+    ├── setup.yaml       # chạy 1 lần NẾU bạn `run auto_test/android/` trực
+    │                    #   tiếp - nhưng bị BỎ QUA hoàn toàn (không chạy như
+    │                    #   hook, cũng không chạy như test) nếu thay vào đó
+    │                    #   bạn `run auto_test/`
+    └── home/
+        └── open_home.yaml  # vẫn được chạy trong cả 2 trường hợp trên
+```
+
+Hệ quả cần lưu ý khi thiết kế:
+
+- Muốn **1 before/after áp dụng cho toàn bộ suite**: đặt đúng 1 cặp
+  `setup.yaml`/`teardown.yaml` ở thư mục gốc mà bạn luôn `run` ("run root"),
+  không rải rác theo từng thư mục feature con rồi mong chúng gộp lại.
+- Muốn **before/after cô lập theo từng feature**: chạy từng thư mục feature
+  bằng lệnh `run` riêng (một dòng script hoặc một job CI cho mỗi feature) để
+  đúng `setup.yaml` của thư mục đó được dùng.

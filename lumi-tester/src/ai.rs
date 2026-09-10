@@ -43,6 +43,14 @@ pub async fn install(options: AiInstallOptions) -> Result<()> {
         .ai_home
         .unwrap_or_else(|| home.join(".lumi-tester").join("ai"));
     let codex_home = options.codex_home.unwrap_or_else(|| home.join(".codex"));
+    let claude_home = home.join(".claude");
+    // Antigravity discovers skills at two levels (see docs/ai-skills-integration.md):
+    // global (`~/.gemini/config/skills`, all workspaces) and workspace-local
+    // (`<cwd>/.agents/skills`, this project only).
+    let antigravity_global_home = home.join(".gemini").join("config");
+    let antigravity_workspace_dir = std::env::current_dir()
+        .unwrap_or_default()
+        .join(".agents");
     let target = detect_target()?;
 
     println!(
@@ -54,9 +62,49 @@ pub async fn install(options: AiInstallOptions) -> Result<()> {
     println!("  Target: {}", target.cyan());
     println!("  AI home: {}", ai_home.display().to_string().cyan());
     println!("  Codex home: {}", codex_home.display().to_string().cyan());
+    println!("  Claude home: {}", claude_home.display().to_string().cyan());
+    println!(
+        "  Antigravity (global): {}",
+        antigravity_global_home.display().to_string().cyan()
+    );
+    println!(
+        "  Antigravity (workspace): {}",
+        antigravity_workspace_dir.display().to_string().cyan()
+    );
 
     install_mcp(&options.repo, &version, &target, &ai_home).await?;
-    install_codex_skill(&options.repo, &version, &options.git_ref, &codex_home).await?;
+    install_skill_bundle(
+        &options.repo,
+        &version,
+        &options.git_ref,
+        &codex_home.join("skills").join("lumi-tester-agent"),
+        "Codex",
+    )
+    .await?;
+    install_skill_bundle(
+        &options.repo,
+        &version,
+        &options.git_ref,
+        &claude_home.join("skills").join("lumi-tester-agent"),
+        "Claude Code",
+    )
+    .await?;
+    install_skill_bundle(
+        &options.repo,
+        &version,
+        &options.git_ref,
+        &antigravity_global_home.join("skills").join("lumi-tester-agent"),
+        "Antigravity (global)",
+    )
+    .await?;
+    install_skill_bundle(
+        &options.repo,
+        &version,
+        &options.git_ref,
+        &antigravity_workspace_dir.join("skills").join("lumi-tester-agent"),
+        "Antigravity (workspace)",
+    )
+    .await?;
     let snippets = write_config_snippets(&ai_home).await?;
     if options.configure_codex {
         configure_codex(&codex_home, &snippets.codex).await?;
@@ -66,7 +114,7 @@ pub async fn install(options: AiInstallOptions) -> Result<()> {
 
     println!();
     println!("{}", "Lumi Tester AI integration installed.".green().bold());
-    println!("Restart Codex so it reloads the skill and MCP server.");
+    println!("Restart Codex/Claude Code/Antigravity so they reload the skill and MCP server.");
     println!("Quick checks:");
     println!("  lumi-tester doctor --platform android --json");
     println!("  lumi-tester doctor --platform android_auto --json");
@@ -165,15 +213,18 @@ async fn install_mcp(repo: &str, version: &str, target: &str, ai_home: &Path) ->
     Ok(())
 }
 
-async fn install_codex_skill(
+/// Downloads the shared `SKILL_FILES` bundle into `skill_dir`. Used for both
+/// `~/.codex/skills/lumi-tester-agent` and `~/.claude/skills/lumi-tester-agent`
+/// - Codex and Claude Code both discover skills this way, and the bundle
+/// content (SKILL.md + references/scripts) is identical between them.
+async fn install_skill_bundle(
     repo: &str,
     version: &str,
     git_ref: &str,
-    codex_home: &Path,
+    skill_dir: &Path,
+    label: &str,
 ) -> Result<()> {
-    let skill_dir = codex_home.join("skills").join("lumi-tester-agent");
-
-    println!("{} Installing Codex skill", "•".blue());
+    println!("{} Installing {} skill", "•".blue(), label);
     let base = resolve_skill_base_url(repo, version, git_ref).await?;
     tokio::fs::create_dir_all(skill_dir.join("references")).await?;
     tokio::fs::create_dir_all(skill_dir.join("scripts")).await?;
@@ -188,7 +239,7 @@ async fn install_codex_skill(
     }
 
     make_executable(&skill_dir.join("scripts").join("lumi_agent.py"))?;
-    println!("  Installed Codex skill: {}", skill_dir.display());
+    println!("  Installed {} skill: {}", label, skill_dir.display());
     Ok(())
 }
 

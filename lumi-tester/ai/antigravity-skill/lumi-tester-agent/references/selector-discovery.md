@@ -8,6 +8,8 @@ the smallest run.
 
 - Fast path
 - Selector priority
+- Terse YAML style
+- Platform gotchas
 - Inspector workflow
 - MCP selector suggestions
 - Snapshot workflow
@@ -29,24 +31,42 @@ the smallest run.
    `mCurrentFocus`/`mFocusedApp` from that device before choosing `appId`.
 3. Start from a skeleton flow with `launchApp`.
 4. Add a selector-based launch readiness wait for a stable screen element.
-5. Use Inspector if interactive discovery is possible.
+5. **Unfamiliar screen, do not know where to tap yet:** start Inspector and
+   click anywhere on the live screenshot if a human is driving; if not (an
+   agent working non-interactively), call `suggest_selectors` with **no**
+   `query`/`point` - it lists every visible/clickable element on the current
+   screen with bounds and a ranked selector, so you do not need to guess a
+   coordinate or element name first. See "MCP Selector Suggestions" below.
 6. If Inspector is not available, run with `--snapshot` and inspect UI XML.
 7. Convert the target element into the highest-priority stable selector.
 8. Validate YAML, list indexes, then rerun only the command being tested.
 
 ## Selector Priority
 
-Use the first stable selector available:
+Use the first stable selector available (same order as `SKILL.md`'s Canonical
+YAML section - keep both in sync):
 
-1. `id`, `accessibilityId`, `contentDesc`, `desc`
-2. exact `text`
-3. `placeholder`, `role`, `css` for Web
-4. `regex` for dynamic visible text
-5. relative selector near a stable anchor
-6. `type` with `index`
+1. `regex` / bare-string shorthand (e.g. `tap: "name|tên"`) for dynamic or
+   multi-language visible text
+2. `id` when a stable resource id exists in the hierarchy
+3. exact `text` (`exact: true`) when stable and single-locale
+4. Platform fields: `desc`/`accessibilityId`/`contentDesc`, `placeholder`,
+   `role`, `css` for Web
+5. relative selector (`below`/`above`/`rightOf`/`leftOf`) near a stable anchor
+6. `type` with `index` (omit `index` when it is 0)
 7. `ocr` on Android, iOS, or Web
 8. `image` on Android, iOS, or Web
 9. `point`
+
+"Prefer regex first" does not mean writing `regex:` by hand for ordinary
+stable text. `tap`/`see`/`waitUntilVisible`/`scrollUntilVisible` and other
+shorthand-supporting commands auto-detect this: a bare string is parsed as
+`regex` only when it contains a regex metacharacter (`.*`, `.+`, `^...$`,
+`\d+`, `\d{`, `[`, `(`, or `|`); otherwise it resolves to plain `text`. So the
+actual rule is: **always try the bare-string shorthand first** and let the
+parser classify it - reach for `id`/`desc` only when text alone is not unique
+or stable enough. See `SKILL.md`'s "Terse YAML Style" section for the full
+shorthand rules.
 
 Coordinates are allowed only when no semantic selector exists or when testing
 canvas/Android Auto/graphics-heavy UI.
@@ -73,6 +93,118 @@ instead of raw screen `point` coordinates:
 If the failure screenshot/UI XML belongs to a different package than the
 expected `appId`, stop selector tuning and debug app launch, crash, or wrong
 target selection.
+
+## Terse YAML Style
+
+Prefer the shortest form that still expresses the selector correctly. Two
+independent shorthand mechanisms exist - do not confuse them:
+
+**1. Auto-regex-detecting string shorthand** - a bare string is parsed as
+`regex` only if it contains a regex metacharacter (`.*`, `.+`, `^...$`,
+`\d+`, `\d{`, `[`, `(`, or `|`); otherwise it resolves to plain `text`.
+Applies to:
+
+- `tap` / `longPress` / `doubleTap`
+- `see` / `assertVisible` / `assertNotVisible` / `waitUntilVisible` /
+  `waitSee` / `waitUntilNotVisible`
+- `scrollUntilVisible`
+- `drag.from` / `drag.to`
+- the relative-anchor sub-fields `rightOf` / `leftOf` / `above` / `below`
+
+```yaml
+# Prefer:
+- tap: "Login"
+- see: "Order #[0-9]+"        # auto-detected as regex (has [0-9])
+- tap:
+    type: "Switch"
+    rightOf: "Bedroom"          # anchor shorthand, auto-detected as text
+
+# Over:
+- tap:
+    text: "Login"
+- see:
+    regex: "Order #[0-9]+"
+- tap:
+    type: "Switch"
+    rightOf:
+      text: "Bedroom"
+```
+
+Escalate to the full object form only when you need a field the shorthand
+cannot express: `index > 0`, `exact: true`, `timeout`, `soft`, a
+platform-specific field (`id`, `desc`, `accessibilityId`, `css`, `role`), or
+an explicit `regex:`/`text:` override when auto-detection would pick wrong
+(rare - only when the visible text itself legitimately contains characters
+like `(` or `|`).
+
+**2. Plain-value shorthand (not regex-related)** - a bare value replaces a
+single-field struct:
+
+- `wait: 1500` (a number, milliseconds) instead of `wait: { ms: 1500 }`
+- `ocr: "Continue"` instead of `ocr: { text: "Continue" }`
+
+`copyTextFrom` and most other multi-field selector params have **no**
+shorthand - always use the full object form for those.
+
+**Omit default fields.** `index: 0` is the default; omit it entirely rather
+than writing `index: 0`. Only write `index` when it is greater than 0 (i.e.
+targeting the 2nd+ match). Do the same for any other field whose default is
+already correct for the case at hand - do not restate defaults just to be
+explicit.
+
+```yaml
+# Prefer (index 0 is default, omitted):
+- tap:
+    type: "Text"
+
+# Over:
+- tap:
+    type: "Text"
+    index: 0
+```
+
+After simplifying an existing flow to this style, run `validate --json` (and
+`list --json` if selectors changed) to confirm the shorthand still resolves
+to the same command shape you intended - do not assume the rewrite is
+behavior-preserving without checking.
+
+## Platform Gotchas
+
+Real-device findings that are easy to misdiagnose as selector or tool bugs:
+
+- **iOS real devices**: `clearState`, `setPermissions`, and `clearKeychain`
+  are genuine no-ops on a real (non-jailbroken) device - Apple gives no API
+  for one app to wipe another app's sandboxed data. Only full uninstall +
+  reinstall actually resets state. Do not treat a "clean" flag as proof the
+  app was reset; verify with a visible first-run indicator instead.
+- **iOS accessible label vs. visible text**: an element's accessibility
+  label/placeholder can differ from what is rendered on screen (e.g. a search
+  bar shows "Tìm kiếm địa chỉ" visually but its real label is "Tìm kiếm địa
+  điểm"). Always select from the hierarchy dump, never by guessing the label
+  from a screenshot.
+- **iOS back navigation**: the generic edge-swipe `back` gesture is
+  unreliable per-screen. Some screens expose a real back-button element, but
+  its accessible label is inconsistent (`"backIcon"` on one screen, `"arrow
+  left"` on another, absent on others). Check the hierarchy dump per screen
+  instead of hard-coding one label everywhere.
+- **Android Flutter/Compose**: the semantics tree can lag one snapshot behind
+  what is visibly rendered (a race, not a missing selector). If a
+  known-correct selector fails once right after a screen transition, retry
+  before switching to OCR/point.
+- **Cross-platform duplicate text**: a subtitle or label that appears
+  identically on two different screens makes `waitSee`/`see` a false-positive
+  readiness signal - it can pass without actually confirming navigation.
+  Always pick a readiness selector that exists on exactly one screen in the
+  flow.
+- **Inspector inside an embedded webview (Antigravity/VS Code fork IDEs)**: a
+  newer Chromium enforces Private Network Access CORS, which can block the
+  Inspector's `fetch()` calls to `localhost` from inside the webview even
+  though the initial page load succeeds. This is already handled by
+  `inspector/server.rs`'s `allow_private_network(true)`; if screenshots load
+  but every API call fails with "Failed to fetch" on a custom-built CLI, check
+  this CORS setting before assuming a device/connection problem - and check
+  which `lumi-tester` binary the IDE actually resolves via PATH (a stale
+  separately-installed copy is a more common cause than the code itself).
 
 ## Inspector Workflow
 
@@ -102,17 +234,42 @@ unless it is clearly unstable, generated, localized, or duplicated.
 
 ## MCP Selector Suggestions
 
-When a failure XML exists, prefer `suggest_selectors` before manually reading a
-large hierarchy:
+`suggest_selectors` works on every platform (Android/iOS/macOS/Windows/Web) -
+it is backed by the same `SelectorScorer` the recorder and Inspector use, so
+ranking, uniqueness, and `index` are computed from the real element list, not
+guessed. Prefer it before manually reading a large hierarchy dump.
+
+With a running Inspector, omit `outputDir`/`file` and it queries the live
+session directly:
 
 ```text
-suggest_selectors outputDir=./output file=fail_login_cmd3_ui.xml query=Login
-suggest_selectors outputDir=./output file=fail_login_cmd3_ui.xml point=540,960
+suggest_selectors query=Login
+suggest_selectors point=540,960
+```
+
+**Omit both `query` and `point` on a screen you have never seen before** - it
+returns every matched element on the current screen (up to `limit`) with
+bounds and a ranked selector each, so you can discover what is tappable
+without already knowing a coordinate or a label to search for:
+
+```text
+suggest_selectors limit=30
+```
+
+With a saved hierarchy dump (e.g. a failure artifact), pass `outputDir`,
+`file`, and the required `platform`:
+
+```text
+suggest_selectors outputDir=./output file=fail_login_cmd3_ui.xml platform=android query=Login
+suggest_selectors outputDir=./output file=fail_login_cmd3_ui.xml platform=android point=540,960
 ```
 
 Use `query` when you know visible text, resource id, content description, or
 class. Use `point` when you know where the target appears in the screenshot.
-The tool returns ranked selector candidates with YAML snippets.
+The tool returns ranked selector candidates with YAML snippets and each
+candidate's real `index` among duplicates - prefer the top result unless it is
+clearly unstable, auto-generated-looking, or duplicated with a lower index
+than expected.
 
 ## Snapshot Workflow
 

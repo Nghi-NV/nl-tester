@@ -190,6 +190,8 @@ tests/generated/<feature>/
     login.yaml
     seed_data.yaml
     grant_permissions.yaml
+  screens/                  # also skipped by directory runs (page-object-style
+    home_screen.yaml         # per-screen selector definitions, if used)
   smoke/
     001_open_feature.yaml
     002_primary_happy_path.yaml
@@ -209,11 +211,43 @@ testcase batch stay together.
 
 Directory runs automatically skip files named `setup.yaml`, `setup.yml`,
 `teardown.yaml`, and `teardown.yml`, then execute root setup/teardown hooks
-around the main files. Directories named `subflows/` are skipped during
-directory collection; call those reusable flows explicitly with `runFlow`.
-If a scenario needs per-file setup, call an explicit `runFlow` inside that
-scenario or run self-contained files separately. Nested directory hooks are not
-auto-applied unless that nested directory is the folder passed to `run`.
+around the main files. Directories named `subflows/` and `screens/` are
+skipped during `run`'s directory collection; call those reusable flows
+explicitly with `runFlow`. If a scenario needs per-file setup, call an
+explicit `runFlow` inside that scenario or run self-contained files
+separately.
+
+`validate` and `list` do **not** apply the `subflows/`/`screens/` exclusion -
+they parse and report every YAML file found recursively, subflows included.
+Only `run`'s own collected file list reflects what actually executes
+standalone; `list --json` output may include command indexes for files that
+never run on their own.
+
+**Hook scope, verified against the runner source**: `setup.yaml`/`teardown.yaml`
+only run when they sit directly in the exact folder passed to `run` - the
+lookup does **not** cascade into nested feature folders, even though `run`
+still collects and executes every YAML file found recursively underneath.
+
+```text
+auto_test/
+  setup.yaml          # runs once IF you `run auto_test/`
+  android/
+    setup.yaml         # runs once IF you `run auto_test/android/` directly -
+    home/               # but is SILENTLY SKIPPED (not run as a hook, not run
+      setup.yaml        # as a test either) if you instead `run auto_test/`
+      open_home.yaml     # and this file still gets executed either way
+```
+
+Two consequences worth planning around:
+
+1. **One global before/after for the whole suite**: put exactly one
+   `setup.yaml`/`teardown.yaml` at whatever root you always pass to `run` (the
+   "run root"), not scattered across nested feature folders expecting them to
+   combine - they will not.
+2. **Isolated per-feature before/after**: run each feature folder as its own
+   `lumi-tester run <feature-folder>` invocation (e.g. one per line in a
+   script, or one per CI matrix job) so each folder's own `setup.yaml` is the
+   one actually picked up.
 
 Run a folder/group when files depend on shared setup:
 
@@ -288,6 +322,45 @@ tests/generated/account/settings/.env
 USER_EMAIL=test@example.com
 USER_PASSWORD=replace-with-secret
 ```
+
+Add that `.env` path to `.gitignore` and commit only a placeholder
+`.env.example` alongside it. Never commit a `.env` file with real
+credentials - `${VAR_NAME}` substitution exists specifically so secrets never
+need to appear in the YAML itself.
+
+To set the same values via a real OS environment variable instead (preferred
+for CI/shared secrets - nothing touches disk in the repo), export it before
+running:
+
+```bash
+# bash/zsh (macOS/Linux) - persists for the rest of the shell session
+export USER_EMAIL="test@example.com"
+export USER_PASSWORD="replace-with-secret"
+lumi-tester run ./test.yaml --platform android
+
+# bash/zsh - inline, scoped to this one command only
+USER_EMAIL="test@example.com" USER_PASSWORD="replace-with-secret" \
+  lumi-tester run ./test.yaml --platform android
+```
+
+```powershell
+# Windows PowerShell - persists for the rest of the session
+$env:USER_EMAIL = "test@example.com"
+$env:USER_PASSWORD = "replace-with-secret"
+lumi-tester run .\test.yaml --platform android
+```
+
+```cmd
+:: Windows cmd.exe
+set USER_EMAIL=test@example.com
+set USER_PASSWORD=replace-with-secret
+lumi-tester run test.yaml --platform android
+```
+
+In CI, set the same variable names as pipeline/repo secrets (GitHub Actions
+`env:`/`secrets.*`, GitLab CI variables, etc.) instead of a committed `.env`
+file - the YAML does not change between local and CI runs, only where the
+value comes from.
 
 `tests/generated/account/settings/regression/001_toggle_notifications.yaml`:
 

@@ -245,3 +245,22 @@ fn extract_zip(archive_path: &Path, target_dir: &Path) -> Result<()> {
     }
     Ok(())
 }
+
+/// Best-effort open a URL in the default browser. Cross-platform: `open` on
+/// macOS, `cmd /C start` on Windows, `xdg-open` on other Unix (Linux).
+pub fn open_url(url: &str) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    let status = std::process::Command::new("open").arg(url).status();
+    #[cfg(target_os = "windows")]
+    let status = std::process::Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .status();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let status = std::process::Command::new("xdg-open").arg(url).status();
+
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        Ok(s) => anyhow::bail!("Failed to open browser (exit {})", s),
+        Err(e) => Err(e).context("Failed to launch a browser opener command"),
+    }
+}

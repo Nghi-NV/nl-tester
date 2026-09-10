@@ -216,6 +216,55 @@ enum Commands {
         output: Option<PathBuf>,
     },
 
+    /// Suggest ranked, cross-platform-correct selectors for elements matching a
+    /// query and/or near a point - for use when no Inspector session is running
+    /// (e.g. from an AI agent working from a saved hierarchy dump)
+    SuggestSelectors {
+        /// Target platform (android, ios, macos, windows, web)
+        #[arg(short, long, default_value = "android")]
+        platform: String,
+
+        /// Device serial (Android) or UDID (iOS). Omit when using --file
+        #[arg(short, long)]
+        device: Option<String>,
+
+        /// App bundle id / package to scope the hierarchy dump to (iOS/macOS)
+        #[arg(long)]
+        app_id: Option<String>,
+
+        /// Case-insensitive substring match against text/resource-id/content-desc/class
+        #[arg(short, long)]
+        query: Option<String>,
+
+        /// "x,y" - rank by proximity to this point (e.g. from a screenshot click)
+        #[arg(long)]
+        point: Option<String>,
+
+        /// Read a previously-saved hierarchy dump instead of querying a live device
+        #[arg(short, long)]
+        file: Option<PathBuf>,
+
+        /// Screen width in px - only used with --file, ignored for a live device
+        #[arg(long, default_value = "1080")]
+        width: u32,
+
+        /// Screen height in px - only used with --file, ignored for a live device
+        #[arg(long, default_value = "1920")]
+        height: u32,
+
+        /// Max number of suggestions to return
+        #[arg(short, long, default_value = "10")]
+        limit: usize,
+
+        /// Include elements that aren't clickable and have no text/content-desc
+        #[arg(long, default_value = "false")]
+        include_non_clickable: bool,
+
+        /// Print machine-readable JSON
+        #[arg(long, default_value = "false")]
+        json: bool,
+    },
+
     /// Hardware Jig automation tools (list serial ports, ping/test Jig connection)
     Jig {
         #[command(subcommand)]
@@ -261,6 +310,23 @@ enum Commands {
         repo: String,
 
         /// Print check status as machine-readable JSON
+        #[arg(long, default_value = "false")]
+        json: bool,
+    },
+
+    /// Open the Lumi Tester documentation website in your default browser
+    Docs {
+        /// Print the URL instead of opening a browser
+        #[arg(long, default_value = "false")]
+        print: bool,
+    },
+
+    /// Show which lumi-tester binary is running and where related config/skill
+    /// directories live - useful when an IDE/MCP client seems to be using a
+    /// different (stale) copy than the one you just built or updated
+    #[command(alias = "where")]
+    Which {
+        /// Print machine-readable JSON
         #[arg(long, default_value = "false")]
         json: bool,
     },
@@ -744,6 +810,99 @@ async fn async_main() -> anyhow::Result<()> {
             .await?;
         }
 
+        Commands::Docs { print } => {
+            let url = "https://nghi-nv.github.io/nl-tester/";
+            if print {
+                println!("{}", url);
+            } else {
+                println!("{} Opening {}", "📖".cyan(), url.cyan());
+                if let Err(e) = lumi_tester::utils::system::open_url(url) {
+                    eprintln!(
+                        "{} Could not open a browser automatically: {}",
+                        "⚠️".yellow(),
+                        e
+                    );
+                    println!("Open this URL manually: {}", url.cyan());
+                }
+            }
+        }
+
+        Commands::Which { json } => {
+            let exe = std::env::current_exe().ok();
+            let path_binary = which::which("lumi-tester").ok();
+            let path_mismatch = matches!((&exe, &path_binary), (Some(a), Some(b)) if a != b);
+            let home = dirs::home_dir();
+            let ai_home = home.as_ref().map(|h| h.join(".lumi-tester").join("ai"));
+            let codex_skill = home
+                .as_ref()
+                .map(|h| h.join(".codex").join("skills").join("lumi-tester-agent"));
+            let claude_skill = home
+                .as_ref()
+                .map(|h| h.join(".claude").join("skills").join("lumi-tester-agent"));
+            let antigravity_global_skill = home.as_ref().map(|h| {
+                h.join(".gemini")
+                    .join("config")
+                    .join("skills")
+                    .join("lumi-tester-agent")
+            });
+            let antigravity_workspace_skill = std::env::current_dir()
+                .ok()
+                .map(|cwd| cwd.join(".agents").join("skills").join("lumi-tester-agent"));
+
+            if json {
+                let info = serde_json::json!({
+                    "runningBinary": exe.as_ref().map(|p| p.display().to_string()),
+                    "version": env!("CARGO_PKG_VERSION"),
+                    "pathResolvedBinary": path_binary.as_ref().map(|p| p.display().to_string()),
+                    "pathMismatch": path_mismatch,
+                    "aiHome": ai_home.as_ref().map(|p| p.display().to_string()),
+                    "codexSkill": codex_skill.as_ref().map(|p| (p.display().to_string(), p.exists())),
+                    "claudeSkill": claude_skill.as_ref().map(|p| (p.display().to_string(), p.exists())),
+                    "antigravityGlobalSkill": antigravity_global_skill.as_ref().map(|p| (p.display().to_string(), p.exists())),
+                    "antigravityWorkspaceSkill": antigravity_workspace_skill.as_ref().map(|p| (p.display().to_string(), p.exists())),
+                });
+                println!("{}", serde_json::to_string_pretty(&info)?);
+            } else {
+                println!("{} Lumi Tester {}", "•".blue(), env!("CARGO_PKG_VERSION").cyan());
+                println!(
+                    "  Running binary:   {}",
+                    exe.as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "(unknown)".to_string())
+                        .cyan()
+                );
+                println!(
+                    "  Resolved on PATH: {}",
+                    path_binary
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "(not found on PATH)".to_string())
+                        .cyan()
+                );
+                if path_mismatch {
+                    println!(
+                        "  {} PATH resolves to a DIFFERENT binary than the one running here - \
+                         an IDE/MCP client using plain `lumi-tester` may be using a stale copy.",
+                        "⚠️".yellow()
+                    );
+                }
+                if let Some(p) = &ai_home {
+                    println!("  AI home:           {}", p.display().to_string().cyan());
+                }
+                for (label, dir) in [
+                    ("Codex skill", &codex_skill),
+                    ("Claude skill", &claude_skill),
+                    ("Antigravity skill (global)", &antigravity_global_skill),
+                    ("Antigravity skill (workspace)", &antigravity_workspace_skill),
+                ] {
+                    if let Some(p) = dir {
+                        let marker = if p.exists() { "✓".green() } else { "✗".dimmed() };
+                        println!("  {} {:<32} {}", marker, label, p.display().to_string().dimmed());
+                    }
+                }
+            }
+        }
+
         Commands::Ai { command } => match command {
             AiCommands::Install {
                 repo,
@@ -1045,6 +1204,91 @@ async fn async_main() -> anyhow::Result<()> {
 
             let server = InspectorServer::new(config);
             server.start().await?;
+        }
+
+        Commands::SuggestSelectors {
+            platform,
+            device,
+            app_id,
+            query,
+            point,
+            file,
+            width,
+            height,
+            limit,
+            include_non_clickable,
+            json,
+        } => {
+            use lumi_tester::inspector::{api, screen_capture};
+
+            let (elements, width, height) = if let Some(path) = file {
+                let raw = std::fs::read_to_string(&path)
+                    .with_context(|| format!("Failed to read hierarchy dump: {}", path.display()))?;
+                let elements = screen_capture::parse_hierarchy_for_platform(
+                    &platform,
+                    &raw,
+                    app_id.as_deref().unwrap_or(""),
+                    width,
+                    height,
+                );
+                (elements, width, height)
+            } else {
+                let capture = screen_capture::ScreenCapture::new(&platform, device.as_deref())
+                    .await
+                    .context("Failed to connect to device - pass --file to use a saved hierarchy dump instead")?;
+                let (dim_w, dim_h) = capture.dimensions();
+                let raw = screen_capture::get_hierarchy_for_platform(&platform, device.as_deref(), app_id.as_deref())
+                    .await
+                    .context("Failed to dump UI hierarchy from device")?;
+                let elements = screen_capture::parse_hierarchy_for_platform(
+                    &platform,
+                    &raw,
+                    app_id.as_deref().unwrap_or(""),
+                    dim_w,
+                    dim_h,
+                );
+                (elements, dim_w, dim_h)
+            };
+
+            let point_arg = point.as_deref().and_then(api::parse_point_arg);
+            let response = api::suggest_selectors_from_elements(
+                &elements,
+                width,
+                height,
+                query.as_deref(),
+                point_arg,
+                limit,
+                include_non_clickable,
+            );
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&response)?);
+            } else if response.suggestions.is_empty() {
+                println!("\n{} No matching elements found.", "⚠️".yellow());
+            } else {
+                println!(
+                    "\n{} {} element(s) matched ({} shown):\n",
+                    "🔎".cyan(),
+                    response.count,
+                    response.suggestions.len()
+                );
+                for s in &response.suggestions {
+                    let label = s
+                        .text
+                        .clone()
+                        .or_else(|| s.content_desc.clone())
+                        .unwrap_or_else(|| s.class.clone());
+                    println!("  • {} {}", label.bold(), format!("[{}]", s.class).dimmed());
+                    if let Some(dist) = s.distance_to_point {
+                        println!("      distance to point: {}px", dist);
+                    }
+                    if let Some(best) = &s.best_selector {
+                        println!("      best ({} pts): {}", best.score, best.value.green());
+                        println!("      {}", best.yaml.replace('\n', "\n      "));
+                    }
+                    println!();
+                }
+            }
         }
 
         Commands::Jig { command } => match command {

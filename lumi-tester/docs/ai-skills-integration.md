@@ -27,7 +27,17 @@ iwr https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts
 
 ## 3. Google Antigravity Integration
 
-Antigravity automatically discovers skills from two roots:
+`lumi-tester ai install` installs the skill for both roots Antigravity
+discovers automatically - run it from the workspace you want the
+workspace-level copy in:
+
+```bash
+lumi-tester ai install
+# writes ./.agents/skills/lumi-tester-agent/ (this workspace only)
+# writes ~/.gemini/config/skills/lumi-tester-agent/ (all workspaces)
+```
+
+To install manually instead:
 
 ### A. Workspace Level (Per-repository)
 Place the skill inside the `.agents/skills/` directory at the root of your workspace:
@@ -50,13 +60,31 @@ cp -r lumi-tester/ai/antigravity-skill/lumi-tester-agent ~/.gemini/config/skills
 
 ## 4. OpenAI Codex Skill Integration
 
-Codex discovers skills in `~/.codex/skills/`:
+`lumi-tester ai install` also installs this. Codex discovers skills in
+`~/.codex/skills/`; to install manually instead:
 ```bash
 mkdir -p ~/.codex/skills
 cp -r lumi-tester/ai/codex-skill/lumi-tester-agent ~/.codex/skills/
 ```
 
-## 5. Lumi Tester MCP Server (`lumi-tester-mcp`)
+## 5. Claude Code Skill Integration
+
+`lumi-tester ai install` also installs the skill for Claude Code, which
+discovers skills in `~/.claude/skills/`:
+
+```bash
+lumi-tester ai install
+# writes ~/.claude/skills/lumi-tester-agent/ (same bundle as the Codex skill)
+```
+
+To install manually without running `ai install`:
+
+```bash
+mkdir -p ~/.claude/skills
+cp -r lumi-tester/ai/codex-skill/lumi-tester-agent ~/.claude/skills/
+```
+
+## 6. Lumi Tester MCP Server (`lumi-tester-mcp`)
 
 Connect AI assistants to Lumi Tester via Model Context Protocol (MCP):
 
@@ -79,17 +107,23 @@ Connect AI assistants to Lumi Tester via Model Context Protocol (MCP):
 - `doctor`: Check platform runtime dependencies.
 - `validate_yaml`: Validate syntax and parameters without launching a device.
 - `list_tests`: Enumerate test flows, tags, and runnable command indexes.
+- `schema`: Inspect the YAML command/header JSON shape.
 - `run_test`: Execute full flow or target command index (`command_index`).
-- `read_report` / `read_events`: Inspect structured JSON reports and event logs.
+- `read_report` / `read_events` / `read_artifact`: Inspect structured JSON
+  reports, event logs, and bounded text artifacts (failure XML/logs).
+- `inspector_get`: Call a running Lumi Inspector REST endpoint (screenshot,
+  hierarchy, element-at).
+- `suggest_selectors`: Ranked, cross-platform selector suggestions for a
+  query/point, from a running Inspector or a saved hierarchy dump.
 
-## 6. Workspace Rules (`AGENTS.md` / `GEMINI.md`)
+## 7. Workspace Rules (`AGENTS.md` / `GEMINI.md`)
 
 Include the [AGENTS.md](file:///AGENTS.md) guide in your project root to provide immediate context on:
 - Canonical `header --- commands` YAML structure.
 - Selector priority: `regex` & shorthand (`tap: "Save|Lưu"`) $\rightarrow$ explicit `id` $\rightarrow$ `exact: true text` $\rightarrow$ platform attributes.
 - Self-test verification loop before claiming completion.
 
-## 7. Verification & Health Checks
+## 8. Verification & Health Checks
 
 Verify your AI skill setup:
 ```bash

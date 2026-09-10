@@ -158,6 +158,18 @@ after selector-based waits are not available.
 - wait: 1000
 ```
 
+`extendedWaitUntil`: a single wait that can require an element to become
+visible, become not-visible, or both, with one shared timeout - use instead of
+`waitUntilVisible` when the readiness condition is "either of two elements" or
+when you also need a not-visible check without a second command.
+
+```yaml
+- extendedWaitUntil:
+    timeout: 10000
+    visible:
+      text: "Done"
+```
+
 ## Control Flow
 
 `repeat`: run nested commands a fixed number of times or while a condition is
@@ -204,6 +216,19 @@ true.
 for Android `content-desc` or iOS accessibility identifiers unless the local
 runner has been verified to support that selector form.
 
+`find`: define a reusable named selector once, then reference it with
+`element: "${name}"` from later commands instead of repeating the same
+selector fields across a long flow. `element` is a plain field on `tap`/`see`/
+etc. selector objects - it is not the bare-string shorthand.
+
+```yaml
+- find:
+    name: loginButton
+    id: login_button
+- tap:
+    element: "${loginButton}"
+```
+
 ## Variables, Data, And Scripts
 
 `setVar`, `assertVar`: store and assert runtime variables.
@@ -215,6 +240,19 @@ runner has been verified to support that selector form.
 - assertVar:
     name: email
     equals: test@example.com
+```
+
+`copyTextFrom`, `pasteText`: read an element's text into the clipboard, then
+paste it into the currently focused field. Unlike `tap`/`see`, `copyTextFrom`
+has **no** bare-string shorthand - always use the full selector object, even
+for a simple case.
+
+```yaml
+- copyTextFrom:
+    id: order_number
+- tap:
+    id: search_field
+- pasteText
 ```
 
 `runScript`: run a host shell command or local script. A `.js` file path runs
@@ -266,6 +304,20 @@ workflow commands. Use for visual bug reports, not normal assertions.
     speed: 30
     loop: false
 - stopMockLocation
+```
+
+`mockLocationControl`: adjust an already-running mock GPS playback (speed,
+pause, resume) without stopping/restarting it. Useful for testing a UI's
+live-speed reaction. Runs on both Android and iOS.
+
+```yaml
+- mockLocationControl:
+    speed: 60
+- wait: 2000
+- mockLocationControl:
+    pause: true
+- mockLocationControl:
+    resume: true
 ```
 
 ## Visual Assertions
