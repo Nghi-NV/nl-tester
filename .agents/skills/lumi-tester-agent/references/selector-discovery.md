@@ -191,6 +191,24 @@ Real-device findings that are easy to misdiagnose as selector or tool bugs:
   what is visibly rendered (a race, not a missing selector). If a
   known-correct selector fails once right after a screen transition, retry
   before switching to OCR/point.
+- **Android apps registered as the device's HOME/launcher** (embedded
+  smart-display/kiosk devices commonly do this - check with `adb shell
+  dumpsys package <appId> | rg 'category.HOME'` before assuming a normal
+  app): `launchApp`'s `am start` on an already-foreground HOME activity is a
+  heavier OS operation than a normal app relaunch. Verified live: hierarchy
+  queries can stay unavailable for 20+ seconds afterward even though the app
+  displays correctly the whole time. For this app type, skip `launchApp` and
+  treat its default/idle screen as the starting point instead of relaunching
+  it - only use `launchApp`/`stopApp`+`launchApp` when you specifically need
+  a real cold-boot scenario, and budget significantly more than the default
+  timeout for the first readiness check afterward.
+- **Android TV-style / D-pad-focus navigable lists** (common on smart
+  displays, set-top boxes, embedded devices - not just literal Android TV):
+  `swipe` can silently no-op on a list that is actually scrolled by focus
+  movement, not touch - it returns success without changing anything on
+  screen. If a `suggest_selectors` dump shows content clipped at the screen
+  edge but `swipe` does not reveal more of it, try `pressKey: "DPAD_DOWN"`/
+  `"DPAD_UP"` instead before assuming the list is exhausted.
 - **Cross-platform duplicate text**: a subtitle or label that appears
   identically on two different screens makes `waitSee`/`see` a false-positive
   readiness signal - it can pass without actually confirming navigation.
@@ -222,6 +240,17 @@ Real-device findings that are easy to misdiagnose as selector or tool bugs:
   negative control (an unambiguous nonsense selector correctly fails to
   resolve after switching away from the app that would have matched it) -
   guards against silently falling back to whatever happens to be frontmost.
+- **`--json` output is pure JSON on stdout only - status lines go to
+  stderr, do not merge them.** Commands like `suggest-selectors --json` print
+  human-readable progress ("Agent already running", etc.) via stderr
+  specifically so stdout stays parseable; a shell redirect that merges both
+  (`2>&1`) before piping to a JSON parser breaks parsing even though the tool
+  itself is working correctly. Capture stdout and stderr separately (or
+  discard stderr) when parsing `--json` output programmatically.
+- **`suggest_selectors`'s `query` does not support `|` alternation** the way
+  `tap`/`see` shorthand does - it is a plain case-insensitive substring
+  match. A query like `"A|B"` is treated as one literal string (almost never
+  matches) rather than "A or B"; issue separate queries instead.
 
 ## Inspector Workflow
 

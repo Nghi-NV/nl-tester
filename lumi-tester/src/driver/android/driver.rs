@@ -1958,9 +1958,19 @@ impl PlatformDriver for AndroidDriver {
         while start.elapsed() < timeout {
             // Each `is_visible` call below does a fresh `get_ui_hierarchy()` dump -
             // see that function's doc comment for why this must never be cached.
-
-            if self.is_visible(selector).await? {
-                return Ok(true);
+            //
+            // A single dump attempt can transiently fail (e.g. right after `launchApp`
+            // restarts the target app's process - confirmed live: `am start` on an
+            // already-foreground activity actually kills+respawns the process, and a
+            // `uiautomator dump`/hierarchy query issued in that narrow window can come
+            // back "Killed" even though the app recovers within one more poll tick).
+            // That is exactly the kind of blip a "wait until visible" loop exists to
+            // absorb - propagating it as a hard error here defeats the whole point of
+            // polling instead of a fixed sleep, so treat it the same as "not visible
+            // yet" and keep polling rather than aborting the wait.
+            match self.is_visible(selector).await {
+                Ok(true) => return Ok(true),
+                Ok(false) | Err(_) => {}
             }
 
             tokio::time::sleep(Duration::from_millis(interval)).await;
@@ -1982,9 +1992,15 @@ impl PlatformDriver for AndroidDriver {
         while start.elapsed() < timeout {
             // Each `is_visible` call below does a fresh `get_ui_hierarchy()` dump -
             // see that function's doc comment for why this must never be cached.
-
-            if !self.is_visible(selector).await? {
-                return Ok(true);
+            //
+            // Same transient-failure tolerance as `wait_for_element` above, but a
+            // dump error must NOT be treated as "confirmed absent" here - that would
+            // be a false positive (the element could still be on screen; we just
+            // failed to check). Only a successful dump that actually finds nothing
+            // counts as absence; an error just retries like "still visible" would.
+            match self.is_visible(selector).await {
+                Ok(false) => return Ok(true),
+                Ok(true) | Err(_) => {}
             }
 
             tokio::time::sleep(Duration::from_millis(interval)).await;

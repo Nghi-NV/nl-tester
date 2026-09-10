@@ -7,6 +7,7 @@ feature, convert testcase documents into YAML, or organize generated tests.
 
 - Coverage loop
 - Research inputs
+- Systematic app exploration loop
 - Coverage model
 - Test design techniques
 - App and web coverage checklist
@@ -21,7 +22,9 @@ feature, convert testcase documents into YAML, or organize generated tests.
 1. Identify the feature, platform, app identity, target environment, user roles,
    and data dependencies.
 2. Research the system from product artifacts and runtime behavior before
-   writing YAML.
+   writing YAML. When no spec/existing tests are available, run the
+   "Systematic App Exploration Loop" below first - do not start writing
+   YAML from a guess at what the app contains.
 3. Build a small coverage model. Include screens/pages, inputs, permissions,
    states, roles, network conditions, integrations, and platform differences.
 4. Generate testcase candidates with the techniques below.
@@ -49,7 +52,151 @@ Use every available source to avoid shallow happy-path suites:
 
 When requirements are incomplete, explore the app/web surface and create a
 coverage map from observable screens, forms, actions, states, and error
-surfaces. Mark uncertain expectations as `exploratory` until confirmed.
+surfaces. Mark uncertain expectations as `exploratory` until confirmed. See
+"Systematic App Exploration Loop" below for the concrete process - this is
+the normal case for a real assignment ("test this app"), not a fallback.
+
+## Systematic App Exploration Loop
+
+Use this when you are handed an app/page with **no spec, no existing tests,
+no walkthrough** - the actual default case for most real assignments, not an
+edge case. The goal is a written screen map you can point to as proof nothing
+was skipped, not a mental impression of "I clicked around a bit."
+
+This is a breadth-first traversal: fully inventory the CURRENT screen before
+following any one path deep, so sibling actions are not left unexplored
+because you got absorbed in one flow.
+
+1. **Launch cold.** `launchApp: { clearState: true }` once, record the
+   first-run/onboarding screens separately (they often never appear again in
+   the same session) - then relaunch normally (no `clearState`) for the main
+   traversal so you are not repeatedly fighting onboarding.
+2. **Inventory the current screen - including what is off-screen.** Call
+   `suggest_selectors` (or `lumi-tester suggest-selectors --platform <p>
+   --device <d>`) with **no** `query`/`point` and a high `limit` (e.g. 50),
+   `includeNonClickable: true`. This returns every visible/interactive
+   element with bounds and a ranked selector each - the screen's full
+   inventory, not just what you happened to notice. **This only sees what is
+   currently rendered.** Long lists are commonly virtualized on mobile - an
+   item below the fold does not exist in the tree at all until scrolled into
+   view. If the screen scrolls, `scrollUntilVisible`/`swipe` to the bottom
+   and re-run the inventory at each stop before treating the screen as fully
+   catalogued; do not assume the first dump is complete just because nothing
+   obviously indicates more content. Pair with a screenshot
+   (`inspector_get /api/screenshot` or `--snapshot` on a real run) for a
+   visual record next to the element list.
+3. **Record the screen** in a screen map (see format below) before touching
+   anything else on it: an id, how you reached it (parent screen + the exact
+   action), the screenshot path, and the full element list from step 2.
+4. **Turn every clickable element into a candidate edge** to explore from
+   this screen - not just the ones that look obviously important. An
+   element you skip because it "looks like a settings toggle" is exactly the
+   kind of thing coverage gaps are made of.
+5. **Follow one edge at a time.** Tap it, wait for the UI to settle, repeat
+   step 2 on the result:
+   - New element inventory / new screenshot -> a new screen. Add it to the
+     map and continue the loop from it.
+   - Same screen re-appears (a toggle, a no-op tap, a modal that closed
+     itself) -> mark the edge explored, no new screen.
+   - A dialog/sheet/permission prompt appeared over the same screen -> still
+     a new screen entry (dialogs are exactly where coverage gaps hide).
+6. **Navigate back to the parent screen** after each edge before trying the
+   next sibling edge on the same screen - explore breadth-first, not by
+   drilling arbitrarily deep down the first interesting path and losing track
+   of what else was on the starting screen.
+7. **Explicitly track these edge types separately** - they are the ones most
+   often missed because they are not a plain tap:
+   - Long-press / context menu (`longPress`, not `tap`)
+   - Swipe-to-reveal row actions, pull-to-refresh (`swipe`)
+   - Empty state vs. populated state (may need seeded data / no data as two
+     separate visits to the same screen)
+   - Error/offline state (`setNetwork`/airplane-mode-style simulation)
+   - Permission dialogs - allow and deny are two separate branches, not one
+   - Deep links / notification / share-target entry points - these are not
+     reachable by tapping from within the app at all; try them explicitly
+     (`openLink`) as their own root-level entries in the map
+   - Destructive actions (delete, logout, clear data) - explore these last on
+     a given branch, note them as "requires re-seed/relaunch to continue"
+     rather than tapping through blind, since they invalidate the rest of
+     that branch's state
+8. **Stop when** every discovered screen has zero unexplored edges, or you
+   hit an explicit budget (state the number you used, e.g. "40 screens/40
+   dialogs for this app" - do not silently stop and imply completeness).
+   Report the budget and the remaining unexplored-edge count if you stop
+   early; do not claim full coverage you did not reach.
+9. **One traversal is one role/state - repeat it, do not assume it
+   generalizes.** A single BFS pass only maps what one account/data state can
+   see. `Actors/roles` and `States` in the Coverage Model below are not just
+   theory to apply to screens you already found - a different role or state
+   commonly exposes screens/elements the first pass never reaches at all
+   (an admin menu, an "upgrade" banner only shown to free-tier accounts, a
+   resume-onboarding screen only shown to a partially-registered account).
+   Run the loop again per role/state that plausibly changes the UI, and merge
+   the resulting screen maps rather than treating the first one as the app's
+   full surface.
+10. **Feed the map into the Coverage Model below.** For each discovered
+   screen, run it through the coverage checklist (happy/edge/negative,
+   permissions, states, network) to generate testcases - exploration produces
+   the inventory, the Coverage Model/Test Design Techniques sections below
+   turn that inventory into actual test cases.
+11. **Re-run after app updates, and diff the screen maps.** A screen map is a
+    snapshot of one app version. On the next version, re-run the loop and
+    compare against the saved map - new screens/elements are coverage gaps
+    waiting to happen, removed ones are dead test cases to retire, changed
+    ones are where selectors are most likely to break next.
+
+### What Clicking Can't Discover
+
+The traversal above only maps what UI navigation can reach. It structurally
+cannot find these - each needs its own deliberate investigation, not more
+clicking, and none of them show up as an "unexplored edge" in the screen map:
+
+- **Time/schedule-dependent behavior**: features gated by date, session
+  expiry, subscription renewal, rate limits that reset on a timer.
+- **Feature flags / A-B variants / gradual rollouts**: the build you are
+  exploring may not have the flag enabled that another user's build does -
+  ask what flags exist rather than assuming what you see is everything.
+- **Concurrency/race conditions**: the same account active on two
+  devices/sessions at once, two rapid duplicate submits, a background sync
+  racing a foreground edit.
+- **Third-party integration failure modes**: payment gateway down or
+  declined, push notification service unreachable, social login provider
+  down or revoked, map/analytics SDK failure - these paths are invisible
+  unless the dependency is deliberately made to fail.
+- **Accessibility**: screen reader label correctness (distinct from having
+  *any* accessible name, which the exploration loop already surfaces),
+  font-scaling/zoom layouts, color contrast, keyboard-only navigation on web
+  and desktop.
+- **Localization**: other locales, RTL layout, string length overflow in
+  translated text, locale-specific date/number/currency formatting.
+- **Performance**: cold-start time, memory growth over a long session, large
+  dataset scroll/render performance, battery drain.
+- **Security**: auth bypass attempts, expired/tampered tokens, insecure local
+  storage of sensitive data, session fixation/hijacking.
+
+Treat this list the same way as the screen map: name which of these are in
+scope, which are explicitly out of scope for this assignment, and which need
+a specialist (security/perf/accessibility) rather than silently omitting
+them.
+
+### Screen Map Format
+
+Keep this next to the generated suite (e.g. `screen-map.csv` in the feature
+folder) so "did we cover everything discovered" is a file someone can check,
+not a claim:
+
+```text
+screen_id,reached_from,action,screenshot,element_count,notable_elements,edge_types_seen,status,testcases_yaml
+home,-,launchApp,home.png,18,"Search bar; 3 tabs; FAB","tap",explored,smoke/001_home.yaml
+search_results,home,"tap: Search",search.png,12,"Result list; empty state not seen yet","tap,swipe",partial,regression/010_search.yaml
+settings,home,"tap: Settings tab",settings.png,9,"Logout button; Notifications toggle","tap,longPress",explored,regression/020_settings.yaml
+logout_confirm,settings,"tap: Logout",logout.png,3,"Confirm/Cancel dialog",tap,explored,regression/021_logout.yaml
+```
+
+`status` is one of `explored` (zero unexplored edges), `partial` (budget hit
+or a branch deferred, say why), or `skipped-destructive` (identified but not
+executed to avoid corrupting the rest of the traversal - note the risk
+instead).
 
 ## Coverage Model
 
@@ -441,3 +588,9 @@ Before claiming coverage is enough, verify:
   included or explicitly out of scope.
 - Test files validate, grouped dependencies are runnable, and reports/artifacts
   are produced for debug.
+- If this suite came from the Systematic App Exploration Loop: every screen
+  map entry is `explored` or has a documented reason it is `partial`/
+  `skipped-destructive`; the loop ran per role/state that plausibly changes
+  the UI, not just once; and each "What Clicking Can't Discover" item is
+  explicitly marked in-scope, out-of-scope, or needs-specialist - not silently
+  dropped.

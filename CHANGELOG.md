@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.39] - 2026-09-10
+
+### 🐛 Fixes
+
+- **Android `waitUntilVisible`/`waitUntilNotVisible` no longer abort on a single transient hierarchy-dump failure.** Found live while testing a real embedded smart-display app: `launchApp`'s `am start` on an already-foreground activity that is registered as the device's `HOME`/launcher (common on kiosk/smart-display devices) can leave hierarchy queries failing for 20+ seconds afterward even though the app displays correctly the whole time. `wait_for_element`/`wait_for_absence` previously propagated a single dump error as a hard failure (`?`), defeating the entire purpose of a polling wait loop; they now treat a transient dump error the same as "not visible yet" and keep polling until the real timeout, exactly like a normal not-yet-rendered screen.
+
+### 📚 AI Skill Documentation
+
+- Added a real "Systematic App Exploration Loop" to `references/testcase-design.md` - a concrete, tool-grounded process (BFS traversal using `suggest_selectors`, a written screen-map artifact, explicit budget/status tracking) for testing an app with no spec/existing tests, which is the common case for a real assignment, not an edge case. Previously this scenario was covered by a single vague sentence.
+- Added self-critique amendments after dogfooding the loop against a real, previously-untested app: scroll-to-exhaust each screen before considering it catalogued (virtualized lists don't expose off-screen items), repeat the traversal per role/account-state rather than assuming one pass generalizes, a new "What Clicking Can't Discover" checklist (time-based behavior, feature flags, concurrency, third-party integration failures, accessibility, localization, performance, security), and re-running/diffing the screen map across app updates.
+- New "Platform Gotchas" entries, all verified live against a real embedded Android smart-speaker app: apps registered as the device's `HOME`/launcher need special `launchApp` handling; D-pad-focus-navigable lists (common on smart-displays/set-top-boxes) make `swipe` silently no-op - use `pressKey: DPAD_DOWN/UP`; `--json` output is stdout-only, merging stderr with `2>&1` before parsing breaks it even though the tool works correctly; `suggest_selectors`'s `query` is a plain substring match, not `|`-alternation like the `tap`/`see` shorthand.
+
 ## [v0.1.38] - 2026-09-10
 
 ### 🚀 Highlights & Improvements
