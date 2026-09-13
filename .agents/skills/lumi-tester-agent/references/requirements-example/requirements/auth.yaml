@@ -1,0 +1,18 @@
+requirements:
+  REQ-AUTH-001:
+    title: Đăng nhập bằng số điện thoại
+    priority: must
+    tags: [login, otp]
+    expect:
+      - SĐT + OTP hợp lệ -> vào Home
+      - "Sai OTP 3 lần -> khoá 5 phút, hiện {error_toast}"
+    reject:
+      - SĐT không tồn tại
+      - OTP hết hạn
+    edge:
+      - "Mất mạng giữa lúc gửi OTP ({network_offline})"
+
+  REQ-AUTH-002:
+    title: Quên mật khẩu
+    priority: should
+    skip: "Chưa triển khai trong bản build hiện tại (SRS mục 4.3)"

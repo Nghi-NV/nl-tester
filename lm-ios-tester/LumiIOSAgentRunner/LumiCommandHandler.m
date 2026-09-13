@@ -170,6 +170,78 @@ static NSString *LumiOrientationToString(UIDeviceOrientation o)
   return [self lumiSynthesizeEvent:record];
 }
 
+// 2-finger gesture primitive: each finger's whole down->move(xN)->up timeline is built as
+// its own `XCPointerEventPath`, then BOTH paths are added to the SAME
+// `XCSynthesizedEventRecord` - this is what makes the two touches simultaneous/multi-touch
+// (delivering two separate single-path records back-to-back would read as two sequential
+// single-finger gestures to the app, not a pinch/shove). `pinch`/`shove` below both build
+// on this; the only difference between them is where each finger's start/end points sit.
++ (BOOL)synthesizeTwoFingerGestureFrom:(CGPoint)finger1Start to:(CGPoint)finger1End
+                                    and:(CGPoint)finger2Start to:(CGPoint)finger2End
+                            durationSec:(double)duration
+{
+  XCSynthesizedEventRecord *record = [[XCSynthesizedEventRecord alloc] initWithName:@"LumiTwoFingerGesture"];
+
+  XCPointerEventPath *path1 = [[XCPointerEventPath alloc] initForTouchAtPoint:finger1Start offset:0.0];
+  XCPointerEventPath *path2 = [[XCPointerEventPath alloc] initForTouchAtPoint:finger2Start offset:0.0];
+
+  NSInteger steps = 10;
+  for (NSInteger i = 1; i <= steps; i++) {
+    double ratio = (double)i / (double)steps;
+    double offset = duration * ratio;
+    CGPoint p1 = CGPointMake(finger1Start.x + (finger1End.x - finger1Start.x) * ratio,
+                              finger1Start.y + (finger1End.y - finger1Start.y) * ratio);
+    CGPoint p2 = CGPointMake(finger2Start.x + (finger2End.x - finger2Start.x) * ratio,
+                              finger2Start.y + (finger2End.y - finger2Start.y) * ratio);
+    [path1 moveToPoint:p1 atOffset:offset];
+    [path2 moveToPoint:p2 atOffset:offset];
+  }
+
+  [path1 liftUpAtOffset:duration];
+  [path2 liftUpAtOffset:duration];
+
+  [record addPointerEventPath:path1];
+  [record addPointerEventPath:path2];
+
+  return [self lumiSynthesizeEvent:record];
+}
+
+// Pinch centered at `center`: two fingers start `startRadius` points from center along a
+// line at `angleDeg` and end `endRadius` points from center along that same line - zoom in
+// when endRadius > startRadius, zoom out when endRadius < startRadius. Standard 2-finger
+// pinch-to-zoom every map SDK (Mapbox included) recognizes.
++ (BOOL)synthesizePinchAtCenter:(CGPoint)center
+                     startRadius:(double)startRadius
+                       endRadius:(double)endRadius
+                        angleDeg:(double)angleDeg
+                     durationSec:(double)duration
+{
+  double rad = angleDeg * M_PI / 180.0;
+  double dirX = cos(rad);
+  double dirY = sin(rad);
+  CGPoint f1Start = CGPointMake(center.x + dirX * startRadius, center.y + dirY * startRadius);
+  CGPoint f1End   = CGPointMake(center.x + dirX * endRadius,   center.y + dirY * endRadius);
+  CGPoint f2Start = CGPointMake(center.x - dirX * startRadius, center.y - dirY * startRadius);
+  CGPoint f2End   = CGPointMake(center.x - dirX * endRadius,   center.y - dirY * endRadius);
+  return [self synthesizeTwoFingerGestureFrom:f1Start to:f1End and:f2Start to:f2End durationSec:duration];
+}
+
+// Shove: two fingers held `spacing` points apart slide together by (dx, dy) points - the
+// gesture Mapbox (and most map SDKs) bind to camera pitch/tilt: sliding up tilts the
+// camera into a 3D perspective, sliding down flattens it back to 2D.
++ (BOOL)synthesizeShoveAtCenter:(CGPoint)center
+                         spacing:(double)spacing
+                              dx:(double)dx
+                              dy:(double)dy
+                     durationSec:(double)duration
+{
+  CGPoint f1Start = CGPointMake(center.x - spacing / 2.0, center.y);
+  CGPoint f2Start = CGPointMake(center.x + spacing / 2.0, center.y);
+  CGPoint f1End = CGPointMake(f1Start.x + dx, f1Start.y + dy);
+  CGPoint f2End = CGPointMake(f2Start.x + dx, f2Start.y + dy);
+  return [self synthesizeTwoFingerGestureFrom:f1Start to:f1End and:f2Start to:f2End durationSec:duration];
+}
+
 + (BOOL)synthesizeTypeText:(NSString *)text
 {
   XCSynthesizedEventRecord *record = [[XCSynthesizedEventRecord alloc] initWithName:@"LumiType"];
@@ -295,6 +367,30 @@ static NSString *LumiOrientationToString(UIDeviceOrientation o)
         CGPoint p2 = CGPointMake([req[@"x2"] doubleValue], [req[@"y2"] doubleValue]);
         double durationMs = req[@"duration_ms"] ? [req[@"duration_ms"] doubleValue] : 300.0;
         success = [self synthesizeTouchDownAt:p1 liftAfter:durationMs / 1000.0 moveTo:p2 hasMoveTo:YES];
+
+      } else if ([cmd isEqualToString:@"pinch"]) {
+        CGPoint center = CGPointMake([req[@"cx"] doubleValue], [req[@"cy"] doubleValue]);
+        double startRadius = [req[@"startRadius"] doubleValue];
+        double endRadius = [req[@"endRadius"] doubleValue];
+        double angle = req[@"angle"] ? [req[@"angle"] doubleValue] : 0.0;
+        double durationMs = req[@"duration"] ? [req[@"duration"] doubleValue] : 400.0;
+        success = [self synthesizePinchAtCenter:center
+                                     startRadius:startRadius
+                                       endRadius:endRadius
+                                        angleDeg:angle
+                                     durationSec:durationMs / 1000.0];
+
+      } else if ([cmd isEqualToString:@"shove"]) {
+        CGPoint center = CGPointMake([req[@"cx"] doubleValue], [req[@"cy"] doubleValue]);
+        double spacing = [req[@"spacing"] doubleValue];
+        double dx = [req[@"dx"] doubleValue];
+        double dy = [req[@"dy"] doubleValue];
+        double durationMs = req[@"duration"] ? [req[@"duration"] doubleValue] : 400.0;
+        success = [self synthesizeShoveAtCenter:center
+                                         spacing:spacing
+                                              dx:dx
+                                              dy:dy
+                                     durationSec:durationMs / 1000.0];
 
       } else if ([cmd isEqualToString:@"type_text"]) {
         NSString *text = req[@"text"] ?: @"";

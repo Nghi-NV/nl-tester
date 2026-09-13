@@ -20,7 +20,8 @@ Tài liệu tra cứu chi tiết và đầy đủ nhất về tất cả các c�
 | **`version`** | Xem phiên bản hiện tại và đối chiếu với bản mới nhất trên GitHub | `lumi-tester version --json` |
 | **`schema`** | Xuất JSON Schema chuẩn phục vụ autocompletion trong IDE | `lumi-tester schema --json` |
 | **`report`** | Tái tạo báo cáo HTML Dashboard từ file kết quả JSON có sẵn | `lumi-tester report ./output/test-results.json` |
-| **`shell`** | Mở terminal tương tác để gửi trực tiếp từng câu lệnh tới thiết bị | `lumi-tester shell --platform android` |
+| **`shell`** | Terminal tương tác, hoặc `-c` để chạy thẳng 1-nhiều lệnh không cần file YAML | `lumi-tester shell -d <serial> -c 'tapOn: "Login"' --json` |
+| **`requirements-coverage`** | Đối chiếu `requirements/index.yaml` với `cases.csv` để tìm requirement chưa có testcase thật | `lumi-tester requirements-coverage requirements/index.yaml --cases cases.csv --json` |
 | **`system`** | Tự động cài đặt / cập nhật các driver và package hệ thống | `lumi-tester system install --all` |
 | **`ai`** | Cài đặt các AI Skill vào Codex, Antigravity, Claude Code | `lumi-tester ai install` |
 | **`camera`** | Bộ công cụ kiểm thử thị giác & nhận diện trạng thái LED qua RTSP | `lumi-tester camera doctor` |
@@ -288,3 +289,56 @@ lumi-tester which --json   # đầu ra JSON máy đọc được
 Nếu binary đang chạy khác với binary mà PATH resolve tới, lệnh sẽ cảnh báo
 rõ ràng (`pathMismatch: true` trong JSON) - đây chính xác là nguyên nhân phổ
 biến khiến một bản fix "không có tác dụng" trong IDE dù đã build lại CLI.
+
+### 3.11. `shell` - Terminal Tương tác & Chạy Lệnh Trực Tiếp
+
+Có 2 chế độ:
+
+**Tương tác (không truyền `-c`)** - mở prompt, gõ từng lệnh (cú pháp y hệt 1
+dòng trong file YAML), `exit`/`quit` để thoát:
+```bash
+lumi-tester shell --platform android --device <serial>
+```
+
+**Chạy thẳng, không cần file YAML (`-c`/`--command`, lặp lại được)** - dành
+cho AI/script cần thực hiện 1 hành động nhanh (tap, chụp màn hình, pinch...)
+mà không đáng để viết hẳn 1 file test. Mọi `-c` trong 1 lần gọi dùng chung
+đúng 1 session thiết bị (chỉ kết nối 1 lần):
+```bash
+lumi-tester shell --device <serial> \
+  -c 'tapOn: "Login"' \
+  -c 'pinch: {direction: open, percent: 60}' \
+  --json
+```
+`--json` in ra 1 dòng JSON `{"command","success","error"}` cho mỗi lệnh -
+process thoát với exit code khác 0 nếu có lệnh nào fail, nên script/AI kiểm
+tra qua exit code là đủ, không cần soi text. Chế độ này dùng chung đúng 1
+bộ parser/executor với `run` - không có khái niệm "lệnh shell" tách biệt
+với "lệnh trong file YAML".
+
+Cả 2 chế độ hiện chỉ hỗ trợ `android`, `ios`, `macos`, `windows` (chưa hỗ
+trợ `web`/`android_auto` - dùng `run`/`validate`/`list` cho 2 nền tảng đó).
+
+### 3.12. `requirements-coverage` - Đối Chiếu SRS với Testcase Thật
+
+Đọc `requirements/index.yaml` (định dạng mô tả trong AI skill's
+`testcase-design.md`, mục "SRS Requirements Format"), gộp `requirements:`
+từ mọi file trong `includes:`, rồi đối chiếu từng requirement id với
+`cases.csv` - **không tin vào 1 trường status tự khai**, mà tính trực tiếp
+từ việc file YAML testcase tương ứng có thật sự tồn tại trên đĩa hay không:
+
+```bash
+lumi-tester requirements-coverage requirements/index.yaml --cases cases.csv --json
+```
+
+Mỗi requirement rơi vào đúng 1 trong 4 trạng thái: `skipped` (có lý do
+`skip:` ghi rõ), `covered` (có testcase thật + đủ tag `policy` yêu cầu theo
+priority), `missing` (không có dòng `cases.csv` nào trỏ tới file YAML còn
+tồn tại), hoặc `incomplete` (có testcase nhưng thiếu tag `policy` bắt buộc
+cho priority đó, ví dụ priority `must` yêu cầu cả `smoke` và `negative`
+nhưng testcase chỉ có tag `smoke`). Lệnh thoát khác 0 nếu còn `missing`
+hoặc `incomplete` nào chưa `skip` - dùng được thẳng như 1 gate trong CI.
+
+`--cases` là tuỳ chọn: bỏ qua thì mọi requirement chưa `skip` đều báo
+`missing` (hữu ích để đếm nhanh số lượng chưa `skip` mà chưa cần `cases.csv`
+đầy đủ).

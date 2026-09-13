@@ -1,0 +1,3 @@
+id,requirement,source,risk,platform,tags,state,role,entry_point,data_class,permission,network,expected,yaml
+c1,REQ-AUTH-001,srs,high,android,smoke,logged_out,user,login_screen,pii,none,online,goes to Home,smoke/001_login_otp.yaml
+c2,REQ-AUTH-001,srs,high,android,negative,logged_out,user,login_screen,pii,none,online,shows invalid OTP error,smoke/002_login_otp_negative.yaml

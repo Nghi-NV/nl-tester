@@ -1,0 +1,10 @@
+shared:
+  error_toast:
+    targets: all
+    expect:
+      - Hiện trong 1s sau khi lỗi xảy ra
+      - Tự tắt sau 3s, không chặn thao tác khác
+  network_offline:
+    targets: all
+    expect:
+      - "Hiện {error_toast}, không crash, cho phép retry"

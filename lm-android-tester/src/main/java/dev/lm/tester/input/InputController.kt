@@ -154,6 +154,154 @@ object InputController {
     }
 
     /**
+     * Injects a multi-pointer touch event. `points` holds the CURRENT (x, y) of every
+     * pointer that is down right now, in pointer-index order. For `ACTION_POINTER_DOWN`/
+     * `ACTION_POINTER_UP`, `actionPointerIndex` selects which pointer the action applies to
+     * and gets encoded into the action int (Android packs it into the action's upper bits -
+     * a single MotionEvent always carries every active pointer's position, even when the
+     * action itself concerns only one of them going down/up).
+     */
+    private fun injectMultiTouch(
+        action: Int,
+        points: List<Pair<Float, Float>>,
+        downTime: Long,
+        actionPointerIndex: Int = 0
+    ): Boolean {
+        val now = SystemClock.uptimeMillis()
+        val pointerProperties = Array(points.size) { i ->
+            MotionEvent.PointerProperties().apply {
+                id = i
+                toolType = MotionEvent.TOOL_TYPE_FINGER
+            }
+        }
+        val pointerCoords = Array(points.size) { i ->
+            MotionEvent.PointerCoords().apply {
+                x = points[i].first
+                y = points[i].second
+                pressure = if (action == MotionEvent.ACTION_UP) 0f else 1f
+                size = 1f
+            }
+        }
+        val encodedAction =
+            if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_POINTER_UP) {
+                action or (actionPointerIndex shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+            } else {
+                action
+            }
+
+        val event = MotionEvent.obtain(
+            downTime, now, encodedAction,
+            points.size, pointerProperties, pointerCoords,
+            0, 0, 1f, 1f,
+            touchScreenDeviceId, 0, InputDevice.SOURCE_TOUCHSCREEN, 0
+        )
+        val result = injectEvent(event)
+        event.recycle()
+        return result
+    }
+
+    private fun lerp(a: Pair<Float, Float>, b: Pair<Float, Float>, t: Float): Pair<Float, Float> =
+        Pair(a.first + (b.first - a.first) * t, a.second + (b.second - a.second) * t)
+
+    /**
+     * Two-finger gesture primitive: each finger moves along its own straight line from its
+     * start to its end position over `durationMs`. Both `pinch` and `shove` below build on
+     * this - the only difference between them is where the two fingers' start/end points
+     * are placed.
+     *
+     * Sequencing matters here: finger 1 touches down alone (`ACTION_DOWN`), then finger 2
+     * joins (`ACTION_POINTER_DOWN`, pointer index 1) - most map SDKs' gesture detectors
+     * (Mapbox included) key their multi-finger recognizers off seeing a plain single-finger
+     * touch first, exactly like a real hand landing on a screen finger-by-finger rather than
+     * both fingers materializing atomically. Lift order mirrors this in reverse.
+     */
+    fun twoFingerGesture(
+        finger1Start: Pair<Float, Float>,
+        finger1End: Pair<Float, Float>,
+        finger2Start: Pair<Float, Float>,
+        finger2End: Pair<Float, Float>,
+        durationMs: Long = 400
+    ): Boolean {
+        val steps = 10
+        val stepDuration = durationMs / steps
+        val downTime = SystemClock.uptimeMillis()
+
+        if (!injectMultiTouch(MotionEvent.ACTION_DOWN, listOf(finger1Start), downTime)) return false
+
+        if (!injectMultiTouch(
+                MotionEvent.ACTION_POINTER_DOWN,
+                listOf(finger1Start, finger2Start),
+                downTime,
+                actionPointerIndex = 1
+            )
+        ) return false
+
+        for (i in 1..steps) {
+            val ratio = i.toFloat() / steps
+            val p1 = lerp(finger1Start, finger1End, ratio)
+            val p2 = lerp(finger2Start, finger2End, ratio)
+            Thread.sleep(stepDuration)
+            if (!injectMultiTouch(MotionEvent.ACTION_MOVE, listOf(p1, p2), downTime)) return false
+        }
+
+        if (!injectMultiTouch(
+                MotionEvent.ACTION_POINTER_UP,
+                listOf(finger1End, finger2End),
+                downTime,
+                actionPointerIndex = 1
+            )
+        ) return false
+
+        return injectMultiTouch(MotionEvent.ACTION_UP, listOf(finger1End), downTime)
+    }
+
+    /**
+     * Pinch gesture centered at (cx, cy): two fingers start `startRadius`px from center
+     * along a line at `angleDeg` and end `endRadius`px from center along that same line -
+     * "open"/zoom-in when endRadius > startRadius, "close"/zoom-out when endRadius <
+     * startRadius. This is the standard 2-finger pinch-to-zoom gesture every map SDK
+     * (Mapbox included) recognizes.
+     */
+    fun pinch(
+        cx: Float,
+        cy: Float,
+        startRadius: Float,
+        endRadius: Float,
+        angleDeg: Double = 0.0,
+        durationMs: Long = 400
+    ): Boolean {
+        val rad = Math.toRadians(angleDeg)
+        val dirX = Math.cos(rad).toFloat()
+        val dirY = Math.sin(rad).toFloat()
+        val f1Start = Pair(cx + dirX * startRadius, cy + dirY * startRadius)
+        val f1End = Pair(cx + dirX * endRadius, cy + dirY * endRadius)
+        val f2Start = Pair(cx - dirX * startRadius, cy - dirY * startRadius)
+        val f2End = Pair(cx - dirX * endRadius, cy - dirY * endRadius)
+        return twoFingerGesture(f1Start, f1End, f2Start, f2End, durationMs)
+    }
+
+    /**
+     * Shove gesture: two fingers, held `spacing`px apart, slide together by (`dx`, `dy`)
+     * device pixels. This is the gesture Mapbox (and most map SDKs) bind to camera
+     * pitch/tilt - sliding both fingers up tilts the camera into a 3D perspective, sliding
+     * down flattens it back to 2D.
+     */
+    fun shove(
+        cx: Float,
+        cy: Float,
+        spacing: Float,
+        dx: Float,
+        dy: Float,
+        durationMs: Long = 400
+    ): Boolean {
+        val f1Start = Pair(cx - spacing / 2f, cy)
+        val f2Start = Pair(cx + spacing / 2f, cy)
+        val f1End = Pair(f1Start.first + dx, f1Start.second + dy)
+        val f2End = Pair(f2Start.first + dx, f2Start.second + dy)
+        return twoFingerGesture(f1Start, f1End, f2Start, f2End, durationMs)
+    }
+
+    /**
      * Injects a key event with optional meta state (for modifiers like Ctrl, Alt).
      */
     fun injectKey(keyCode: Int, action: Int, metaState: Int = 0): Boolean {

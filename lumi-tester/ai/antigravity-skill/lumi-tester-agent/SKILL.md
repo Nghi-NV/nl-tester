@@ -39,13 +39,14 @@ Prefer MCP tools when a `lumi-tester-mcp` server is configured. Use the MCP
 tools in this order:
 
 1. `doctor`
-2. `validate_yaml`
-3. `list_tests`
-4. `schema` when command/header shape is unclear
-5. `run_test`
-6. `read_report`, `read_events`, `read_artifact`
-7. `inspector_get` when a Lumi Inspector server is running
-8. `suggest_selectors` when a UI XML artifact is available
+2. `run_command` for a quick one-off action (no YAML file needed)
+3. `validate_yaml`
+4. `list_tests`
+5. `schema` when command/header shape is unclear
+6. `run_test`
+7. `read_report`, `read_events`, `read_artifact`
+8. `inspector_get` when a Lumi Inspector server is running
+9. `suggest_selectors` when a UI XML artifact is available
 
 If MCP tools are not available, use the CLI flow below.
 

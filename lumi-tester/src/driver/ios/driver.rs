@@ -364,6 +364,55 @@ impl IosDriver {
         }
     }
 
+    async fn try_agent_pinch(
+        &self,
+        cx: i32,
+        cy: i32,
+        start_radius: i32,
+        end_radius: i32,
+        angle_deg: f64,
+        duration_ms: u64,
+    ) -> bool {
+        self.ensure_agent_ready().await;
+        let guard = self.agent_client.lock().await;
+        match guard.as_ref() {
+            Some(agent) => {
+                agent
+                    .pinch(
+                        cx as f64,
+                        cy as f64,
+                        start_radius as f64,
+                        end_radius as f64,
+                        angle_deg,
+                        duration_ms,
+                    )
+                    .await
+            }
+            None => false,
+        }
+    }
+
+    async fn try_agent_shove(
+        &self,
+        cx: i32,
+        cy: i32,
+        spacing: i32,
+        dx: i32,
+        dy: i32,
+        duration_ms: u64,
+    ) -> bool {
+        self.ensure_agent_ready().await;
+        let guard = self.agent_client.lock().await;
+        match guard.as_ref() {
+            Some(agent) => {
+                agent
+                    .shove(cx as f64, cy as f64, spacing as f64, dx as f64, dy as f64, duration_ms)
+                    .await
+            }
+            None => false,
+        }
+    }
+
     async fn try_agent_type_text(&self, text: &str) -> bool {
         self.ensure_agent_ready().await;
         let guard = self.agent_client.lock().await;
@@ -463,6 +512,41 @@ impl IosDriver {
             Ok(())
         } else {
             anyhow::bail!("lm-ios-tester agent is not reachable - cannot swipe")
+        }
+    }
+
+    async fn agent_pinch(
+        &self,
+        cx: i32,
+        cy: i32,
+        start_radius: i32,
+        end_radius: i32,
+        angle_deg: f64,
+        duration_ms: u64,
+    ) -> Result<()> {
+        if self
+            .try_agent_pinch(cx, cy, start_radius, end_radius, angle_deg, duration_ms)
+            .await
+        {
+            Ok(())
+        } else {
+            anyhow::bail!("lm-ios-tester agent is not reachable - cannot pinch")
+        }
+    }
+
+    async fn agent_shove(
+        &self,
+        cx: i32,
+        cy: i32,
+        spacing: i32,
+        dx: i32,
+        dy: i32,
+        duration_ms: u64,
+    ) -> Result<()> {
+        if self.try_agent_shove(cx, cy, spacing, dx, dy, duration_ms).await {
+            Ok(())
+        } else {
+            anyhow::bail!("lm-ios-tester agent is not reachable - cannot shove")
         }
     }
 
@@ -1565,6 +1649,31 @@ impl PlatformDriver for IosDriver {
 
         self.agent_swipe(x1, y1, x2, y2, duration_ms).await?;
         Ok(())
+    }
+
+    async fn pinch(
+        &self,
+        cx: i32,
+        cy: i32,
+        start_radius: i32,
+        end_radius: i32,
+        angle_deg: f64,
+        duration_ms: u64,
+    ) -> Result<()> {
+        self.agent_pinch(cx, cy, start_radius, end_radius, angle_deg, duration_ms)
+            .await
+    }
+
+    async fn shove(
+        &self,
+        cx: i32,
+        cy: i32,
+        spacing: i32,
+        dx: i32,
+        dy: i32,
+        duration_ms: u64,
+    ) -> Result<()> {
+        self.agent_shove(cx, cy, spacing, dx, dy, duration_ms).await
     }
 
     async fn scroll_until_visible(

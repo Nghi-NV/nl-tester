@@ -589,6 +589,16 @@ fn parse_command_with_params(
             TestCommand::Drag(p)
         }
 
+        "pinch" => {
+            let p: crate::parser::types::PinchParams = serde_yaml::from_value(params.clone())?;
+            TestCommand::Pinch(p)
+        }
+
+        "shove" => {
+            let p: crate::parser::types::ShoveParams = serde_yaml::from_value(params.clone())?;
+            TestCommand::Shove(p)
+        }
+
         "scrollUntilVisible" | "scrollTo" => {
             let p: ScrollUntilVisibleInput = if params.is_string() {
                 serde_yaml::from_value(params.clone())?

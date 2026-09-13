@@ -184,6 +184,55 @@ impl AgentClient {
         .unwrap_or(false)
     }
 
+    /// 2-finger pinch (zoom) gesture centered at (cx, cy). `start_radius`/`end_radius` are
+    /// each finger's distance from center at the start/end of the gesture, in points -
+    /// opening (zoom in) has `end_radius > start_radius`. On-device this becomes 2
+    /// `XCPointerEventPath`s added to one `XCSynthesizedEventRecord` (see
+    /// `LumiCommandHandler.m`'s `synthesizeTwoFingerGestureFrom:to:and:to:durationSec:`) so
+    /// both fingers move simultaneously - unlike two separate `tap`/`swipe` calls, which
+    /// XCTest and the app would see as two sequential single-touch gestures, not a pinch.
+    pub async fn pinch(
+        &self,
+        cx: f64,
+        cy: f64,
+        start_radius: f64,
+        end_radius: f64,
+        angle_deg: f64,
+        duration_ms: u64,
+    ) -> bool {
+        self.send(&serde_json::json!({
+            "cmd": "pinch", "cx": cx, "cy": cy, "startRadius": start_radius,
+            "endRadius": end_radius, "angle": angle_deg, "duration": duration_ms
+        }))
+        .await
+        .as_ref()
+        .map(Self::ok)
+        .unwrap_or(false)
+    }
+
+    /// 2-finger shove (both fingers sliding the same direction together) gesture centered
+    /// at (cx, cy) with the given finger `spacing`, moving by (`dx`, `dy`) points - the
+    /// gesture Mapbox and most map SDKs bind to camera pitch/tilt. Same simultaneous
+    /// multi-touch synthesis as `pinch`.
+    pub async fn shove(
+        &self,
+        cx: f64,
+        cy: f64,
+        spacing: f64,
+        dx: f64,
+        dy: f64,
+        duration_ms: u64,
+    ) -> bool {
+        self.send(&serde_json::json!({
+            "cmd": "shove", "cx": cx, "cy": cy, "spacing": spacing, "dx": dx, "dy": dy,
+            "duration": duration_ms
+        }))
+        .await
+        .as_ref()
+        .map(Self::ok)
+        .unwrap_or(false)
+    }
+
     pub async fn type_text(&self, text: &str) -> bool {
         self.send(&serde_json::json!({"cmd": "type_text", "text": text}))
             .await

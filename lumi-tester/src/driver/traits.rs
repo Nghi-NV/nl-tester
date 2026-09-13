@@ -232,6 +232,48 @@ pub trait PlatformDriver: Send + Sync {
         .await
     }
 
+    /// Pinch (2-finger zoom) gesture centered at (cx, cy), device pixels/points.
+    /// `start_radius`/`end_radius` are each finger's distance from center at the start/end
+    /// of the gesture; opening (zoom in) has `end_radius > start_radius`. Unlike
+    /// `swipe`/`drag`, there is no single-pointer-based fallback for multi-touch (`adb
+    /// shell input` has no multi-touch primitive, and iOS's public `XCUICoordinate` gesture
+    /// wrappers don't cover it either), so the default implementation is a hard error
+    /// rather than an approximation. `AndroidDriver` (lm-android-tester agent,
+    /// `InputManager.injectInputEvent` with 2 pointers) and `IosDriver` (lm-ios-tester
+    /// agent, 2 `XCPointerEventPath`s in one `XCSynthesizedEventRecord`) both override this;
+    /// other platforms (web/macOS/Windows) keep the default error.
+    async fn pinch(
+        &self,
+        _cx: i32,
+        _cy: i32,
+        _start_radius: i32,
+        _end_radius: i32,
+        _angle_deg: f64,
+        _duration_ms: u64,
+    ) -> Result<()> {
+        Err(anyhow::anyhow!(
+            "pinch not implemented on this platform (requires the lm-android-tester or lm-ios-tester on-device agent)"
+        ))
+    }
+
+    /// Shove (2-finger drag, both fingers moving the same direction together) gesture
+    /// centered at (cx, cy) with the given finger `spacing`, moving by (`dx`, `dy`) device
+    /// pixels/points - the gesture Mapbox and most map SDKs bind to camera pitch/tilt. Same
+    /// Android+iOS-only/no-fallback caveat as `pinch`.
+    async fn shove(
+        &self,
+        _cx: i32,
+        _cy: i32,
+        _spacing: i32,
+        _dx: i32,
+        _dy: i32,
+        _duration_ms: u64,
+    ) -> Result<()> {
+        Err(anyhow::anyhow!(
+            "shove not implemented on this platform (requires the lm-android-tester or lm-ios-tester on-device agent)"
+        ))
+    }
+
     /// Scroll until an element becomes visible
     ///
     /// # Arguments

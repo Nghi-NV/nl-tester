@@ -23,6 +23,7 @@ LUMI_COMMANDS = [
     "list",
     "record",
     "report",
+    "requirements-coverage",
     "run",
     "schema",
     "shell",

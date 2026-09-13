@@ -1916,6 +1916,67 @@ impl PlatformDriver for AndroidDriver {
         Ok(())
     }
 
+    /// Pinch (2-finger zoom) via the lm-android-tester agent's `InputController.pinch()`.
+    /// `adb shell input` has no multi-touch primitive, so unlike `tap`/`drag` there is no
+    /// adb-based fallback here - agent unavailable is a real error, not a silent downgrade.
+    async fn pinch(
+        &self,
+        cx: i32,
+        cy: i32,
+        start_radius: i32,
+        end_radius: i32,
+        angle_deg: f64,
+        duration_ms: u64,
+    ) -> Result<()> {
+        let request = format!(
+            "{{\"cmd\":\"pinch\",\"cx\":{},\"cy\":{},\"startRadius\":{},\"endRadius\":{},\"angle\":{},\"duration\":{}}}\n",
+            cx, cy, start_radius, end_radius, angle_deg, duration_ms
+        );
+        let outer = self
+            .send_mirror_command(request.as_bytes())
+            .await
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "pinch requires the lm-android-tester agent (no adb fallback exists for multi-touch gestures) - agent unavailable"
+                )
+            })?;
+        if outer.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("pinch gesture failed on-device"))
+        }
+    }
+
+    /// Shove (2-finger tilt) via the lm-android-tester agent's `InputController.shove()`.
+    /// Same no-fallback caveat as `pinch`.
+    async fn shove(
+        &self,
+        cx: i32,
+        cy: i32,
+        spacing: i32,
+        dx: i32,
+        dy: i32,
+        duration_ms: u64,
+    ) -> Result<()> {
+        let request = format!(
+            "{{\"cmd\":\"shove\",\"cx\":{},\"cy\":{},\"spacing\":{},\"dx\":{},\"dy\":{},\"duration\":{}}}\n",
+            cx, cy, spacing, dx, dy, duration_ms
+        );
+        let outer = self
+            .send_mirror_command(request.as_bytes())
+            .await
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "shove requires the lm-android-tester agent (no adb fallback exists for multi-touch gestures) - agent unavailable"
+                )
+            })?;
+        if outer.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("shove gesture failed on-device"))
+        }
+    }
+
     async fn scroll_until_visible(
         &self,
         selector: &Selector,

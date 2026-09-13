@@ -798,6 +798,10 @@ pub enum TestCommand {
     #[serde(alias = "scrollTo")]
     ScrollUntilVisible(ScrollUntilVisibleInput),
 
+    // Multi-touch gestures (map pinch-zoom / camera tilt). Android and iOS only.
+    Pinch(PinchParams),
+    Shove(ShoveParams),
+
     // Assertions
     #[serde(alias = "see")]
     AssertVisible(AssertParamsInput),
@@ -2289,6 +2293,45 @@ pub struct DragParams {
     pub duration: Option<u64>,
 }
 
+/// Parameters for a pinch (2-finger zoom) gesture, e.g. map pinch-to-zoom. Android and iOS
+/// only: neither `adb shell input` nor XCTest's public gesture wrappers have a multi-touch
+/// primitive, so this requires the on-device lm-android-tester/lm-ios-tester agent - there
+/// is no fallback the way `tap`/`swipe` have.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PinchParams {
+    /// "open" (fingers spread apart - zoom in) or "close" (fingers pinch together - zoom out)
+    pub direction: String,
+    /// Gesture center: a point ("x,y" or "x%,y%") or a selector, same shape as `tapOn`.
+    /// Defaults to screen center when omitted.
+    #[serde(default)]
+    pub at: Option<TapParamsInput>,
+    /// How far apart the fingers end up, as a percent of half the shorter screen dimension
+    /// (0-100). Default 50.
+    #[serde(default)]
+    pub percent: Option<f64>,
+    #[serde(default)]
+    pub duration: Option<u64>,
+}
+
+/// Parameters for a shove (2-finger drag in the same direction) gesture - the gesture
+/// Mapbox and most map SDKs bind to camera pitch/tilt. Android and iOS only, on-device
+/// agent required (see `PinchParams` doc comment).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShoveParams {
+    /// "up" (tilt camera into 3D) or "down" (flatten back to 2D/top-down)
+    pub direction: String,
+    /// Gesture center: a point ("x,y" or "x%,y%") or a selector. Defaults to screen center.
+    #[serde(default)]
+    pub at: Option<TapParamsInput>,
+    /// How far each finger travels, in device pixels. Default 300.
+    #[serde(default)]
+    pub distance: Option<u64>,
+    #[serde(default)]
+    pub duration: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScrollUntilVisibleParams {
@@ -2980,6 +3023,8 @@ impl TestCommand {
             TestCommand::SwipeDown => "swipeDown".to_string(),
             TestCommand::ManualScroll(_) => "scroll".to_string(),
             TestCommand::Drag(_) => "drag".to_string(),
+            TestCommand::Pinch(p) => format!("pinch({})", p.direction),
+            TestCommand::Shove(p) => format!("shove({})", p.direction),
             TestCommand::ScrollUntilVisible(p_input) => {
                 let p = p_input.clone().into_inner();
                 if let Some(label) = &p.label {

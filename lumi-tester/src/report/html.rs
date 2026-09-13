@@ -465,15 +465,61 @@ fn generate_html(results: &TestResults) -> String {
                     let element_count = ui_elements.len();
 
                     let screenshot_box = if let Some(path) = &cmd.screenshot_path {
-                        let img_src = if let Ok(bytes) = std::fs::read(path) {
-                            let mime = crate::utils::image_convert::guess_image_mime(path);
-                            format!("data:{};base64,{}", mime, STANDARD.encode(&bytes))
-                        } else {
-                            std::path::Path::new(path)
-                                .file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or(path)
-                                .to_string()
+                        // Embed a downscaled, re-encoded WebP copy rather than the raw
+                        // full-resolution screenshot - a report with many failures
+                        // otherwise balloons into tens of MB of base64 (same issue
+                        // `report::summary_html::embed_image_thumb` fixed for the
+                        // dashboard view). The bounding-box overlay in the modal is
+                        // driven by percentages (left/width), so it stays pixel-exact
+                        // regardless of this resize as long as the ORIGINAL width/height
+                        // is passed through separately (see `showScreenshot` below) -
+                        // it never relies on the displayed image's own resolution.
+                        let (img_src, orig_w, orig_h) = match std::fs::read(path) {
+                            Ok(bytes) => match image::load_from_memory(&bytes) {
+                                Ok(decoded) => {
+                                    let (w, h) = (decoded.width(), decoded.height());
+                                    let thumb = decoded.thumbnail(720, 1440).to_rgb8();
+                                    let mut buf = Vec::new();
+                                    let encoder =
+                                        image::codecs::webp::WebPEncoder::new_lossless(&mut buf);
+                                    let src = if encoder
+                                        .encode(
+                                            &thumb,
+                                            thumb.width(),
+                                            thumb.height(),
+                                            image::ColorType::Rgb8,
+                                        )
+                                        .is_ok()
+                                    {
+                                        format!(
+                                            "data:image/webp;base64,{}",
+                                            STANDARD.encode(&buf)
+                                        )
+                                    } else {
+                                        let mime =
+                                            crate::utils::image_convert::guess_image_mime(path);
+                                        format!("data:{};base64,{}", mime, STANDARD.encode(&bytes))
+                                    };
+                                    (src, w, h)
+                                }
+                                Err(_) => {
+                                    let mime = crate::utils::image_convert::guess_image_mime(path);
+                                    (
+                                        format!("data:{};base64,{}", mime, STANDARD.encode(&bytes)),
+                                        0,
+                                        0,
+                                    )
+                                }
+                            },
+                            Err(_) => (
+                                std::path::Path::new(path)
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or(path)
+                                    .to_string(),
+                                0,
+                                0,
+                            ),
                         };
 
                         let count_badge = if element_count > 0 {
@@ -483,14 +529,16 @@ fn generate_html(results: &TestResults) -> String {
                         };
 
                         format!(
-                            r#"<div class="evidence-thumb-box" data-elements="{elements_b64}" onclick="showScreenshot(this.querySelector('img').src, this.getAttribute('data-elements'))">
+                            r#"<div class="evidence-thumb-box" data-elements="{elements_b64}" onclick="showScreenshot(this.querySelector('img').src, this.getAttribute('data-elements'), {orig_w}, {orig_h})">
                                 <img src="{img_src}" alt="Failure Snapshot" />
                                 <div class="zoom-label">🔍 Inspect UI Bounding Boxes</div>
                                 {count_badge}
                             </div>"#,
                             img_src = img_src,
                             elements_b64 = elements_b64,
-                            count_badge = count_badge
+                            count_badge = count_badge,
+                            orig_w = orig_w,
+                            orig_h = orig_h,
                         )
                     } else {
                         String::new()
@@ -1596,12 +1644,16 @@ fn generate_html(results: &TestResults) -> String {
 
     <script>
         let currentElements = [];
+        let currentOrigWidth = 0;
+        let currentOrigHeight = 0;
         let showBboxes = true;
         let selectedElementIndex = -1;
 
-        function showScreenshot(src, elementsB64) {{
+        function showScreenshot(src, elementsB64, origWidth, origHeight) {{
             const modal = document.getElementById('modal');
             const img = document.getElementById('modal-img');
+            currentOrigWidth = origWidth || 0;
+            currentOrigHeight = origHeight || 0;
             
             try {{
                 currentElements = elementsB64 ? JSON.parse(atob(elementsB64)) : [];
@@ -1650,8 +1702,15 @@ fn generate_html(results: &TestResults) -> String {
             overlay.innerHTML = '';
             elemList.innerHTML = '';
 
-            const naturalWidth = img.naturalWidth || 1080;
-            const naturalHeight = img.naturalHeight || 1920;
+            // Prefer the ORIGINAL screenshot dimensions over the displayed
+            // image's own natural size - the embedded image may be a
+            // downscaled thumbnail (see html.rs screenshot_box), but element
+            // bounds from the hierarchy dump are always in original-pixel
+            // space, and this is a ratio (left/width), so using the original
+            // width/height as the denominator keeps every box aligned
+            // exactly regardless of the thumbnail's actual resolution.
+            const naturalWidth = currentOrigWidth || img.naturalWidth || 1080;
+            const naturalHeight = currentOrigHeight || img.naturalHeight || 1920;
 
             currentElements.forEach((el, idx) => {{
                 const w = el.right - el.left;
@@ -2445,6 +2504,90 @@ fn render_sessions_dashboard_html(sessions: &[SessionDashboardItem]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failure_screenshot_is_thumbnailed_but_keeps_original_dimensions_for_bbox_math() {
+        use crate::runner::state::{CommandStateReport, CommandStatus, FlowStateReport, FlowStatus, TestSummary};
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        use image::{ImageBuffer, Rgb};
+
+        // A large, phone-resolution-like screenshot - big enough that embedding
+        // it raw would meaningfully bloat the report, and specific enough
+        // (1440x2960) that we can assert the exact original dims survive into
+        // the HTML even though the embedded copy is downscaled.
+        let dir = std::env::temp_dir().join(format!("lumi_html_shot_test_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let shot_path = dir.join("fail_shot.png");
+        let img: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::from_fn(1440, 2960, |x, y| {
+            if (x / 40 + y / 40) % 2 == 0 {
+                Rgb([250, 250, 250])
+            } else {
+                Rgb([15, 15, 15])
+            }
+        });
+        img.save(&shot_path).expect("failed to write test screenshot");
+        let raw_bytes = std::fs::read(&shot_path).unwrap();
+        let raw_b64_len = STANDARD.encode(&raw_bytes).len();
+
+        let results = TestResults {
+            session_id: "session_test".to_string(),
+            generated_at: "2026-09-11 00:00:00".to_string(),
+            summary: TestSummary {
+                session_id: "session_test".to_string(),
+                total_flows: 1,
+                total_commands: 1,
+                passed: 0,
+                failed: 1,
+                skipped: 0,
+                total_duration_ms: Some(100),
+            },
+            flows: vec![FlowStateReport {
+                flow_name: "flow".to_string(),
+                flow_path: "flow.yaml".to_string(),
+                status: FlowStatus::Failed,
+                total_duration_ms: Some(100),
+                error: Some("boom".to_string()),
+                video_path: None,
+                commands: vec![CommandStateReport {
+                    index: 0,
+                    command_name: "see".to_string(),
+                    command_display: "see(\"X\")".to_string(),
+                    status: CommandStatus::Failed { error: "boom".to_string() },
+                    duration_ms: Some(50),
+                    screenshot_path: Some(shot_path.display().to_string()),
+                    ui_hierarchy_path: None,
+                    log_path: None,
+                    retry_count: 0,
+                }],
+            }],
+        };
+
+        let html = generate_html(&results);
+
+        // Original resolution is threaded through as arguments to
+        // `showScreenshot(...)` for the bbox-overlay math, even though the
+        // embedded image itself is downscaled.
+        assert!(
+            html.contains("showScreenshot(this.querySelector('img').src, this.getAttribute('data-elements'), 1440, 2960)"),
+            "original dimensions not passed through to showScreenshot()"
+        );
+        assert!(html.contains("data:image/webp;base64,"), "expected an embedded WebP data URI");
+
+        // The embedded copy must actually be smaller than the raw file would
+        // have been - this is the whole point of thumbnailing before embedding.
+        let embedded_b64_len = html
+            .split("data:image/webp;base64,")
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .expect("could not find embedded image data URI")
+            .len();
+        assert!(
+            embedded_b64_len < raw_b64_len,
+            "embedded thumbnail ({embedded_b64_len} b64 chars) should be smaller than the raw screenshot ({raw_b64_len} b64 chars)"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn camera_failure_hint_is_rendered_as_html() {

@@ -7,6 +7,7 @@ feature, convert testcase documents into YAML, or organize generated tests.
 
 - Coverage loop
 - Research inputs
+- SRS requirements format
 - Systematic app exploration loop
 - Coverage model
 - Test design techniques
@@ -55,6 +56,201 @@ coverage map from observable screens, forms, actions, states, and error
 surfaces. Mark uncertain expectations as `exploratory` until confirmed. See
 "Systematic App Exploration Loop" below for the concrete process - this is
 the normal case for a real assignment ("test this app"), not a fallback.
+
+When the user DOES have a real SRS/requirements document, do not leave it as
+loose prose you re-read from scratch every session - convert it into the
+structured `requirements/` format below once, then treat it as the normative
+coverage source alongside the exploration loop. See "SRS Requirements
+Format" for the concrete schema and the mandatory coverage check.
+
+## SRS Requirements Format
+
+A pure-YAML, multi-file format for turning a real SRS into something an
+agent can mechanically check itself against - designed after auditing
+`google-labs-code/design.md` (a YAML-frontmatter spec for design tokens) and
+adapting only what transfers: one normative machine-readable block, a fixed
+small vocabulary reused everywhere, and an explicit field for intentional
+omissions instead of leaving them to prose that can be forgotten. Unlike
+DESIGN.md this is pure YAML, no markdown prose layer - every prior draft
+that allowed free-text explanation sections turned out to be exactly where
+acceptance criteria got lost, so nothing here is expressible only as prose.
+
+**Why this exists**: exploring a running app (the loop below) only proves
+what is CURRENTLY VISIBLE. It cannot prove a requirement was silently never
+built, gated behind a flag, or removed - clicking a UI can never demonstrate
+the absence of a feature the spec promised. Cross-checking against a real
+requirements source is the only way to catch that class of gap, which is
+why this section exists as a companion to the exploration loop, not a
+replacement for it.
+
+### File Layout
+
+```text
+requirements/
+  index.yaml     # metadata, policy, includes list, reconciliation
+  common.yaml    # shared: cross-cutting items (popups, alerts, validation
+                 # rules, network/session error behavior) used by 2+ modules
+  <module>.yaml  # requirements: for one module/feature area (one file per
+                 # module keeps each file short enough to actually read)
+```
+
+Same shape as `runFlow` composing subflow files: `index.yaml` is the entry
+point, everything else is included and merged into one in-memory model - not
+a new concept to learn.
+
+### `index.yaml`
+
+```text
+version: alpha
+name: <app/feature name>
+source: <path to the original SRS>
+author: <who created this file>
+created_at: 2026-09-11
+updated_at: 2026-09-11
+tags: [speaker, iot]        # classification tags for the whole set
+
+platforms:                   # optional - every build the app ships on. One
+                              # entry per platform this SRS covers, using the
+                              # SAME field names a testcase file's own
+                              # frontmatter already uses for that platform
+                              # (`appId` for android/ios/macos/windows, `url`
+                              # for web) - not a new naming scheme to learn.
+  android:
+    appId: com.example.app
+  ios:
+    appId: com.example.app
+  web:
+    url: https://example.com
+  macos:
+    appId: /Applications/Example.app
+  windows:
+    appId: C:\Program Files\Example\Example.exe
+
+screens:                     # optional - the flat list of screen/page ids
+                              # this app has, declared once so every
+                              # requirement's `targets` and every shared
+                              # item's `targets` reference the SAME id
+                              # instead of each file inventing its own name
+                              # for "the login screen". Formalizes what was
+                              # previously left to an ad-hoc `screen-map.csv`.
+  - login
+  - register
+  - dashboard
+  - settings
+
+policy:                      # required test tags per requirement priority -
+  must: [smoke, negative]    # stated once here, never repeated per requirement
+  should: [regression]
+  could: [exploratory]
+
+common: requirements/common.yaml    # or a list, once shared items outgrow one file:
+# common:
+#   - requirements/common.yaml
+#   - requirements/common_hardware.yaml
+includes:
+  - requirements/auth.yaml
+  - requirements/settings.yaml
+
+reconciliation:              # filled in DURING exploration, not authored upfront
+  missing_targets: []        # requirement has no matching screen/button found
+  undocumented_targets: []   # screen/button found with no matching requirement
+  shared_gaps: []            # a shared item's `targets` list has an unverified entry
+```
+
+`common` accepts either shape - a single path (the original form) or a list
+of paths, read in order and merged. Split by concern once one file gets hard
+to scan (e.g. `common_auth.yaml`, `common_hardware.yaml`) rather than as a
+default; most projects never need more than one file. A path in the list
+that does not exist yet is not an error, same tolerance as the single-path
+form - a project may declare a file it hasn't populated yet.
+
+`platforms`/`screens` are pure metadata - the Rust coverage checker
+(`requirements-coverage`) ignores unknown top-level fields, so adding them
+never breaks an existing `index.yaml` that omits both. Use them when the
+same requirement set spans more than one platform build, or the project is
+big enough that `targets` values need one shared vocabulary instead of every
+module file inventing its own screen names. A single-platform, single-module
+project can omit both and lose nothing.
+
+When one requirement's `expect`/`reject` genuinely differs by platform (e.g.
+the OS permission dialog's exact button text), do not split it into two
+requirement ids - keep one id, prefix the differing lines inline
+(`"Android: ..."` / `"iOS: ..."`), and only add the platform name to `tags`
+when the whole requirement is platform-exclusive, not just one bullet
+inside it.
+
+### `common.yaml` (cross-cutting `shared:` items)
+
+```text
+shared:
+  error_toast:
+    label: Thông báo lỗi chung   # optional - free-text display name, see below
+    targets: all             # or a list of specific screens/buttons
+    expect:
+      - Hiện trong 1s sau khi lỗi xảy ra
+      - Tự tắt sau 3s, không chặn thao tác khác
+  network_offline:
+    targets: all
+    expect:
+      - "Hiện {error_toast}, không crash, cho phép retry"
+```
+
+`label` is optional and purely for display - the map key (`error_toast` above)
+is the technical id actually used inside `{error_toast}` reference tokens, so
+it stays a safe identifier (letters/digits/`_`/`.`/`-`). `label` exists for
+the common case where the natural name for a shared item is free-text (e.g.
+Vietnamese with diacritics and spaces) that could never work as a `{...}`
+token - same split as a requirement's `REQ-ID` key vs. its free-text `title`.
+Omit it when the id already reads fine on its own.
+
+`targets` is deliberately not called "screens" - on a hardware/jig test
+target (see `hardware`/`camera` modules), the applicable unit is a
+button/region id like `device_2.button_1`, not a UI screen. The same field
+name covers both; only what a coverage check cross-references against
+differs (`screen-map.csv` for UI, the camera/jig profile's button list for
+hardware) - add `domain: ui | hardware` at the `index.yaml` level when a
+project needs to be explicit about which.
+
+### `<module>.yaml` (one file per module)
+
+```text
+requirements:
+  REQ-AUTH-001:
+    title: Đăng nhập bằng số điện thoại
+    priority: must              # must | should | could - drives `policy` above
+    tags: [login, otp]           # only if it differs from the file-level default
+    expect:
+      - SĐT + OTP hợp lệ -> vào Home
+      - "Sai OTP 3 lần -> khoá 5 phút, hiện {error_toast}"
+    reject:
+      - SĐT không tồn tại
+      - OTP hết hạn
+    edge:
+      - "Mất mạng giữa lúc gửi OTP ({network_offline})"
+
+  REQ-AUTH-002:
+    title: Quên mật khẩu
+    priority: should
+    skip: "Chưa triển khai trong bản build hiện tại (SRS mục 4.3)"
+```
+
+Exactly six keywords, reused everywhere, matching how `tap`/`see`/`wait` get
+reused across YAML testcases instead of inventing a new verb per situation:
+`priority`, `expect`, `reject`, `edge`, `skip`, `targets`. A `{name}` inside
+any string is a reference into `common.yaml`'s `shared:` map - written
+inline where it is relevant, not declared in a separate "uses" list.
+
+Deliberately NOT included: a `status`/`testcases` field on each requirement.
+Coverage must never be self-reported by whoever last edited the file - it is
+computed from `cases.csv` (which yaml file references this requirement id)
+and whether that yaml file exists on disk, the same "verify, don't trust a
+claimed state" discipline as everywhere else in this document. Wire this
+into the same coverage check invoked by "Stop Conditions" below: no
+requirement may be reported as covered - and no suite may be reported as
+"done" - unless it is either non-`skip`ped with at least one real, existing
+testcase file referencing its id in `cases.csv`, or explicitly `skip`ped
+with a `reason`. Left with neither is a gap that must be surfaced to the
+user, never silently dropped.
 
 ## Systematic App Exploration Loop
 
@@ -616,3 +812,8 @@ Before claiming coverage is enough, verify:
   the UI, not just once; and each "What Clicking Can't Discover" item is
   explicitly marked in-scope, out-of-scope, or needs-specialist - not silently
   dropped.
+- If a `requirements/` directory (see "SRS Requirements Format") exists for
+  this project: every requirement id across `index.yaml`'s `includes` is
+  either `skip`ped with a reason, or referenced from at least one row in
+  `cases.csv` whose `yaml` file actually exists on disk. Compute this - do
+  not eyeball it or trust a status someone hand-wrote.

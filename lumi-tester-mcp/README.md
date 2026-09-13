@@ -48,6 +48,7 @@ separate `lumi-tester` install.
 - `doctor`
 - `schema`
 - `run_test`
+- `run_command`
 - `read_report`
 - `read_events`
 - `read_artifact`
@@ -58,14 +59,24 @@ Agent workflow:
 
 1. Run `doctor` for the target platform. Supported platforms are `android`,
    `android_auto`, `ios`, `web`, `macos`, `windows`, and `all`.
-2. Run `validate_yaml` and stop on invalid YAML.
-3. Run `list_tests` before using a command index.
-4. Use `schema` when command/header shape is unclear.
-5. Use `run_test`; it enables report, snapshot, and `events.jsonl` by default.
-6. On failure, read `run.json` with `read_report`, then inspect `events.jsonl`
+2. For a one-off action (a tap, a screenshot, a pinch/zoom check, poking at a
+   screen to see what's there) use `run_command` directly - it runs one or more
+   commands against a real device/app session with no YAML file involved.
+   Reach for a YAML file + `run_test` only once the flow is worth keeping as a
+   named, repeatable test case.
+3. Run `validate_yaml` and stop on invalid YAML.
+4. Run `list_tests` before using a command index.
+5. Use `schema` when command/header shape is unclear.
+6. Use `run_test`; it enables report, snapshot, and `events.jsonl` by default.
+7. On failure, read `run.json` with `read_report`, then inspect `events.jsonl`
    with `read_events`.
-7. Use `read_artifact` for failure XML/log text. Use `suggest_selectors` for
+8. Use `read_artifact` for failure XML/log text. Use `suggest_selectors` for
    Android UIAutomator XML selector candidates before falling back to points.
+
+`run_command` supports `android`, `ios`, `macos`, and `windows` (not `web` or
+`android_auto` - the underlying `lumi-tester shell` path doesn't cover those;
+use `run_test` for them instead). All commands passed in one `run_command` call
+share a single device session/connection, not one per command.
 
 `run_test` supports `android`, `android_auto`, `ios`, `web`, `macos`, and
 `windows`. Native desktop tests must run on the local desktop host; macOS needs

@@ -105,6 +105,34 @@ object CommandHandler {
                     val success = InputController.swipe(x1, y1, x2, y2, duration)
                     """{"cmd": "swipe", "success": $success}"""
                 }
+                // 2-finger pinch (zoom). Center point goes through TouchScaler like every
+                // other coordinate; startRadius/endRadius/angle are host-computed distances
+                // in device pixels and don't need scaling (see the pinch/shove doc comment
+                // on the Rust side of this protocol for why - TouchScaler's scale is always
+                // 1.0 for this agent, unlike the general-purpose nl-mirror app).
+                "pinch" -> {
+                    val rawCx = json.getDouble("cx").toFloat()
+                    val rawCy = json.getDouble("cy").toFloat()
+                    val (cx, cy) = TouchScaler.transform(rawCx, rawCy)
+                    val startRadius = json.getDouble("startRadius").toFloat()
+                    val endRadius = json.getDouble("endRadius").toFloat()
+                    val angle = json.optDouble("angle", 0.0)
+                    val duration = json.optLong("duration", 400)
+                    val success = InputController.pinch(cx, cy, startRadius, endRadius, angle, duration)
+                    """{"cmd": "pinch", "success": $success}"""
+                }
+                // 2-finger shove (camera pitch/tilt on most map SDKs, Mapbox included).
+                "shove" -> {
+                    val rawCx = json.getDouble("cx").toFloat()
+                    val rawCy = json.getDouble("cy").toFloat()
+                    val (cx, cy) = TouchScaler.transform(rawCx, rawCy)
+                    val spacing = json.getDouble("spacing").toFloat()
+                    val dx = json.getDouble("dx").toFloat()
+                    val dy = json.getDouble("dy").toFloat()
+                    val duration = json.optLong("duration", 400)
+                    val success = InputController.shove(cx, cy, spacing, dx, dy, duration)
+                    """{"cmd": "shove", "success": $success}"""
+                }
                 "long_press" -> {
                     val rawX = json.getDouble("x").toFloat()
                     val rawY = json.getDouble("y").toFloat()

@@ -883,6 +883,78 @@ impl TestExecutor {
         params
     }
 
+    /// Resolve a pinch/shove gesture's optional `at` field to concrete device-pixel
+    /// coordinates: `None` means screen center; a point string ("x,y"/"x%,y%") or selector
+    /// resolves the same way `drag`'s `from`/`to` do.
+    async fn resolve_gesture_center(
+        &self,
+        at: &Option<crate::parser::types::TapParamsInput>,
+    ) -> Result<(i32, i32)> {
+        let (screen_width, screen_height) = self.driver.get_screen_size().await?;
+        let Some(at) = at else {
+            return Ok((screen_width as i32 / 2, screen_height as i32 / 2));
+        };
+        let params = self.resolve_tap_params(at);
+
+        if let Some(point_str) = &params.point {
+            let parts: Vec<&str> = point_str.split(',').collect();
+            if parts.len() == 2 {
+                let x_str = parts[0].trim();
+                let y_str = parts[1].trim();
+                let x = if x_str.ends_with('%') {
+                    let pct: f64 = x_str.trim_end_matches('%').parse().unwrap_or(0.0);
+                    (screen_width as f64 * pct / 100.0) as i32
+                } else {
+                    x_str.parse().unwrap_or(0)
+                };
+                let y = if y_str.ends_with('%') {
+                    let pct: f64 = y_str.trim_end_matches('%').parse().unwrap_or(0.0);
+                    (screen_height as f64 * pct / 100.0) as i32
+                } else {
+                    y_str.parse().unwrap_or(0)
+                };
+                return Ok((x, y));
+            }
+        }
+
+        let selector = self
+            .build_selector(
+                &params.text,
+                &params.regex,
+                &params.id,
+                &params.description,
+                &params.relative,
+                &params.css,
+                &params.xpath,
+                &params.placeholder,
+                &params.role,
+                &params.element_type,
+                &params.image,
+                params.index,
+                &params.scrollable,
+                params.exact,
+                &params.ocr,
+            )
+            .ok_or_else(|| anyhow::anyhow!("No center point/selector specified for gesture"))?;
+        let selector = self
+            .apply_element_offset(selector, &params.align, &params.offset)
+            .await?;
+
+        match selector {
+            crate::driver::traits::Selector::Point { x, y } => Ok((x, y)),
+            _ => {
+                let timeout = self.context.default_timeout_ms;
+                let _ = self.driver.wait_for_element(&selector, timeout).await;
+                self.driver
+                    .resolve_element_point(&selector, 0.5, 0.5)
+                    .await?
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Gesture center element not found: {:?}", selector)
+                    })
+            }
+        }
+    }
+
     fn resolve_assert_params(
         &self,
         input: &crate::parser::types::AssertParamsInput,
@@ -4470,6 +4542,54 @@ impl TestExecutor {
 
                 let duration = params.duration.unwrap_or(500);
                 self.driver.drag((from_x, from_y), (to_x, to_y), duration).await
+            }
+
+            TestCommand::Pinch(params) => {
+                let (cx, cy) = self.resolve_gesture_center(&params.at).await?;
+                let (screen_width, screen_height) = self.driver.get_screen_size().await?;
+                let max_radius = (screen_width.min(screen_height) as f64 / 2.0) * 0.9;
+                let percent = params.percent.unwrap_or(50.0).clamp(5.0, 100.0);
+                let target_radius = (max_radius * percent / 100.0) as i32;
+                // "open" (zoom in): fingers start close together and spread apart to the
+                // target radius. "close" (zoom out): the reverse.
+                let (start_radius, end_radius) = match params.direction.as_str() {
+                    "open" => (target_radius / 5, target_radius),
+                    "close" => (target_radius, target_radius / 5),
+                    other => {
+                        return Err(anyhow::anyhow!(
+                            "pinch direction must be \"open\" or \"close\", got \"{}\"",
+                            other
+                        ))
+                    }
+                };
+                let duration = params.duration.unwrap_or(400);
+                self.driver
+                    .pinch(cx, cy, start_radius, end_radius, 0.0, duration)
+                    .await
+            }
+
+            TestCommand::Shove(params) => {
+                let (cx, cy) = self.resolve_gesture_center(&params.at).await?;
+                let distance = params.distance.unwrap_or(300) as i32;
+                let dy = match params.direction.as_str() {
+                    // Mapbox/most map SDKs: fingers sliding UP the screen tilts the camera
+                    // INTO 3D (increases pitch); sliding down flattens it back to 2D.
+                    "up" => -distance,
+                    "down" => distance,
+                    other => {
+                        return Err(anyhow::anyhow!(
+                            "shove direction must be \"up\" or \"down\", got \"{}\"",
+                            other
+                        ))
+                    }
+                };
+                // Fixed finger spacing approximating a natural 2-finger hand-span; shove
+                // only cares about the shared vertical motion, not the spacing itself.
+                const SHOVE_FINGER_SPACING_PX: i32 = 200;
+                let duration = params.duration.unwrap_or(400);
+                self.driver
+                    .shove(cx, cy, SHOVE_FINGER_SPACING_PX, 0, dy, duration)
+                    .await
             }
 
             // Mock Location Synchronization

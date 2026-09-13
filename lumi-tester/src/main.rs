@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 mod ai;
 
-use lumi_tester::{driver, recorder, report, runner, utils};
+use lumi_tester::{driver, recorder, report, requirements, runner, utils};
 
 #[derive(Parser)]
 #[command(name = "lumi-tester")]
@@ -124,6 +124,25 @@ enum Commands {
         json: bool,
     },
 
+    /// Compute SRS requirements coverage from a `requirements/index.yaml`
+    /// against `cases.csv` - never trust a hand-written status field, always
+    /// compute from files that actually exist on disk. See "SRS Requirements
+    /// Format" in the AI skill's testcase-design.md for the file layout.
+    RequirementsCoverage {
+        /// Path to `requirements/index.yaml`
+        path: PathBuf,
+
+        /// Path to `cases.csv` - the testcase matrix that references
+        /// requirement ids. Omit to only check `skip` vs unskipped counts
+        /// (every non-skipped requirement will report as missing).
+        #[arg(long)]
+        cases: Option<PathBuf>,
+
+        /// Print machine-readable JSON
+        #[arg(long, default_value = "false")]
+        json: bool,
+    },
+
     /// Check local automation dependencies
     Doctor {
         /// Target platform to check (android, android_auto, ios, web, macos, windows, all)
@@ -150,6 +169,21 @@ enum Commands {
         /// Device serial (Android) or UDID (iOS)
         #[arg(short, long)]
         device: Option<String>,
+
+        /// Run this single command and exit, instead of starting the interactive prompt -
+        /// no YAML file needed. Repeatable: each occurrence runs in order against the same
+        /// device session (one connection for all of them, not one per command). Accepts
+        /// the exact same YAML-sugar syntax as a command in a test file's command list,
+        /// e.g. `-c 'tapOn: "Login"' -c 'pinch: {direction: open, percent: 60}'`.
+        #[arg(short = 'c', long = "command")]
+        command: Vec<String>,
+
+        /// With -c/--command, print one JSON object per line
+        /// (`{"command":"...","success":bool,"error":string|null}`) instead of colored
+        /// text - for a script or AI agent to parse the per-command result, not just rely
+        /// on the overall exit code.
+        #[arg(long)]
+        json: bool,
     },
 
     /// Manage system components
@@ -716,6 +750,35 @@ async fn async_main() -> anyhow::Result<()> {
             print_list_result(&result, json)?;
         }
 
+        Commands::RequirementsCoverage { path, cases, json } => {
+            let report = requirements::check_coverage(&path, cases.as_deref())?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!(
+                    "{} {} requirement(s): {} covered, {} skipped, {} gap(s)",
+                    if report.ok { "✓".green() } else { "✗".red() },
+                    report.total,
+                    report.covered,
+                    report.skipped,
+                    report.gaps.len()
+                );
+                for gap in &report.gaps {
+                    println!(
+                        "  {} [{}] {} ({}) - {}",
+                        "✗".red(),
+                        gap.status,
+                        gap.id,
+                        gap.title,
+                        gap.detail
+                    );
+                }
+            }
+            if !report.ok {
+                anyhow::bail!("requirements coverage has unresolved gaps");
+            }
+        }
+
         Commands::Doctor { platform, json } => {
             let result = doctor_report(&normalize_platform(&platform));
             print_doctor_result(&result, json)?;
@@ -728,14 +791,22 @@ async fn async_main() -> anyhow::Result<()> {
             println!("{}", include_str!("../schema/lumi-test.schema.json"));
         }
 
-        Commands::Shell { platform, device } => {
-            println!(
-                "{} Starting interactive shell for {}...",
-                "🐚".to_string().blue(),
-                platform.cyan()
-            );
-
+        Commands::Shell {
+            platform,
+            device,
+            command,
+            json,
+        } => {
             let platform = normalize_platform(&platform);
+
+            if command.is_empty() {
+                println!(
+                    "{} Starting interactive shell for {}...",
+                    "🐚".to_string().blue(),
+                    platform.cyan()
+                );
+            }
+
             let driver: Box<dyn driver::traits::PlatformDriver> = match platform.as_str() {
                 "android" => {
                     Box::new(driver::android::AndroidDriver::new(device.as_deref()).await?)
@@ -746,7 +817,11 @@ async fn async_main() -> anyhow::Result<()> {
                 _ => anyhow::bail!("Unknown platform: {}", platform),
             };
 
-            runner::shell::run_shell(driver).await?;
+            if command.is_empty() {
+                runner::shell::run_shell(driver).await?;
+            } else {
+                runner::shell::run_one_shot(driver, command, json).await?;
+            }
         }
 
         Commands::System { command } => match command {

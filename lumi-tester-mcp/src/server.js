@@ -199,6 +199,67 @@ server.registerTool(
 );
 
 server.registerTool(
+  "run_command",
+  {
+    title: "Run Lumi Command",
+    description:
+      "Run one or more Lumi Tester commands directly against a device/app session - no YAML file needed. " +
+      "Use this for a quick one-off action (tap, type, screenshot, pinch, mockLocation, etc) instead of " +
+      "writing and then run_test-ing a throwaway YAML file. Each entry in `commands` uses the exact same " +
+      "YAML-sugar syntax as a line in a YAML test file's command list, e.g. 'tapOn: \"Login\"' or " +
+      "'pinch: {direction: open, percent: 60}'. All commands in one call share a single device session " +
+      "(one connection for all of them, not one per command) - pass several to chain a short sequence.",
+    inputSchema: {
+      ...workspaceSchema,
+      commands: z
+        .array(z.string())
+        .min(1)
+        .describe("One or more commands, same syntax as a YAML test file's command list, run in order."),
+      platform: z
+        .enum(["android", "ios", "macos", "windows"])
+        .default("android")
+        .describe("web and android_auto are not supported by this command path - use run_test for those."),
+      device: z.string().optional().describe("Device serial (Android) or UDID (iOS)."),
+      timeoutMs: z.number().int().positive().default(120000),
+    },
+  },
+  async ({ workspace, commands, platform, device, timeoutMs }) => {
+    const cliArgs = ["--platform", platform, "--json"];
+    if (device) cliArgs.push("--device", device);
+    for (const command of commands) cliArgs.push("--command", command);
+
+    const built = buildLumiCommand({ workspace, command: "shell", args: cliArgs });
+    const result = await runProcess({ ...built, timeoutMs });
+
+    // One JSON object per line (not a single JSON value) - `run_one_shot` (Rust
+    // side) prints {"command","success","error"} per executed command, interleaved
+    // with the driver's own human-readable operational logs (e.g. "📸 Saved
+    // screenshot to: ...") on the same stdout stream. Only lines that actually look
+    // like JSON are kept - the log lines are expected noise, not parse failures, so
+    // they're dropped silently rather than surfacing as fake `parseError` entries.
+    const results = result.stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("{"))
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return { parseError: true, line };
+        }
+      });
+
+    return jsonText({
+      code: result.code,
+      timedOut: result.timedOut,
+      results,
+      stderr: trim(result.stderr, 20000),
+      executed: built,
+    });
+  },
+);
+
+server.registerTool(
   "read_report",
   {
     title: "Read Lumi Report",

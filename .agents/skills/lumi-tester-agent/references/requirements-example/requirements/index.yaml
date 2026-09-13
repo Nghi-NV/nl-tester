@@ -1,0 +1,31 @@
+version: alpha
+name: Example App
+source: srs/example_app_v1.0.docx
+author: qa-team
+created_at: 2026-09-11
+updated_at: 2026-09-11
+tags: [example]
+
+platforms:
+  android:
+    appId: com.example.app
+  ios:
+    appId: com.example.app
+
+screens:
+  - login
+  - settings
+
+policy:
+  must: [smoke, negative]
+  should: [regression]
+  could: [exploratory]
+
+common: requirements/common.yaml
+includes:
+  - requirements/auth.yaml
+
+reconciliation:
+  missing_targets: []
+  undocumented_targets: []
+  shared_gaps: []

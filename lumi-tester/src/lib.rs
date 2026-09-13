@@ -7,6 +7,7 @@ pub mod inspector;
 pub mod parser;
 pub mod recorder;
 pub mod report;
+pub mod requirements;
 pub mod runner;
 pub mod updater;
 pub mod utils;
