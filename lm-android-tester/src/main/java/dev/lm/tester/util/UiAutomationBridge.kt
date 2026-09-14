@@ -109,6 +109,18 @@ object UiAutomationBridge {
      * on-device + streams over the adb transport each call, ~350-450ms measured) with an
      * in-process capture over the already-open connection.
      */
+    /**
+     * Returns the live, connected `UiAutomation` instance for a caller that needs to use
+     * more of its public API directly (e.g. bridging into `androidx.test.uiautomator`'s
+     * `UiDevice` for multi-touch gestures) rather than going through a bridge method here
+     * for every use case. Same public-class/hidden-constructor situation as
+     * `captureScreenshotPngBase64` above - the cast is safe once connected.
+     */
+    fun getAutomation(): android.app.UiAutomation? {
+        if (!ensureConnected()) return null
+        return uiAutomation as? android.app.UiAutomation
+    }
+
     fun captureScreenshotPngBase64(): String? {
         if (!ensureConnected()) return null
         return try {

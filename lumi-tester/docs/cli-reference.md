@@ -219,6 +219,8 @@ lumi-tester inspect --platform android
 lumi-tester inspect --platform macos --port 9358
 ```
 
+Nếu cổng đang bị chiếm bởi 1 tiến trình `lumi-tester inspect` cũ còn sót lại (quên tắt, hoặc bị orphan sau khi cập nhật CLI lên bản mới) - triệu chứng thường gặp: chọn được thiết bị nhưng mọi lần chụp ảnh đều báo lỗi - lệnh này **tự phát hiện và dừng tiến trình cũ đó trước khi khởi động**, không cần tự tay tìm và kill port. Nếu cổng bị chiếm bởi 1 tiến trình khác không phải lumi-tester, lệnh sẽ không đụng vào và chỉ cảnh báo rõ ràng - khi đó cần tự giải phóng cổng hoặc dùng `--port` khác.
+
 ---
 
 ### 3.5. `record` - Ghi lại Thao tác Người dùng ra YAML

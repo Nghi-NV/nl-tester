@@ -38,4 +38,9 @@ android {
 dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.0")
     implementation("org.lsposed.hiddenapibypass:hiddenapibypass:4.3")
+    // UiDevice.performMultiPointerGesture() - Google's own field-tested multi-touch
+    // gesture primitive, used here instead of hand-rolled MotionEvent synthesis for
+    // pinch/shove (see PinchShoveGestures.kt doc comment for why the hand-rolled version
+    // wasn't enough on its own).
+    implementation("androidx.test.uiautomator:uiautomator:2.3.0")
 }

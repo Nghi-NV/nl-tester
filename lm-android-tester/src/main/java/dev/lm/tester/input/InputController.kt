@@ -222,11 +222,23 @@ object InputController {
         finger2End: Pair<Float, Float>,
         durationMs: Long = 400
     ): Boolean {
-        val steps = 10
+        // Finer motion granularity than a fixed small step count: too few steps means
+        // large per-MOVE coordinate jumps, which some gesture detectors treat as an
+        // implausible teleport rather than continuous motion and silently discard.
+        // Aim for roughly one step per 16ms (~60Hz), floor 10.
+        val steps = maxOf(10, (durationMs / 16).toInt())
         val stepDuration = durationMs / steps
+        // No real touchscreen ever reports two fingers landing in the exact same
+        // sampling tick - there's always a few ms between them, and between the last
+        // move and either finger lifting. Zero-gap DOWN->POINTER_DOWN (or the
+        // symmetric POINTER_UP->UP) was tried live against GOFA's Mapbox view first:
+        // the injection reported success but produced no detectable scale/pitch
+        // response at all. This small realistic gap is the fix being tried for that.
+        val settleGapMs = 20L
         val downTime = SystemClock.uptimeMillis()
 
         if (!injectMultiTouch(MotionEvent.ACTION_DOWN, listOf(finger1Start), downTime)) return false
+        Thread.sleep(settleGapMs)
 
         if (!injectMultiTouch(
                 MotionEvent.ACTION_POINTER_DOWN,
@@ -236,6 +248,17 @@ object InputController {
             )
         ) return false
 
+        // Hold both fingers stationary for a few frames before starting real motion -
+        // gives a ScaleGestureDetector-style recognizer time to record its initial
+        // two-finger span/focus baseline. A real hand never starts moving in the exact
+        // instant the second finger lands; some MOVE events (even at the same position)
+        // also matter here, not just elapsed time, since a detector keyed off onTouchEvent
+        // may only (re)compute its baseline on a MOVE, not on POINTER_DOWN alone.
+        repeat(4) {
+            injectMultiTouch(MotionEvent.ACTION_MOVE, listOf(finger1Start, finger2Start), downTime)
+            Thread.sleep(30L)
+        }
+
         for (i in 1..steps) {
             val ratio = i.toFloat() / steps
             val p1 = lerp(finger1Start, finger1End, ratio)
@@ -244,6 +267,7 @@ object InputController {
             if (!injectMultiTouch(MotionEvent.ACTION_MOVE, listOf(p1, p2), downTime)) return false
         }
 
+        Thread.sleep(settleGapMs)
         if (!injectMultiTouch(
                 MotionEvent.ACTION_POINTER_UP,
                 listOf(finger1End, finger2End),
@@ -252,6 +276,7 @@ object InputController {
             )
         ) return false
 
+        Thread.sleep(settleGapMs)
         return injectMultiTouch(MotionEvent.ACTION_UP, listOf(finger1End), downTime)
     }
 

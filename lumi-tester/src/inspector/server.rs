@@ -47,6 +47,8 @@ impl InspectorServer {
 
     /// Start the server
     pub async fn start(&self) -> Result<()> {
+        ensure_port_free(self.config.port).await;
+
         // Initialize screen capture
         let screen_capture =
             ScreenCapture::new(&self.config.platform, self.config.device_serial.as_deref()).await?;
@@ -95,6 +97,82 @@ impl InspectorServer {
         axum::serve(listener, app.into_make_service()).await?;
 
         Ok(())
+    }
+}
+
+/// Before binding, check whether `port` is already held by a *stale lumi-tester process*
+/// (most commonly: a previous `inspect` invocation left running in another terminal, or
+/// orphaned after upgrading to a new CLI version - the exact "port conflict with the
+/// previous version" failure mode reported live: device selection succeeded but every
+/// snapshot request failed until the user manually found and killed the old process) and,
+/// if so, kill it so the upcoming `bind()` succeeds without the user having to do that by
+/// hand. Deliberately conservative: a port held by anything that doesn't look like our own
+/// binary is left alone - `bind()` below will then fail with its own clear OS error rather
+/// than this function guessing wrong and killing an unrelated process. Best-effort only
+/// (requires `lsof`/`ps`, present on macOS/Linux; silently does nothing where they aren't,
+/// e.g. Windows - `bind()` still surfaces the normal "address in use" error there).
+async fn ensure_port_free(port: u16) {
+    if tokio::net::TcpListener::bind(("0.0.0.0", port)).await.is_ok() {
+        // Nothing was listening - the probe listener drops (releasing the port) as this
+        // function returns, before the caller's own bind() runs.
+        return;
+    }
+
+    let lsof = tokio::process::Command::new("lsof")
+        .args(["-ti", &format!("tcp:{}", port), "-sTCP:LISTEN"])
+        .output()
+        .await;
+    let Ok(lsof) = lsof else { return }; // lsof unavailable (e.g. Windows) - nothing to do.
+    if !lsof.status.success() {
+        return;
+    }
+
+    let pids: Vec<u32> = String::from_utf8_lossy(&lsof.stdout)
+        .lines()
+        .filter_map(|line| line.trim().parse::<u32>().ok())
+        .collect();
+    if pids.is_empty() {
+        return;
+    }
+
+    let mut killed_any = false;
+    let mut left_unrelated = false;
+    for pid in pids {
+        let ps = tokio::process::Command::new("ps")
+            .args(["-p", &pid.to_string(), "-o", "command="])
+            .output()
+            .await;
+        let cmdline = ps.ok().map(|o| String::from_utf8_lossy(&o.stdout).to_string());
+        let looks_like_us = cmdline
+            .as_deref()
+            .map(|c| c.contains("lumi-tester") || c.contains("lumi_tester"))
+            .unwrap_or(false);
+
+        if looks_like_us {
+            eprintln!(
+                "  🔧 Port {} is held by a stale lumi-tester process (pid {}) - stopping it...",
+                port, pid
+            );
+            let _ = tokio::process::Command::new("kill")
+                .args(["-9", &pid.to_string()])
+                .output()
+                .await;
+            killed_any = true;
+        } else {
+            left_unrelated = true;
+        }
+    }
+
+    if left_unrelated {
+        eprintln!(
+            "  ⚠️ Port {} is held by another process that isn't lumi-tester - leaving it alone. \
+             If startup fails below, free the port manually or pass --port to use a different one.",
+            port
+        );
+    }
+    if killed_any {
+        // Give the OS a moment to actually release the socket after kill -9.
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     }
 }
 

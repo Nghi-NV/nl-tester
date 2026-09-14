@@ -4,6 +4,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import dev.lm.tester.control.ClipboardController
 import dev.lm.tester.input.InputController
+import dev.lm.tester.input.PinchShoveGestures
 import dev.lm.tester.input.TouchScaler
 import dev.lm.tester.util.PerformanceMonitor
 import dev.lm.tester.util.ViewHierarchyDumper
@@ -118,10 +119,18 @@ object CommandHandler {
                     val endRadius = json.getDouble("endRadius").toFloat()
                     val angle = json.optDouble("angle", 0.0)
                     val duration = json.optLong("duration", 400)
-                    val success = InputController.pinch(cx, cy, startRadius, endRadius, angle, duration)
+                    // UiObject2.pinchOpen/pinchClose (Google's own tested multi-touch
+                    // gesture) first - verified live to actually register with Mapbox's
+                    // gesture detector where the hand-rolled InputController path didn't.
+                    // Fall back only if the UiAutomation->UiDevice bridge itself couldn't
+                    // be constructed (e.g. UiAutomation not connected for some reason).
+                    val success = PinchShoveGestures.pinch(cx, cy, startRadius, endRadius, duration)
+                        || InputController.pinch(cx, cy, startRadius, endRadius, angle, duration)
                     """{"cmd": "pinch", "success": $success}"""
                 }
                 // 2-finger shove (camera pitch/tilt on most map SDKs, Mapbox included).
+                // No UiObject2 equivalent exists for this gesture (only pinch open/close
+                // are exposed) - hand-rolled InputController is the only path.
                 "shove" -> {
                     val rawCx = json.getDouble("cx").toFloat()
                     val rawCy = json.getDouble("cy").toFloat()
