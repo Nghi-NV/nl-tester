@@ -2224,6 +2224,10 @@ pub struct TapParams {
     /// Overrides align if both are specified
     #[serde(default)]
     pub offset: Option<String>,
+
+    /// Optional gesture duration in milliseconds (e.g. for longPress)
+    #[serde(default)]
+    pub duration: Option<u64>,
 }
 
 /// Tap element by type and index (e.g., tap 2nd EditText)

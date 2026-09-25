@@ -34,6 +34,16 @@ pub fn convert_to_webp_in_place(path: &Path) -> Result<PathBuf> {
     let bytes = std::fs::read(path)
         .with_context(|| format!("failed to read {}", path.display()))?;
 
+    // Fast-path: if already valid WebP (e.g. compressed directly on-device in lm-android-tester),
+    // skip expensive host-side decode and re-encode entirely.
+    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        let webp_path = path.with_extension("webp");
+        if webp_path != path {
+            std::fs::rename(path, &webp_path)?;
+        }
+        return Ok(webp_path);
+    }
+
     let img = image::load_from_memory(&bytes)
         .with_context(|| format!("failed to decode image at {}", path.display()))?;
     let buf = encode_rgb_lossless(&img.to_rgb8())

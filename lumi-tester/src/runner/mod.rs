@@ -1,6 +1,7 @@
 pub mod context;
 pub mod events;
 pub mod executor;
+pub mod healer;
 pub mod js_engine;
 pub mod shell;
 pub mod state;
@@ -11,6 +12,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub use events::*;
+pub use healer::*;
 pub use state::*;
 
 /// Run tests from a file or directory

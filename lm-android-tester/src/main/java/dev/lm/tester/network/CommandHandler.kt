@@ -182,10 +182,12 @@ object CommandHandler {
                 }
                 "screenshot" -> {
                     // Fast path: UiAutomation.takeScreenshot() over the already-open
-                    // connection instead of spawning `adb exec-out screencap`.
-                    val png = dev.lm.tester.util.UiAutomationBridge.captureScreenshotPngBase64()
-                    if (png != null) {
-                        """{"cmd": "screenshot", "success": true, "data": "$png"}"""
+                    // connection with native WebP hardware compression.
+                    val formatReq = json.optString("format", "webp")
+                    val qualityReq = json.optInt("quality", 90)
+                    val pair = dev.lm.tester.util.UiAutomationBridge.captureScreenshotBase64(formatReq, qualityReq)
+                    if (pair != null) {
+                        """{"cmd": "screenshot", "success": true, "format": "${pair.second}", "data": "${pair.first}"}"""
                     } else {
                         """{"cmd": "screenshot", "success": false}"""
                     }

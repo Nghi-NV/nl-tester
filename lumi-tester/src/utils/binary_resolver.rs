@@ -317,15 +317,7 @@ pub fn find_apk(name: &str) -> Option<PathBuf> {
         }
     }
 
-    // Check ~/.lumi-tester/apk/ for development/installed
-    if let Some(home) = dirs::home_dir() {
-        let apk_path = home.join(".lumi-tester").join("apk").join(name);
-        if apk_path.exists() {
-            return Some(apk_path);
-        }
-    }
-
-    // Automatically extract embedded lm-android-tester.apk on demand if not found on disk
+    // Automatically extract embedded lm-android-tester.apk on demand or update if stale
     if name == "lm-android-tester.apk" {
         const EMBEDDED_BYTES: &[u8] = include_bytes!("../../resources/apk/lm-android-tester.apk");
         let target_dir = dirs::home_dir()
@@ -344,6 +336,14 @@ pub fn find_apk(name: &str) -> Option<PathBuf> {
             if std::fs::write(&extracted_path, EMBEDDED_BYTES).is_ok() {
                 return Some(extracted_path);
             }
+        }
+    }
+
+    // Check ~/.lumi-tester/apk/ for development/installed
+    if let Some(home) = dirs::home_dir() {
+        let apk_path = home.join(".lumi-tester").join("apk").join(name);
+        if apk_path.exists() {
+            return Some(apk_path);
         }
     }
 

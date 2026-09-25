@@ -85,6 +85,19 @@ pub enum SwipeDirection {
     Right,
 }
 
+/// Candidate element representation for inspection, scoring, and self-healing
+#[derive(Debug, Clone, Default)]
+pub struct CandidateElement {
+    pub text: Option<String>,
+    pub id: Option<String>,
+    pub description: Option<String>,
+    pub element_type: Option<String>,
+    pub bounds: (i32, i32, i32, i32), // (left, top, right, bottom)
+    pub center: (i32, i32),
+    pub clickable: bool,
+    pub enabled: bool,
+}
+
 /// Platform-agnostic driver interface
 ///
 /// This trait defines all the operations that a platform driver must implement
@@ -306,6 +319,12 @@ pub trait PlatformDriver: Send + Sync {
     /// Wait for an element to disappear
     async fn wait_for_absence(&self, selector: &Selector, timeout_ms: u64) -> Result<bool>;
 
+    /// Wait for UI animations to settle and stabilize
+    async fn wait_for_animation(&self, max_wait_ms: u64) -> Result<()> {
+        tokio::time::sleep(std::time::Duration::from_millis(max_wait_ms.min(300))).await;
+        Ok(())
+    }
+
     /// Get the text content of an element
     ///
     /// # Arguments
@@ -360,6 +379,11 @@ pub trait PlatformDriver: Send + Sync {
 
     /// Get recent system logs (Logcat for Android)
     async fn dump_logs(&self, limit: u32) -> Result<String>;
+
+    /// Get visible interactive candidate elements on screen for self-healing
+    async fn get_screen_candidates(&self) -> Result<Vec<CandidateElement>> {
+        Ok(Vec::new())
+    }
 
     /// Tap on an element by class type and index (0-based)
     ///

@@ -21,7 +21,7 @@ use super::agent::AgentClient;
 use super::devicectl;
 use crate::driver::common;
 use crate::driver::image_matcher::{find_template, ImageRegion, MatchConfig};
-use crate::driver::traits::{PlatformDriver, Selector, SwipeDirection};
+use crate::driver::traits::{CandidateElement, PlatformDriver, Selector, SwipeDirection};
 use crate::parser::types::SpeedMode;
 use colored::Colorize;
 use image::GenericImageView;
@@ -1702,12 +1702,14 @@ impl PlatformDriver for IosDriver {
     async fn wait_for_element(&self, selector: &Selector, timeout_ms: u64) -> Result<bool> {
         let start = Instant::now();
         let timeout = Duration::from_millis(timeout_ms);
+        let mut interval = 25u64;
 
         while start.elapsed() < timeout {
             if self.find_element(selector).await?.is_some() {
                 return Ok(true);
             }
-            tokio::time::sleep(Duration::from_millis(200)).await;
+            tokio::time::sleep(Duration::from_millis(interval)).await;
+            interval = (interval * 2).min(200);
         }
 
         Ok(false)
@@ -1716,12 +1718,14 @@ impl PlatformDriver for IosDriver {
     async fn wait_for_absence(&self, selector: &Selector, timeout_ms: u64) -> Result<bool> {
         let start = Instant::now();
         let timeout = Duration::from_millis(timeout_ms);
+        let mut interval = 25u64;
 
         while start.elapsed() < timeout {
             if self.find_element(selector).await?.is_none() {
                 return Ok(true);
             }
-            tokio::time::sleep(Duration::from_millis(200)).await;
+            tokio::time::sleep(Duration::from_millis(interval)).await;
+            interval = (interval * 2).min(200);
         }
 
         Ok(false)
@@ -1924,6 +1928,34 @@ impl PlatformDriver for IosDriver {
         let logs = String::from_utf8_lossy(&output.stdout);
         let lines: Vec<&str> = logs.lines().rev().take(limit as usize).collect();
         Ok(lines.into_iter().rev().collect::<Vec<_>>().join("\n"))
+    }
+
+    async fn get_screen_candidates(&self) -> Result<Vec<CandidateElement>> {
+        let elements = self.get_ui_hierarchy().await?;
+        let candidates = elements
+            .into_iter()
+            .map(|e| {
+                let (bounds, center) = if let Some(r) = &e.rect {
+                    (
+                        (r.x as i32, r.y as i32, (r.x + r.width) as i32, (r.y + r.height) as i32),
+                        (r.x as i32 + r.width as i32 / 2, r.y as i32 + r.height as i32 / 2),
+                    )
+                } else {
+                    ((0, 0, 0, 0), (0, 0))
+                };
+                CandidateElement {
+                    text: e.label.clone(),
+                    id: e.identifier.clone(),
+                    description: e.name.clone(),
+                    element_type: e.element_type.clone(),
+                    bounds,
+                    center,
+                    clickable: true,
+                    enabled: e.enabled,
+                }
+            })
+            .collect();
+        Ok(candidates)
     }
 
     async fn tap_by_type_index(&self, element_type: &str, index: u32) -> Result<()> {

@@ -670,7 +670,7 @@ impl WebDriver {
 
     async fn wait_actionable(&self, selector: &Selector, timeout_ms: u64) -> Result<Option<ResolvedPoint>> {
         let start = std::time::Instant::now();
-        let mut interval = 50u64;
+        let mut interval = 25u64;
         loop {
             if let Some(p) = self.resolve_point(selector).await? {
                 if p.visible {

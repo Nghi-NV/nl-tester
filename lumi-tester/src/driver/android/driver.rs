@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use super::adb;
 use super::uiautomator::{self, UiElement};
-use crate::driver::traits::{PlatformDriver, Selector, SwipeDirection};
+use crate::driver::traits::{CandidateElement, PlatformDriver, Selector, SwipeDirection};
 use colored::Colorize;
 use image::GenericImageView;
 
@@ -46,29 +46,29 @@ impl SpeedProfile {
     pub fn tap_delay_ms(&self) -> u64 {
         match self {
             SpeedProfile::Turbo => 0,
-            SpeedProfile::Fast => 50,
-            SpeedProfile::Normal => 150,
-            SpeedProfile::Safe => 300,
+            SpeedProfile::Fast => 0,
+            SpeedProfile::Normal => 30,
+            SpeedProfile::Safe => 150,
         }
     }
 
     /// Get scroll delay in milliseconds
     pub fn scroll_delay_ms(&self) -> u64 {
         match self {
-            SpeedProfile::Turbo => 100,
-            SpeedProfile::Fast => 300,
-            SpeedProfile::Normal => 500,
-            SpeedProfile::Safe => 1000,
+            SpeedProfile::Turbo => 50,
+            SpeedProfile::Fast => 100,
+            SpeedProfile::Normal => 150,
+            SpeedProfile::Safe => 400,
         }
     }
 
     /// Get poll interval in milliseconds
     pub fn poll_interval_ms(&self) -> u64 {
         match self {
-            SpeedProfile::Turbo => 30,
-            SpeedProfile::Fast => 100,
-            SpeedProfile::Normal => 300,
-            SpeedProfile::Safe => 500,
+            SpeedProfile::Turbo => 25,
+            SpeedProfile::Fast => 50,
+            SpeedProfile::Normal => 100,
+            SpeedProfile::Safe => 300,
         }
     }
 
@@ -76,9 +76,9 @@ impl SpeedProfile {
     pub fn ui_idle_max_wait_ms(&self) -> u64 {
         match self {
             SpeedProfile::Turbo => 0, // Skip UI idle detection
-            SpeedProfile::Fast => 100,
-            SpeedProfile::Normal => 200,
-            SpeedProfile::Safe => 400,
+            SpeedProfile::Fast => 40,
+            SpeedProfile::Normal => 80,
+            SpeedProfile::Safe => 200,
         }
     }
 
@@ -333,7 +333,7 @@ impl AndroidDriver {
         // the already-open socket. A single in-process call instead of a poll loop of
         // `adb shell dumpsys window` round-trips. Falls back to that poll loop below on
         // any failure (agent unavailable, or it reported an unexpected error).
-        let idle_ms = (max_wait / 2).clamp(50, 150);
+        let idle_ms = (max_wait / 2).clamp(20, 60);
         let request = format!(
             "{{\"cmd\":\"wait_idle\",\"idleMs\":{},\"timeoutMs\":{}}}\n",
             idle_ms, max_wait
@@ -471,6 +471,28 @@ impl AndroidDriver {
         outer.get("success").and_then(|v| v.as_bool()).unwrap_or(false)
     }
 
+    async fn try_mirror_long_press(&self, x: i32, y: i32, duration_ms: u64) -> bool {
+        let request = format!(
+            "{{\"cmd\":\"long_press\",\"x\":{},\"y\":{},\"duration\":{}}}\n",
+            x, y, duration_ms
+        );
+        let Some(outer) = self.send_mirror_command(request.as_bytes()).await else {
+            return false;
+        };
+        outer.get("success").and_then(|v| v.as_bool()).unwrap_or(false)
+    }
+
+    async fn try_mirror_swipe(&self, x1: i32, y1: i32, x2: i32, y2: i32, duration_ms: u64) -> bool {
+        let request = format!(
+            "{{\"cmd\":\"swipe\",\"x1\":{},\"y1\":{},\"x2\":{},\"y2\":{},\"duration\":{}}}\n",
+            x1, y1, x2, y2, duration_ms
+        );
+        let Some(outer) = self.send_mirror_command(request.as_bytes()).await else {
+            return false;
+        };
+        outer.get("success").and_then(|v| v.as_bool()).unwrap_or(false)
+    }
+
     /// Try to set the currently-focused input field's text via the agent's `set_text`
     /// command (`AccessibilityNodeInfo.ACTION_SET_TEXT`). Returns `false` on any failure
     /// (agent unavailable, no focused field, action rejected) so the caller falls back to
@@ -534,7 +556,7 @@ impl AndroidDriver {
     async fn try_mirror_screenshot(&self, path: &str) -> bool {
         use base64::Engine;
 
-        let Some(outer) = self.send_mirror_command(b"{\"cmd\":\"screenshot\"}\n").await else {
+        let Some(outer) = self.send_mirror_command(b"{\"cmd\":\"screenshot\",\"format\":\"webp\",\"quality\":80}\n").await else {
             return false;
         };
         if !outer.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
@@ -1621,21 +1643,24 @@ impl PlatformDriver for AndroidDriver {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Element not found: {:?}", selector))?;
 
-        // Long press is simulated with swipe from same point to same point
-        adb::shell(
-            self.serial.as_deref(),
-            &format!(
-                "{} swipe {} {} {} {} {}",
-                self.input_prefix(),
-                x,
-                y,
-                x,
-                y,
-                duration_ms
-            ),
-        )
-        .await?;
+        // Fast path: agent injects long press in-process over persistent socket
+        if !self.try_mirror_long_press(x, y, duration_ms).await {
+            adb::shell(
+                self.serial.as_deref(),
+                &format!(
+                    "{} swipe {} {} {} {} {}",
+                    self.input_prefix(),
+                    x,
+                    y,
+                    x,
+                    y,
+                    duration_ms
+                ),
+            )
+            .await?;
+        }
 
+        self.smart_delay_after_action().await;
         Ok(())
     }
 
@@ -1811,7 +1836,7 @@ impl PlatformDriver for AndroidDriver {
         let keyboard_visible = match self.try_mirror_is_keyboard_visible().await {
             Some(true) => true,
             Some(false) | None => {
-                let dumpsys = adb::shell(self.serial.as_deref(), "dumpsys input_method")
+                let dumpsys = adb::shell(self.serial.as_deref(), "dumpsys input_method | grep mInputShown=true")
                     .await
                     .unwrap_or_default();
                 dumpsys.contains("mInputShown=true")
@@ -1885,34 +1910,44 @@ impl PlatformDriver for AndroidDriver {
             }
         };
 
-        adb::shell(
-            self.serial.as_deref(),
-            &format!(
-                "{} swipe {} {} {} {} {}",
-                self.input_prefix(),
-                start_x,
-                start_y,
-                end_x,
-                end_y,
-                duration
-            ),
-        )
-        .await?;
+        if !self
+            .try_mirror_swipe(start_x, start_y, end_x, end_y, duration)
+            .await
+        {
+            adb::shell(
+                self.serial.as_deref(),
+                &format!(
+                    "{} swipe {} {} {} {} {}",
+                    self.input_prefix(),
+                    start_x,
+                    start_y,
+                    end_x,
+                    end_y,
+                    duration
+                ),
+            )
+            .await?;
+        }
 
         Ok(())
     }
 
     async fn drag(&self, from: (i32, i32), to: (i32, i32), duration_ms: u64) -> Result<()> {
-        let cmd = format!(
-            "{} swipe {} {} {} {} {}",
-            self.input_prefix(),
-            from.0,
-            from.1,
-            to.0,
-            to.1,
-            duration_ms
-        );
-        adb::shell(self.serial.as_deref(), &cmd).await?;
+        if !self
+            .try_mirror_swipe(from.0, from.1, to.0, to.1, duration_ms)
+            .await
+        {
+            let cmd = format!(
+                "{} swipe {} {} {} {} {}",
+                self.input_prefix(),
+                from.0,
+                from.1,
+                to.0,
+                to.1,
+                duration_ms
+            );
+            adb::shell(self.serial.as_deref(), &cmd).await?;
+        }
         Ok(())
     }
 
@@ -1994,7 +2029,13 @@ impl PlatformDriver for AndroidDriver {
                 return Ok(true);
             }
 
-            self.swipe(swipe_dir.clone(), Some(800), from.clone())
+            let swipe_duration = match self.speed_profile {
+                SpeedProfile::Turbo => 150,
+                SpeedProfile::Fast => 200,
+                SpeedProfile::Normal => 250,
+                SpeedProfile::Safe => 400,
+            };
+            self.swipe(swipe_dir.clone(), Some(swipe_duration), from.clone())
                 .await?;
 
             // Wait for scroll animation (adaptive based on speed profile)
@@ -2013,7 +2054,9 @@ impl PlatformDriver for AndroidDriver {
         let start = Instant::now();
         let timeout = Duration::from_millis(timeout_ms);
         let base_interval = self.speed_profile.poll_interval_ms();
-        let mut interval = base_interval;
+        // Adaptive micro-polling: start immediately with small intervals (25ms -> 50ms)
+        // to catch dynamically rendered elements with minimal latency, ramping up to base_interval.
+        let mut interval = 25.min(base_interval);
         const MAX_INTERVAL: u64 = 500;
 
         while start.elapsed() < timeout {
@@ -2036,8 +2079,12 @@ impl PlatformDriver for AndroidDriver {
 
             tokio::time::sleep(Duration::from_millis(interval)).await;
 
-            // Exponential backoff: increase interval by 50% each time, up to max
-            interval = (interval * 3 / 2).min(MAX_INTERVAL);
+            // Adaptive backoff: quickly double micro-intervals up to base_interval, then 1.5x up to max
+            if interval < base_interval {
+                interval = (interval * 2).min(base_interval);
+            } else {
+                interval = (interval * 3 / 2).min(MAX_INTERVAL);
+            }
         }
 
         Ok(false)
@@ -2047,7 +2094,7 @@ impl PlatformDriver for AndroidDriver {
         let start = Instant::now();
         let timeout = Duration::from_millis(timeout_ms);
         let base_interval = self.speed_profile.poll_interval_ms();
-        let mut interval = base_interval;
+        let mut interval = 25.min(base_interval);
         const MAX_INTERVAL: u64 = 500;
 
         while start.elapsed() < timeout {
@@ -2066,11 +2113,34 @@ impl PlatformDriver for AndroidDriver {
 
             tokio::time::sleep(Duration::from_millis(interval)).await;
 
-            // Exponential backoff
-            interval = (interval * 3 / 2).min(MAX_INTERVAL);
+            // Adaptive backoff
+            if interval < base_interval {
+                interval = (interval * 2).min(base_interval);
+            } else {
+                interval = (interval * 3 / 2).min(MAX_INTERVAL);
+            }
         }
 
         Ok(false)
+    }
+
+    async fn wait_for_animation(&self, max_wait_ms: u64) -> Result<()> {
+        // Minimum barrier (1-2 VSYNC frames) so the app's Dart/UI thread schedules its animation frames
+        tokio::time::sleep(Duration::from_millis(35)).await;
+
+        let idle_ms = 40;
+        let timeout_ms = max_wait_ms.min(500);
+        let request = format!(
+            "{{\"cmd\":\"wait_idle\",\"idleMs\":{},\"timeoutMs\":{}}}\n",
+            idle_ms, timeout_ms
+        );
+        if let Some(outer) = self.send_mirror_command(request.as_bytes()).await {
+            if outer.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+                return Ok(());
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        Ok(())
     }
 
     async fn get_element_text(&self, selector: &Selector) -> Result<String> {
@@ -2288,6 +2358,27 @@ impl PlatformDriver for AndroidDriver {
             &["logcat", "-d", "-t", &limit.to_string()],
         )
         .await
+    }
+
+    async fn get_screen_candidates(&self) -> Result<Vec<CandidateElement>> {
+        let elements = self.get_ui_hierarchy().await?;
+        let candidates = elements
+            .into_iter()
+            .map(|e| {
+                let center = e.bounds.center();
+                CandidateElement {
+                    text: if e.text.is_empty() { None } else { Some(e.text) },
+                    id: if e.resource_id.is_empty() { None } else { Some(e.resource_id) },
+                    description: if e.content_desc.is_empty() { None } else { Some(e.content_desc) },
+                    element_type: Some(e.class),
+                    bounds: (e.bounds.left, e.bounds.top, e.bounds.right, e.bounds.bottom),
+                    center,
+                    clickable: e.clickable,
+                    enabled: e.enabled,
+                }
+            })
+            .collect();
+        Ok(candidates)
     }
 
     async fn start_mock_location(

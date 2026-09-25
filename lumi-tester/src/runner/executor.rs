@@ -52,6 +52,7 @@ pub struct TestExecutor {
     /// Cache of parsed subflow YAML by resolved path, so a subflow invoked repeatedly
     /// (e.g. inside a `repeat` loop) is only read and parsed from disk once per run.
     flow_cache: HashMap<std::path::PathBuf, crate::parser::types::TestFlow>,
+    pub healer: crate::runner::healer::SelfHealer,
 }
 
 /// Resolve `align` and `offset` from TapParams into (x_pct, y_pct) as 0.0..1.0.
@@ -214,6 +215,7 @@ impl TestExecutor {
             hardware_controller: None,
             auto_power_off: false,
             flow_cache: HashMap::new(),
+            healer: crate::runner::healer::SelfHealer::new(true),
         }
     }
 
@@ -763,6 +765,53 @@ impl TestExecutor {
         }
     }
 
+    async fn try_auto_heal_tap(
+        &mut self,
+        selector: &crate::driver::traits::Selector,
+        params: &crate::parser::types::TapParams,
+    ) -> Option<crate::runner::healer::HealedMatch> {
+        let selector_key = format!("{:?}", selector);
+        let candidates = self.driver.get_screen_candidates().await.ok()?;
+        if candidates.is_empty() {
+            return None;
+        }
+
+        let query_text = params.text.as_deref().or(params.regex.as_deref());
+        let query_id = params.id.as_deref();
+        let query_desc = params.description.as_deref();
+
+        self.healer.attempt_heal(&selector_key, query_text, query_id, query_desc, &candidates)
+    }
+
+    async fn record_heal_fingerprint(
+        &mut self,
+        selector: &crate::driver::traits::Selector,
+        params: &crate::parser::types::TapParams,
+    ) {
+        if !self.healer.is_enabled() {
+            return;
+        }
+        let selector_key = format!("{:?}", selector);
+        if let Ok(candidates) = self.driver.get_screen_candidates().await {
+            let matched = candidates.into_iter().find(|c| {
+                if let (Some(pid), Some(cid)) = (&params.id, &c.id) {
+                    if pid == cid {
+                        return true;
+                    }
+                }
+                if let (Some(ptext), Some(ctext)) = (&params.text, &c.text) {
+                    if ptext == ctext {
+                        return true;
+                    }
+                }
+                false
+            });
+            if let Some(c) = matched {
+                self.healer.record_success(&selector_key, &c);
+            }
+        }
+    }
+
     fn resolve_tap_params(
         &self,
         input: &crate::parser::types::TapParamsInput,
@@ -776,9 +825,16 @@ impl TestExecutor {
                         return p;
                     }
                 }
-                crate::parser::types::TapParams {
-                    text: Some(subst),
-                    ..Default::default()
+                if crate::parser::types::is_regex_string(&subst) {
+                    crate::parser::types::TapParams {
+                        regex: Some(subst),
+                        ..Default::default()
+                    }
+                } else {
+                    crate::parser::types::TapParams {
+                        text: Some(subst),
+                        ..Default::default()
+                    }
                 }
             }
         };
@@ -1672,11 +1728,47 @@ impl TestExecutor {
                             Ok(())
                         }
                     } else {
-                        let timeout = self.context.default_timeout_ms;
-                        if !matches!(selector, crate::driver::traits::Selector::Point { .. }) {
-                            let _ = self.driver.wait_for_element(&selector, timeout).await;
+                        // Single-Pass Tap fast path: attempt immediate tap first.
+                        // If the element is already rendered on screen, this avoids doing a redundant
+                        // wait_for_element hierarchy dump before the tap's own dump (~50% reduction in tap latency).
+                        let tap_result = self.driver.tap(&selector).await;
+                        let tap_err = match tap_result {
+                            Ok(()) => None,
+                            Err(initial_err) => {
+                                let timeout = self.context.default_timeout_ms;
+                                if !matches!(selector, crate::driver::traits::Selector::Point { .. }) {
+                                    let _ = self.driver.wait_for_element(&selector, timeout).await;
+                                }
+                                match self.driver.tap(&selector).await {
+                                    Ok(()) => None,
+                                    Err(_) => Some(initial_err),
+                                }
+                            }
+                        };
+
+                        if let Some(e) = tap_err {
+                            if let Some(healed) = self.try_auto_heal_tap(&selector, &params).await {
+                                self.emitter.emit(crate::runner::events::TestEvent::CommandAutoHealed {
+                                    flow_name: String::new(),
+                                    index: 0,
+                                    original_selector: format!("{:?}", selector),
+                                    healed_target: healed.healed_text.clone().unwrap_or_else(|| healed.healed_id.clone().unwrap_or_default()),
+                                    confidence: healed.confidence,
+                                    suggestion: healed.suggestion.clone(),
+                                    depth: self.depth,
+                                });
+                                let healed_sel = crate::driver::traits::Selector::Point {
+                                    x: healed.target_point.0,
+                                    y: healed.target_point.1,
+                                };
+                                self.driver.tap(&healed_sel).await?;
+                            } else {
+                                return Err(e);
+                            }
+                        } else {
+                            self.record_heal_fingerprint(&selector, &params).await;
                         }
-                        self.driver.tap(&selector).await
+                        Ok(())
                     }
                 }
             }
@@ -1703,11 +1795,19 @@ impl TestExecutor {
                     )
                     .ok_or_else(|| anyhow::anyhow!("No selector specified for longPressOn"))?;
                 let selector = self.apply_element_offset(selector, &params.align, &params.offset).await?;
-                let timeout = self.context.default_timeout_ms;
+                let duration = params.duration.unwrap_or(800);
+
+                // Fast path: attempt direct long_press without prior hierarchy wait
+                if self.driver.long_press(&selector, duration).await.is_ok() {
+                    return Ok(());
+                }
+
+                // Fallback: wait for element if not immediately present
                 if !matches!(selector, crate::driver::traits::Selector::Point { .. }) {
+                    let timeout = self.context.default_timeout_ms;
                     let _ = self.driver.wait_for_element(&selector, timeout).await;
                 }
-                self.driver.long_press(&selector, 1000).await
+                self.driver.long_press(&selector, duration).await
             }
 
             TestCommand::DoubleTapOn(params_input) => {
@@ -1885,7 +1985,7 @@ impl TestExecutor {
                         };
                     }
 
-                    let timeout = params.timeout.unwrap_or(5000);
+                    let timeout = params.timeout.unwrap_or(self.context.default_timeout_ms);
                     let visible = self.driver.wait_for_element(&selector, timeout).await?;
 
                     if visible {
@@ -2086,7 +2186,16 @@ impl TestExecutor {
                     if !visible {
                         Ok(())
                     } else {
-                        anyhow::bail!("Element is visible but should not be: {:?}", selector)
+                        // Adaptive settling grace period: if the element is visible on the first check,
+                        // it might be mid-way through an exit animation (modal dismiss, route pop, async state change).
+                        // Give it an adaptive grace period (params.timeout or 1500ms) before declaring failure.
+                        let grace_timeout = params.timeout.unwrap_or(1500);
+                        let disappeared = self.driver.wait_for_absence(&selector, grace_timeout).await?;
+                        if disappeared {
+                            Ok(())
+                        } else {
+                            anyhow::bail!("Element is visible but should not be: {:?}", selector)
+                        }
                     }
                 }
                 .await;
@@ -2189,25 +2298,7 @@ impl TestExecutor {
             }
 
             TestCommand::WaitForAnimationToEnd => {
-                // Poll UI hierarchy for changes instead of a blind fixed sleep, capped at
-                // the previous fixed 1000ms so this can only finish earlier, never later.
-                const MAX_WAIT_MS: u64 = 1000;
-                const POLL_INTERVAL_MS: u64 = 100;
-                let start = std::time::Instant::now();
-                let mut last_hierarchy = self.driver.dump_ui_hierarchy().await.ok();
-                loop {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(POLL_INTERVAL_MS)).await;
-                    if start.elapsed().as_millis() as u64 >= MAX_WAIT_MS {
-                        break;
-                    }
-                    let current = self.driver.dump_ui_hierarchy().await.ok();
-                    if current == last_hierarchy {
-                        // UI stable across two consecutive polls: animation likely done.
-                        break;
-                    }
-                    last_hierarchy = current;
-                }
-                Ok(())
+                self.driver.wait_for_animation(500).await
             }
 
             TestCommand::Wait(params_input) => {
@@ -5403,7 +5494,12 @@ impl TestExecutor {
         let primary = if let Some(r) = regex {
             Selector::TextRegex(self.context.substitute_vars(r), idx)
         } else if let Some(t) = text {
-            Selector::Text(self.context.substitute_vars(t), idx, exact)
+            let subst_text = self.context.substitute_vars(t);
+            if !exact && crate::parser::types::is_regex_string(&subst_text) {
+                Selector::TextRegex(subst_text, idx)
+            } else {
+                Selector::Text(subst_text, idx, exact)
+            }
         } else if let Some(i) = id {
             let subst_id = self.context.substitute_vars(i);
             if crate::parser::types::is_regex_string(&subst_id) {
@@ -6012,7 +6108,11 @@ impl TestExecutor {
 
         if let Some(ref text) = cond.visible {
             let text = self.context.substitute_vars(text);
-            let selector = Selector::Text(text, 0, false);
+            let selector = if crate::parser::types::is_regex_string(&text) {
+                Selector::TextRegex(text, 0)
+            } else {
+                Selector::Text(text, 0, false)
+            };
             return self.driver.is_visible(&selector).await.unwrap_or(false);
         }
         if let Some(ref re) = cond.visible_regex {
@@ -6022,7 +6122,11 @@ impl TestExecutor {
         }
         if let Some(ref text) = cond.not_visible {
             let text = self.context.substitute_vars(text);
-            let selector = Selector::Text(text, 0, false);
+            let selector = if crate::parser::types::is_regex_string(&text) {
+                Selector::TextRegex(text, 0)
+            } else {
+                Selector::Text(text, 0, false)
+            };
             return !self.driver.is_visible(&selector).await.unwrap_or(false);
         }
         if let Some(ref re) = cond.not_visible_regex {
@@ -6149,5 +6253,13 @@ mod tests {
         let quoted = "'${ENV}' == 'staging'";
         let subst_quoted = context.substitute_vars(quoted);
         assert!(engine.eval_bool(&subst_quoted).unwrap());
+    }
+
+    #[test]
+    fn test_tap_regex_shorthand_resolution() {
+        let input = crate::parser::types::TapParamsInput::String("Login with.*".to_string());
+        let params = input.into_inner();
+        assert_eq!(params.regex.as_deref(), Some("Login with.*"));
+        assert_eq!(params.text, None);
     }
 }

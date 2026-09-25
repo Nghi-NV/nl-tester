@@ -645,22 +645,26 @@ Start-Sleep -Milliseconds {duration_ms}
 
     async fn wait_for_element(&self, selector: &Selector, timeout_ms: u64) -> Result<bool> {
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+        let mut interval = 25u64;
         while Instant::now() < deadline {
             if self.is_visible(selector).await? {
                 return Ok(true);
             }
-            std::thread::sleep(Duration::from_millis(250));
+            tokio::time::sleep(Duration::from_millis(interval)).await;
+            interval = (interval * 2).min(250);
         }
         Ok(false)
     }
 
     async fn wait_for_absence(&self, selector: &Selector, timeout_ms: u64) -> Result<bool> {
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+        let mut interval = 25u64;
         while Instant::now() < deadline {
             if !self.is_visible(selector).await? {
                 return Ok(true);
             }
-            std::thread::sleep(Duration::from_millis(250));
+            tokio::time::sleep(Duration::from_millis(interval)).await;
+            interval = (interval * 2).min(250);
         }
         Ok(false)
     }

@@ -25,7 +25,8 @@ import java.util.ArrayDeque
  */
 object UiAutomationBridge {
 
-    private const val CONNECT_FLAGS = 0 // UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES = 1; 0 = default flags
+    private const val FLAG_RETRIEVE_INTERACTIVE_WINDOWS = 2
+    private const val CONNECT_FLAGS = FLAG_RETRIEVE_INTERACTIVE_WINDOWS // 2 = enables getWindows() to retrieve interactive windows (IME included)
 
     private var handlerThread: HandlerThread? = null
     private var uiAutomation: Any? = null
@@ -121,23 +122,37 @@ object UiAutomationBridge {
         return uiAutomation as? android.app.UiAutomation
     }
 
-    fun captureScreenshotPngBase64(): String? {
+    fun captureScreenshotBase64(formatName: String = "webp", quality: Int = 90): Pair<String, String>? {
         if (!ensureConnected()) return null
         return try {
             val automation = uiAutomation as? android.app.UiAutomation ?: return null
             val bitmap = automation.takeScreenshot() ?: return null
             val stream = java.io.ByteArrayOutputStream()
+            val (compressFormat, ext) = if (formatName.equals("png", ignoreCase = true)) {
+                Pair(android.graphics.Bitmap.CompressFormat.PNG, "png")
+            } else {
+                val fmt = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    android.graphics.Bitmap.CompressFormat.WEBP_LOSSY
+                } else {
+                    @Suppress("DEPRECATION")
+                    android.graphics.Bitmap.CompressFormat.WEBP
+                }
+                Pair(fmt, "webp")
+            }
             try {
-                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
+                bitmap.compress(compressFormat, quality, stream)
             } finally {
                 bitmap.recycle()
             }
-            android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP)
+            val b64 = android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP)
+            Pair(b64, ext)
         } catch (e: Throwable) {
             e.printStackTrace()
             null
         }
     }
+
+    fun captureScreenshotPngBase64(): String? = captureScreenshotBase64("png", 100)?.first
 
     /**
      * Reports whether the on-screen keyboard (IME) is currently showing, via
@@ -321,12 +336,6 @@ object UiAutomationBridge {
         if (!ensureConnected()) return null
 
         return try {
-            try {
-                mWaitForIdle?.invoke(uiAutomation, 200L, 2000L)
-            } catch (_: Throwable) {
-                // Idle wait is a best-effort optimization, not required for correctness.
-            }
-
             @Suppress("UNCHECKED_CAST")
             val root = mGetRoot?.invoke(uiAutomation) as? AccessibilityNodeInfo
                 ?: return null

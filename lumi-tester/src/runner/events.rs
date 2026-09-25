@@ -63,6 +63,17 @@ pub enum TestEvent {
         depth: usize,
     },
 
+    /// Element selector was auto-healed via similarity matching
+    CommandAutoHealed {
+        flow_name: String,
+        index: usize,
+        original_selector: String,
+        healed_target: String,
+        confidence: f32,
+        suggestion: String,
+        depth: usize,
+    },
+
     /// App crashed during test execution
     AppCrashed {
         app_id: String,
@@ -418,6 +429,33 @@ impl ConsoleEventListener {
                         if depth < spinner_styles.len() {
                             spinner_styles[depth] = None;
                         }
+                    }
+                }
+
+                TestEvent::CommandAutoHealed {
+                    original_selector,
+                    healed_target,
+                    confidence,
+                    suggestion,
+                    depth,
+                    ..
+                } => {
+                    let indent = "    ".repeat(depth);
+                    let heal_line = format!(
+                        "{}    {} [Auto-Heal {:.0}%] `{}` -> matched `{}`",
+                        indent,
+                        "🩹".yellow(),
+                        confidence * 100.0,
+                        original_selector,
+                        healed_target
+                    );
+                    let sugg_line = format!("{}       Suggested fix: {}", indent, suggestion.yellow());
+                    if std::io::stdout().is_terminal() {
+                        multi.println(heal_line).ok();
+                        multi.println(sugg_line).ok();
+                    } else {
+                        println!("{}", heal_line);
+                        println!("{}", sugg_line);
                     }
                 }
 
