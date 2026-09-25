@@ -371,6 +371,71 @@ appId: com.example.heavyapp
 
 ---
 
+## 🔀 Cấu trúc Điều khiển Hiện đại: `when:`, `forEach:`, `match:`
+
+Để kịch bản test luôn phẳng (flat), dễ đọc và không bị lồng block sâu, Lumi Tester hỗ trợ các cấu trúc điều khiển tự nhiên:
+
+### 1. Modifier Inline `when:` (Loại bỏ If-Then lồng nhau)
+Thay vì tạo cả một block `conditional:` cồng kềnh, bạn có thể gắn trực tiếp `when:` vào bất kỳ câu lệnh nào:
+```yaml
+# Nhấn Đồng ý KHI nhìn thấy Popup Cookies
+- tap: "Accept Cookies"
+  when: { visible: "Accept Cookies" }
+
+# Nhấn Để sau KHI có Popup Update
+- tap: "Remind Later"
+  when: { visible: "Update Available" }
+
+# Điều kiện theo biến môi trường hoặc biểu thức logic
+- tap: "Debug Mode"
+  when: "${ENV} == 'staging'"
+```
+
+### 2. Vòng lặp Khai báo `forEach:` (Duyệt mảng & Data-Driven)
+Duyệt qua danh sách mảng tĩnh, danh sách đối tượng hoặc mảng động từ biến Context:
+```yaml
+# Duyệt mảng tĩnh
+- forEach:
+    item: channel
+    in: [1, 2, 3, 4]
+    commands:
+      - hwClick:
+          channel: "${channel}"
+          duration: 150
+      - wait: 500
+
+# Data-Driven với danh sách đối tượng
+- forEach:
+    item: user
+    in:
+      - { email: "admin@test.com", pass: "123456" }
+      - { email: "guest@test.com", pass: "password" }
+    commands:
+      - tap: "Email"
+      - inputText: "${user.email}"
+      - tap: "Password"
+      - inputText: "${user.pass}"
+      - tap: "Login"
+```
+
+### 3. Khớp Nhánh `match:` (Thay thế Switch-Case)
+Cấu trúc phẳng với Key-Value gọn gàng, trực quan:
+```yaml
+- match: "${USER_ROLE}"
+  cases:
+    admin:
+      - tap: "Admin Panel"
+      - see: "System Settings"
+    editor:
+      - tap: "Content Editor"
+    viewer:
+      - see: "Read Only"
+  default:
+    - see: "Unauthorized"
+```
+
+---
+
 ## ⚡ Thực thi & Debugging linh hoạt (Execution & Debugging)
 
 Khi phát triển hoặc gỡ lỗi kịch bản test, `lumi-tester` và VS Code Extension cung cấp các chế độ chạy nhanh:
@@ -388,6 +453,9 @@ lumi-tester run path/to/test.yaml --from-command-index 2
 
 # Lặp lại test N lần liên tiếp (stress/stability testing)
 lumi-tester run path/to/test.yaml --repeat 5
+
+# Chạy test theo dữ liệu CSV/JSON (Data-Driven Testing)
+lumi-tester run path/to/test.yaml --data users.csv --platform android
 ```
 
 ### 2. Thực thi qua VS Code Extension:

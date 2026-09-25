@@ -4,6 +4,7 @@ use super::types::{
     InputAtParams, LaunchAppParams, MockLocationParamsInput, Platform, RepeatParams, ReportParams,
     RetryParams, ScrollUntilVisibleInput, ScrollUntilVisibleParams, SetVarParams, TapAtParams,
     TapParams, TapParamsInput, TestCommand, TestFlow, WaitParams, WaitParamsInput,
+    ForEachParams, MatchParams, WhenParams,
 };
 use anyhow::{Context, Result};
 use std::collections::HashMap;
@@ -417,6 +418,67 @@ pub fn parse_command_value(value: &serde_yaml::Value) -> Result<Option<TestComma
 
         // Command with parameters like "- tapOn:\n    text: 'Login'"
         serde_yaml::Value::Mapping(map) => {
+            // Check for flattened match with cases:
+            // - match: "${ROLE}"
+            //   cases: { ... }
+            let match_key = serde_yaml::Value::String("match".to_string());
+            let cases_key = serde_yaml::Value::String("cases".to_string());
+            if let Some(match_val) = map.get(&match_key) {
+                if let Some(cases_val) = map.get(&cases_key) {
+                    let value_str = match match_val {
+                        serde_yaml::Value::String(s) => s.clone(),
+                        serde_yaml::Value::Number(n) => n.to_string(),
+                        serde_yaml::Value::Bool(b) => b.to_string(),
+                        _ => serde_json::to_string(match_val).unwrap_or_default(),
+                    };
+                    let cases_map = cases_val
+                        .as_mapping()
+                        .ok_or_else(|| anyhow::anyhow!("match 'cases' must be a mapping"))?;
+                    let mut cases = HashMap::new();
+                    for (k, v) in cases_map {
+                        let case_key = match k {
+                            serde_yaml::Value::String(s) => s.clone(),
+                            serde_yaml::Value::Number(n) => n.to_string(),
+                            serde_yaml::Value::Bool(b) => b.to_string(),
+                            _ => anyhow::bail!("case key must be string, number, or bool"),
+                        };
+                        let cmds = parse_commands_from_value(v)?;
+                        cases.insert(case_key, cmds);
+                    }
+                    let default_cmds = if let Some(def_val) =
+                        map.get(&serde_yaml::Value::String("default".to_string()))
+                    {
+                        Some(parse_commands_from_value(def_val)?)
+                    } else {
+                        None
+                    };
+                    return Ok(Some(TestCommand::Match(MatchParams {
+                        value: value_str,
+                        cases,
+                        default: default_cmds,
+                    })));
+                }
+            }
+
+            // Check for modifier inline 'when' with other command keys:
+            // - tap: "Accept"
+            //   when: { visible: "Accept" }
+            let when_key = serde_yaml::Value::String("when".to_string());
+            if let Some(when_val) = map.get(&when_key) {
+                if map.len() > 1 {
+                    let mut remaining_map = map.clone();
+                    remaining_map.remove(&when_key);
+                    let inner_cmd = parse_command_value(&serde_yaml::Value::Mapping(remaining_map))?
+                        .ok_or_else(|| anyhow::anyhow!("Failed to parse command with 'when' modifier"))?;
+                    let condition_json: serde_json::Value =
+                        serde_yaml::from_value(when_val.clone())?;
+                    return Ok(Some(TestCommand::When(WhenParams {
+                        condition: condition_json,
+                        command: Box::new(inner_cmd),
+                    })));
+                }
+            }
+
             if map.len() != 1 {
                 anyhow::bail!("Invalid command format: expected single key mapping");
             }
@@ -698,6 +760,109 @@ fn parse_command_with_params(
             TestCommand::Retry(RetryParams {
                 max_retries,
                 commands,
+            })
+        }
+
+        "forEach" | "foreach" | "for_each" => {
+            let map = params
+                .as_mapping()
+                .ok_or_else(|| anyhow::anyhow!("forEach requires a mapping"))?;
+            let item = map
+                .get(&serde_yaml::Value::String("item".to_string()))
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow::anyhow!("forEach requires 'item' name"))?
+                .to_string();
+            let in_val = map
+                .get(&serde_yaml::Value::String("in".to_string()))
+                .or_else(|| map.get(&serde_yaml::Value::String("items".to_string())))
+                .ok_or_else(|| anyhow::anyhow!("forEach requires 'in' collection"))?
+                .clone();
+            let cmds_val = map
+                .get(&serde_yaml::Value::String("commands".to_string()))
+                .or_else(|| map.get(&serde_yaml::Value::String("do".to_string())))
+                .ok_or_else(|| anyhow::anyhow!("forEach requires 'commands' or 'do'"))?;
+            let commands = parse_commands_from_value(cmds_val)?;
+            TestCommand::ForEach(ForEachParams {
+                item,
+                r#in: in_val,
+                commands,
+            })
+        }
+
+        "match" => {
+            let map = params
+                .as_mapping()
+                .ok_or_else(|| anyhow::anyhow!("match requires a mapping"))?;
+            let value = map
+                .get(&serde_yaml::Value::String("value".to_string()))
+                .and_then(|v| match v {
+                    serde_yaml::Value::String(s) => Some(s.clone()),
+                    serde_yaml::Value::Number(n) => Some(n.to_string()),
+                    serde_yaml::Value::Bool(b) => Some(b.to_string()),
+                    _ => None,
+                })
+                .unwrap_or_default();
+            let cases_map = map
+                .get(&serde_yaml::Value::String("cases".to_string()))
+                .and_then(|v| v.as_mapping())
+                .ok_or_else(|| anyhow::anyhow!("match requires 'cases' mapping"))?;
+            let mut cases = HashMap::new();
+            for (k, v) in cases_map {
+                let case_key = match k {
+                    serde_yaml::Value::String(s) => s.clone(),
+                    serde_yaml::Value::Number(n) => n.to_string(),
+                    serde_yaml::Value::Bool(b) => b.to_string(),
+                    _ => anyhow::bail!("case key must be string, number, or bool"),
+                };
+                let cmds = parse_commands_from_value(v)?;
+                cases.insert(case_key, cmds);
+            }
+            let default_cmds = if let Some(def_val) =
+                map.get(&serde_yaml::Value::String("default".to_string()))
+            {
+                Some(parse_commands_from_value(def_val)?)
+            } else {
+                None
+            };
+            TestCommand::Match(MatchParams {
+                value,
+                cases,
+                default: default_cmds,
+            })
+        }
+
+        "when" => {
+            let map = params
+                .as_mapping()
+                .ok_or_else(|| anyhow::anyhow!("when requires a mapping"))?;
+            let cond_val = map
+                .get(&serde_yaml::Value::String("condition".to_string()))
+                .or_else(|| map.get(&serde_yaml::Value::String("if".to_string())))
+                .ok_or_else(|| anyhow::anyhow!("when requires 'condition'"))?;
+            let condition_json: serde_json::Value = serde_yaml::from_value(cond_val.clone())?;
+            let cmd_val = map
+                .get(&serde_yaml::Value::String("command".to_string()))
+                .or_else(|| map.get(&serde_yaml::Value::String("then".to_string())))
+                .or_else(|| map.get(&serde_yaml::Value::String("commands".to_string())))
+                .ok_or_else(|| anyhow::anyhow!("when requires 'command' or 'then'"))?;
+            let cmds = parse_commands_from_value(cmd_val)?;
+            let inner_cmd = if cmds.len() == 1 {
+                cmds.into_iter().next().unwrap()
+            } else {
+                TestCommand::RunFlow(super::types::RunFlowParamsInput::Struct(
+                    super::types::RunFlowParams {
+                        path: None,
+                        vars: None,
+                        commands: Some(cmds),
+                        when: None,
+                        label: Some("When block".to_string()),
+                        optional: None,
+                    },
+                ))
+            };
+            TestCommand::When(WhenParams {
+                condition: condition_json,
+                command: Box::new(inner_cmd),
             })
         }
 
@@ -2380,4 +2545,99 @@ jig:
         assert_eq!(params.node_id, Some(2));
         assert_eq!(params.wire_format, Some("[NODE:{node}] {command}\r\n".to_string()));
     }
+
+    #[test]
+    fn test_when_modifier_parsing() {
+        let yaml = r#"
+platform: android
+---
+- tap: "Accept Cookies"
+  when:
+    visible: "Accept Cookies"
+- inputText: "staging_user"
+  when: "${ENV} == 'staging'"
+- back:
+  when:
+    notVisible: "Welcome"
+"#;
+        let flow = parse_yaml_content(yaml, Path::new("test.yaml")).unwrap();
+        assert_eq!(flow.commands.len(), 3);
+
+        match &flow.commands[0] {
+            TestCommand::When(p) => {
+                assert_eq!(p.condition.get("visible").and_then(|v| v.as_str()), Some("Accept Cookies"));
+                match p.command.as_ref() {
+                    TestCommand::TapOn(t) => assert_eq!(t.clone().into_inner().text.as_deref(), Some("Accept Cookies")),
+                    _ => panic!("Expected TapOn inner command"),
+                }
+            }
+            _ => panic!("Expected When command for #0"),
+        }
+
+        match &flow.commands[1] {
+            TestCommand::When(p) => {
+                assert_eq!(p.condition.as_str(), Some("${ENV} == 'staging'"));
+                match p.command.as_ref() {
+                    TestCommand::InputText(it) => assert_eq!(it.clone().into_inner().text.as_str(), "staging_user"),
+                    _ => panic!("Expected InputText inner command"),
+                }
+            }
+            _ => panic!("Expected When command for #1"),
+        }
+
+        match &flow.commands[2] {
+            TestCommand::When(p) => {
+                assert_eq!(p.condition.get("notVisible").and_then(|v| v.as_str()), Some("Welcome"));
+                match p.command.as_ref() {
+                    TestCommand::Back => {},
+                    _ => panic!("Expected Back inner command"),
+                }
+            }
+            _ => panic!("Expected When command for #2"),
+        }
+    }
+
+    #[test]
+    fn test_for_each_and_match_parsing() {
+        let yaml = r#"
+platform: android
+---
+- forEach:
+    item: ch
+    in: [1, 2, 3]
+    commands:
+      - hwClick:
+          channel: "${ch}"
+- match: "${ROLE}"
+  cases:
+    admin:
+      - tap: "Admin Panel"
+    user:
+      - tap: "User Profile"
+  default:
+    - see: "Login"
+"#;
+        let flow = parse_yaml_content(yaml, Path::new("test.yaml")).unwrap();
+        assert_eq!(flow.commands.len(), 2);
+
+        match &flow.commands[0] {
+            TestCommand::ForEach(p) => {
+                assert_eq!(p.item, "ch");
+                assert_eq!(p.commands.len(), 1);
+            }
+            _ => panic!("Expected ForEach command for #0"),
+        }
+
+        match &flow.commands[1] {
+            TestCommand::Match(p) => {
+                assert_eq!(p.value, "${ROLE}");
+                assert_eq!(p.cases.len(), 2);
+                assert!(p.cases.contains_key("admin"));
+                assert!(p.cases.contains_key("user"));
+                assert!(p.default.is_some());
+            }
+            _ => panic!("Expected Match command for #1"),
+        }
+    }
 }
+

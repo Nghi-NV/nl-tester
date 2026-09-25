@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.43] - 2026-09-25
+
+### 🚀 Highlights & Improvements
+
+#### 1. Flat Control Flow & Declarative DSL
+- **Inline `when:` Action Modifier**: Attach `when:` directly to any command mapping (`tap`, `inputText`, `see`, `hwClick`, etc.) to eliminate nested `conditional` wrappers and keep flows 100% flat.
+  - Supports UI visibility conditions (`when: { visible: "Accept Cookies" }`).
+  - Supports JavaScript boolean expressions and environment variables (`when: "${ENV} == 'staging'"`).
+  - Also works as a standalone block wrapper when grouping multiple actions.
+- **Declarative Loops (`forEach`)**: Added `forEach:` (aliases: `for_each`, `foreach`) supporting iteration across:
+  - Static lists of values (numbers, strings).
+  - List of dictionaries/objects for data-driven testing (`${user.email}`, `${user.pass}`).
+  - Dynamic context JSON arrays parsed from previous steps/API calls (`in: "${DISCOVERED_DEVICE_IDS}"`).
+- **Pattern Branching (`match`)**: Added `match:` with flat `cases:` and `default:` mapping, replacing cumbersome procedural switch-case blocks without deep indentation.
+
+#### 2. CLI Data-Driven Testing (`--data`)
+- Added `--data <file.csv|json>` to `lumi-tester run`.
+- Runs single-record test flows across entire datasets by automatically iterating each record in the CSV or JSON file and injecting row fields into the runtime context as `${column_name}` variables.
+
+#### 3. Cross-Engine Variable Substitution
+- Extended `${VAR}` variable substitution across all test commands, including hardware controls (`hwClick`, `hwPress`, `hwPowerOn`, `hwRotate`, `hwSeeLed`), navigation, and assertions.
+- Enhanced context evaluation with unquoted identifier lookup fallback in expressions.
+
+#### 4. Ecosystem & Peripheral Synchronization
+- **VS Code Extension (`lumi-tester-vscode` v0.1.43)**: Added completion, snippets, and parameter hints for `when`, `forEach`, and `match`.
+- **MCP Server (`lumi-tester-mcp` v0.1.8)**: Added `data` parameter to the `run_test` tool.
+- **AI Skills**: Synchronized `commands.csv`, `cli.csv`, `command-catalog.md`, and `patterns.md` across Codex, Antigravity, and `.agents`.
+- **Documentation**: Updated Command Catalog, CLI Reference, Writing Tests guide, and web docs.
+
 ## [v0.1.40] - 2026-09-10
 
 ### 🚀 Improvements

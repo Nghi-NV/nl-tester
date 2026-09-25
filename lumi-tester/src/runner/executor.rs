@@ -18,7 +18,7 @@ use std::hash::{Hash, Hasher};
 
 pub struct TestExecutor {
     driver: Box<dyn PlatformDriver>,
-    context: TestContext,
+    pub context: TestContext,
     session: TestSessionState,
     emitter: EventEmitter,
     continue_on_failure: bool,
@@ -2659,10 +2659,10 @@ impl TestExecutor {
             TestCommand::Conditional(params) => {
                 let condition_met = self.check_condition(&params.condition).await;
 
-                let (branch_name, commands_val) = if condition_met {
-                    ("then", Some(&params.then))
+                let commands_val = if condition_met {
+                    Some(&params.then)
                 } else {
-                    ("else", params.else_cmd.as_ref())
+                    params.else_cmd.as_ref()
                 };
 
                 if let Some(val) = commands_val {
@@ -2675,6 +2675,106 @@ impl TestExecutor {
                     let res = Box::pin(self.run_commands_set(&cmds, &label, "conditional")).await;
                     self.depth -= 1;
                     res?;
+                }
+                Ok(())
+            }
+
+            TestCommand::When(params) => {
+                let condition_met = self.evaluate_condition_value(&params.condition).await;
+                if condition_met {
+                    Box::pin(self.execute_command(&params.command)).await?;
+                } else {
+                    println!("      ⏭️ Skipped (when condition not met)");
+                }
+                Ok(())
+            }
+
+            TestCommand::ForEach(params) => {
+                let items_vec: Vec<serde_json::Value> = match &params.r#in {
+                    serde_yaml::Value::Sequence(seq) => seq
+                        .iter()
+                        .map(|item| serde_json::to_value(item).unwrap_or(serde_json::Value::Null))
+                        .collect(),
+                    serde_yaml::Value::String(s) => {
+                        let subst = self.context.substitute_vars(s);
+                        if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&subst) {
+                            if let serde_json::Value::Array(arr) = json_val {
+                                arr
+                            } else {
+                                vec![json_val]
+                            }
+                        } else {
+                            subst
+                                .split(',')
+                                .map(|x| serde_json::Value::String(x.trim().to_string()))
+                                .collect()
+                        }
+                    }
+                    other => {
+                        let json_val =
+                            serde_json::to_value(other).unwrap_or(serde_json::Value::Null);
+                        if let serde_json::Value::Array(arr) = json_val {
+                            arr
+                        } else {
+                            vec![json_val]
+                        }
+                    }
+                };
+
+                let saved_prev_var = self.context.vars.get(&params.item).cloned();
+
+                for (idx, item_val) in items_vec.iter().enumerate() {
+                    match item_val {
+                        serde_json::Value::Object(obj) => {
+                            for (k, v) in obj {
+                                let v_str = match v {
+                                    serde_json::Value::String(s) => s.clone(),
+                                    _ => v.to_string(),
+                                };
+                                self.context.vars.insert(format!("{}.{}", params.item, k), v_str);
+                            }
+                            self.context.vars.insert(params.item.clone(), item_val.to_string());
+                        }
+                        serde_json::Value::String(s) => {
+                            self.context.vars.insert(params.item.clone(), s.clone());
+                        }
+                        _ => {
+                            self.context.vars.insert(params.item.clone(), item_val.to_string());
+                        }
+                    }
+
+                    let label = format!("ForEach {} [#{}]", params.item, idx + 1);
+                    self.depth += 1;
+                    let res = Box::pin(self.run_commands_set(&params.commands, &label, "forEach")).await;
+                    self.depth -= 1;
+                    res?;
+                }
+
+                if let Some(prev) = saved_prev_var {
+                    self.context.vars.insert(params.item.clone(), prev);
+                } else {
+                    self.context.vars.remove(&params.item);
+                }
+                Ok(())
+            }
+
+            TestCommand::Match(params) => {
+                let eval_val = self.context.substitute_vars(&params.value);
+                let trimmed = eval_val.trim();
+                if let Some(cmds) = params.cases.get(trimmed) {
+                    let label = format!("Match case \"{}\"", trimmed);
+                    self.depth += 1;
+                    let res = Box::pin(self.run_commands_set(cmds, &label, "match")).await;
+                    self.depth -= 1;
+                    res?;
+                } else if let Some(def_cmds) = &params.default {
+                    let label = format!("Match default (for \"{}\")", trimmed);
+                    self.depth += 1;
+                    let res = Box::pin(self.run_commands_set(def_cmds, &label, "match")).await;
+                    self.depth -= 1;
+                    res?;
+                } else {
+                    println!("      ⏭️ Match: no case matched \"{}\" and no default", trimmed);
                 }
                 Ok(())
             }
@@ -5879,7 +5979,13 @@ impl TestExecutor {
                 let mut engine = JsEngine::new();
                 engine.set_vars(&self.context.vars);
                 engine.set_vars(&self.context.env);
-                engine.eval_bool(&subst).unwrap_or(false)
+                if let Ok(res) = engine.eval_bool(&subst) {
+                    res
+                } else {
+                    let re = regex::Regex::new(r"\$\{([a-zA-Z0-9_]+)\}").unwrap();
+                    let ident_expr = re.replace_all(s, "$1").to_string();
+                    engine.eval_bool(&ident_expr).unwrap_or(false)
+                }
             }
             serde_json::Value::Number(n) => n.as_f64().map_or(false, |v| v != 0.0),
             serde_json::Value::Object(map) => {
@@ -6020,5 +6126,28 @@ mod tests {
         let subst_pt = context.substitute_vars("${TAP_COORDS}");
         let parts: Vec<&str> = subst_pt.split(',').collect();
         assert_eq!(parts, vec!["50%", "80%"]);
+    }
+
+    #[tokio::test]
+    async fn test_dsl_conditions_and_matching() {
+        let mut context = TestContext::new(Path::new("."), None, false, None);
+        context.vars.insert("ENV".to_string(), "staging".to_string());
+        context.vars.insert("COUNT".to_string(), "5".to_string());
+
+        let cond_val = "${ENV} == 'staging'";
+        let mut engine = crate::runner::js_engine::JsEngine::new();
+        engine.set_vars(&context.vars);
+        let re = regex::Regex::new(r"\$\{([a-zA-Z0-9_]+)\}").unwrap();
+        let ident_expr = re.replace_all(cond_val, "$1").to_string();
+        assert!(engine.eval_bool(&ident_expr).unwrap());
+
+        let cond_false = "${COUNT} > 10";
+        let ident_false = re.replace_all(cond_false, "$1").to_string();
+        assert!(!engine.eval_bool(&ident_false).unwrap());
+
+        // Also test quoted string substitution
+        let quoted = "'${ENV}' == 'staging'";
+        let subst_quoted = context.substitute_vars(quoted);
+        assert!(engine.eval_bool(&subst_quoted).unwrap());
     }
 }

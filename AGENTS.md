@@ -165,6 +165,53 @@ For text entry, tap/focus the field first, then use `inputText`.
 - inputText: "user@example.com"
 ```
 
+### Flat Control Flow & Data-Driven Execution
+
+Keep flows flat, readable, and resilient by avoiding deeply nested conditional wrappers:
+
+1. **Inline `when:` Modifier**: Attach `when:` directly to any action to dismiss dialogs or handle environment conditions:
+```yaml
+- tap: "Accept Cookies"
+  when: { visible: "Accept Cookies" }
+
+- tap: "Debug Mode"
+  when: "${ENV} == 'staging'"
+```
+
+2. **Declarative Loops (`forEach:`)**:
+```yaml
+- forEach:
+    item: user
+    in:
+      - { email: "u1@test.com", pass: "123" }
+      - { email: "u2@test.com", pass: "456" }
+    commands:
+      - tap: "Email"
+      - inputText: "${user.email}"
+      - tap: "Password"
+      - inputText: "${user.pass}"
+      - tap: "Login"
+```
+
+3. **Pattern Branching (`match:`)**:
+```yaml
+- match: "${ROLE}"
+  cases:
+    admin:
+      - tap: "Admin Panel"
+    viewer:
+      - see: "Overview"
+  default:
+    - see: "Unauthorized"
+```
+
+4. **Data-Driven Runs (`--data <file.csv|json>`)**:
+Run single-record test flows across entire datasets from the CLI:
+```bash
+cd lumi-tester
+cargo run -- run path/to/login.yaml --data users.csv --platform android --report
+```
+
 ## Debugging Rules
 
 - Always run `validate --json` before running device tests.

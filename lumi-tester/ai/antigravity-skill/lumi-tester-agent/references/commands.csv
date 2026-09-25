@@ -36,6 +36,9 @@ repeat,,control_flow,Repeat nested commands,object,commands,times|while,no,all,"
 retry,,control_flow,Retry nested commands,object,commands,maxRetries,no,all,"- retry: { maxRetries: 2, commands: [ { see: Done } ] }",
 runFlow,,control_flow,Run nested flow or inline block,string|object,path|commands,vars|env|when|label|optional,no,all,- runFlow: ./login.yaml,Use for reusable setup
 conditional,,control_flow,Run then/else based on condition,object,condition|then,else,no,all,"- conditional: { condition: { visible: Login }, then: [ { tap: Login } ] }",
+when,,control_flow,Execute command conditionally or as inline modifier,object,condition,command|commands,no,all,"- when: { condition: { visible: Login }, commands: [ { tap: Login } ] }",Can also be used as inline modifier on any command
+forEach,foreach|for_each,control_flow,Iterate collection and run nested commands,object,item|in|commands,do,no,all,"- forEach: { item: ch, in: [1, 2, 3], commands: [ { tap: Login } ] }",Iterates array or dynamic JSON variable
+match,,control_flow,Match expression value against cases,object,value|cases,default,no,all,"- match: { value: admin, cases: { admin: [ { tap: Login } ] } }",Flat alternative to switch-case
 find,,selectors,Define reusable selector,object,name,selector fields,yes,all,"- find: { name: login, id: login_button }",Use with element field later
 setVar,,variables,Set variable,object,name|value,,no,all,"- setVar: { name: email, value: test@example.com }",
 assertVar,,variables,Assert variable value,object,name,equals|contains|regex,no,all,"- assertVar: { name: email, equals: test@example.com }",

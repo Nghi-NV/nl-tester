@@ -143,6 +143,10 @@ server.registerTool(
         .enum(["android", "android_auto", "ios", "web", "macos", "windows"])
         .default("android"),
       output: z.string().default("./output"),
+      data: z
+        .string()
+        .optional()
+        .describe("Optional path to CSV or JSON data file for data-driven testing."),
       device: z.string().optional(),
       commandIndex: z.number().int().nonnegative().optional(),
       commandName: z.string().optional(),
@@ -163,6 +167,7 @@ server.registerTool(
       "--output",
       args.output,
     ];
+    if (args.data) cliArgs.push("--data", args.data);
     if (args.device) cliArgs.push("--device", args.device);
     if (args.report) cliArgs.push("--report");
     if (args.snapshot) cliArgs.push("--snapshot");

@@ -28,6 +28,7 @@ export const SELECTOR_PARAMS: CommandParam[] = [
   { name: 'ocr', type: 'string', description: 'Find text on screen via OCR engine', snippet: 'ocr: "$1"' },
   { name: 'exact', type: 'boolean', description: 'Match text exactly (case-sensitive)' },
   { name: 'optional', type: 'boolean', description: 'Skip command if element is not found' },
+  { name: 'when', type: 'object', description: 'Inline conditional execution modifier (checks UI visibility or JS/env expression)', snippet: 'when: { visible: "$1" }' },
   {
     name: 'scrollable',
     type: 'object',
@@ -1030,6 +1031,38 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     description: 'If-else condition',
     hasParams: true,
     snippet: 'conditional:\n    if:\n        - see: "$1"\n    then:\n        - $0'
+  },
+  {
+    name: 'when',
+    category: 'Control Flow',
+    description: 'Execute nested commands when condition is true',
+    hasParams: true,
+    snippet: 'when:\n    condition: ${1:true}\n    commands:\n        - $0'
+  },
+  {
+    name: 'forEach',
+    aliases: ['for_each', 'foreach'],
+    category: 'Control Flow',
+    description: 'Declarative array iteration loop over items or objects',
+    hasParams: true,
+    snippet: 'forEach:\n    item: ${1:item}\n    in: ${2:[1, 2, 3]}\n    commands:\n        - $0',
+    params: [
+      { name: 'item', type: 'string', description: 'Iteration variable name (default: item)' },
+      { name: 'in', type: 'array', description: 'List of values or variable reference (${MY_LIST})' },
+      { name: 'commands', type: 'array', description: 'List of commands to execute for each item' }
+    ]
+  },
+  {
+    name: 'match',
+    category: 'Control Flow',
+    description: 'Declarative branching by pattern or variable value (replaces nested switch/case)',
+    hasParams: true,
+    snippet: 'match: "${1:\\${ROLE\\}}"\n    cases:\n        ${2:admin}:\n            - $0\n    default:\n        - $3',
+    params: [
+      { name: 'value', type: 'string', description: 'Expression or variable to match against' },
+      { name: 'cases', type: 'object', description: 'Mapping of case values to command lists' },
+      { name: 'default', type: 'array', description: 'Fallback command list if no case matches' }
+    ]
   },
   {
     name: 'runScript',

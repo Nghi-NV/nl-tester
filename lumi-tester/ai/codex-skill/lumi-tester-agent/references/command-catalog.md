@@ -212,6 +212,45 @@ true.
           text: "Skip"
 ```
 
+`when`: inline modifier on any action or standalone block for conditional execution. Keep flows flat without nesting blocks.
+
+```yaml
+- tap:
+    text: "Accept"
+    when:
+      visible: "Accept"
+- when:
+    condition: "${LOGGED_IN} == false"
+    commands:
+      - tap:
+          text: "Login"
+```
+
+`forEach`: iterate over static arrays, objects, or dynamic context variables. Aliases: `for_each`, `foreach`.
+
+```yaml
+- forEach:
+    item: user
+    in: ["admin", "guest"]
+    commands:
+      - tap:
+          text: "Login"
+```
+
+`match`: declarative branching by pattern or variable value.
+
+```yaml
+- match:
+    value: "${ROLE}"
+    cases:
+      admin:
+        - tap:
+            text: "Admin"
+    default:
+      - see:
+          text: "Denied"
+```
+
 `condition.visible` and `condition.visibleRegex` check text. Do not use them
 for Android `content-desc` or iOS accessibility identifiers unless the local
 runner has been verified to support that selector form.

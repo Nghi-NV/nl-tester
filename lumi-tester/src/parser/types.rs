@@ -832,6 +832,9 @@ pub enum TestCommand {
     Repeat(RepeatParams),
     Retry(RetryParams),
     RunFlow(RunFlowParamsInput),
+    When(WhenParams),
+    ForEach(ForEachParams),
+    Match(MatchParams),
 
     // Variables
     SetVar(SetVarParams),
@@ -2601,6 +2604,31 @@ impl RunFlowParamsInput {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WhenParams {
+    pub condition: serde_json::Value,
+    pub command: Box<TestCommand>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForEachParams {
+    pub item: String,
+    #[serde(alias = "items")]
+    pub r#in: serde_yaml::Value,
+    pub commands: Vec<TestCommand>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MatchParams {
+    pub value: String,
+    pub cases: HashMap<String, Vec<TestCommand>>,
+    #[serde(default)]
+    pub default: Option<Vec<TestCommand>>,
+}
+
 /// Set a variable for use in subsequent commands
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -3663,6 +3691,9 @@ impl TestCommand {
                 Some((w, h)) => format!("setWindowSize({}x{})", w, h),
                 None => "setWindowSize".to_string(),
             },
+            TestCommand::When(p) => format!("{} (when: {:?})", p.command.display_name(), p.condition),
+            TestCommand::ForEach(p) => format!("forEach(item: {})", p.item),
+            TestCommand::Match(p) => format!("match({})", p.value),
         }
     }
 }

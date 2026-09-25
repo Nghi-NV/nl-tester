@@ -18,7 +18,7 @@ Mỗi lệnh đều có ví dụ minh họa đầy đủ **tất cả các biế
 | 👁️ **Assertions** | [`see` / `assertVisible`](#assertvisible--see), [`notSee`](#assertnotvisible--notsee), [`waitUntilVisible`](#waituntilvisible--waitsee), [`waitUntilNotVisible`](#waituntilnotvisible--waitnotsee), [`extendedWaitUntil`](#extendedwaituntil), [`assertColor`](#assertcolor--checkcolor), [`assertScreenshot`](#assertscreenshot) |
 | ⏳ **Wait & Delays** | [`wait` / `await`](#wait--await), [`waitForAnimationToEnd`](#waitforanimationtoend) |
 | 📦 **Variables** | [`find` / `define`](#find--define), [`setVar`](#setvar), [`assertVar`](#assertvar), [`generate`](#generate) |
-| 🔀 **Control Flow** | [`repeat`](#repeat), [`retry`](#retry), [`runFlow`](#runflow), [`conditional`](#conditional) |
+| 🔀 **Control Flow** | [`repeat`](#repeat), [`retry`](#retry), [`runFlow`](#runflow), [`conditional`](#conditional), [`when`](#when), [`forEach`](#foreach), [`match`](#match) |
 | 🐍 **Scripting & Python** | [`runPython` / `execPython` / `python`](#-scripting--python-integration-tích-hợp-script--python), [`runScript`](#runscript), [`evalScript`](#evalscript), [`assertTrue`](#asserttrue--assert) |
 | 🌐 **Network & DB** | [`httpRequest`](#httprequest), [`setNetwork`](#setnetwork), [`airplaneMode`](#airplanemode--toggleairplanemode), [`dbQuery`](#dbquery) |
 | 📋 **Clipboard & Files** | [`setClipboard` / `getClipboard` / `copyTextFrom`](#-clipboard--files-clipboard--quản-lý-file), [`pushFile` / `pullFile`](#pushfile--pullfile) |
@@ -626,6 +626,88 @@ Ví dụ đầy đủ các tham số:
       - tap: "Skip"
     else:
       - log: "No update popup"
+```
+
+### `when`
+**Mô tả**: Thực thi có điều kiện. Hỗ trợ 2 cách viết:
+1. **Modifier Inline (Khuyên dùng)**: Gắn trực tiếp `when:` vào bất kỳ action nào (`tap`, `inputText`, `see`, `hwClick`, v.v.) giúp code phẳng 100%, không bị lồng block `conditional`.
+2. **Standalone block**: Bọc danh sách `commands` bên trong.
+
+Điều kiện có thể kiểm tra giao diện (`visible`, `notVisible`) hoặc biểu thức logic JavaScript/biến môi trường (`"${ENV} == 'staging'"`).
+
+Ví dụ đầy đủ các tham số:
+```yaml
+# 1. Inline modifier: Xử lý popup, cookie consent, dialog điều kiện
+- tap: "Accept Cookies"
+  when: { visible: "Accept Cookies" }
+
+- tap: "Remind Later"
+  when: { visible: "Update Available" }
+
+# 2. Inline modifier với biểu thức logic biến môi trường
+- tap: "Debug Options"
+  when: "${ENV} == 'staging'"
+
+# 3. Standalone block bọc nhiều lệnh
+- when:
+    condition: "${IS_LOGGED_IN} == false"
+    commands:
+      - tap: "Sign In"
+      - inputText: "user@test.com"
+```
+
+### `forEach`
+**Mô tả**: Vòng lặp khai báo (Declarative Loop) duyệt qua danh sách các phần tử. Hỗ trợ mảng tĩnh số/chuỗi, mảng đối tượng (Key-Value) cho data-driven, và mảng động parse từ biến JSON Context. Các alias hợp lệ: `for_each`, `foreach`.
+
+Ví dụ đầy đủ các tham số:
+```yaml
+# 1. Duyệt mảng số / chuỗi tĩnh
+- forEach:
+    item: channel
+    in: [1, 2, 3, 4]
+    commands:
+      - hwClick:
+          channel: "${channel}"
+          duration: 150
+      - wait: 500
+
+# 2. Data-Driven với danh sách đối tượng người dùng
+- forEach:
+    item: user
+    in:
+      - { email: "admin@test.com", pass: "123456" }
+      - { email: "guest@test.com", pass: "password" }
+    commands:
+      - tap: "Email"
+      - inputText: "${user.email}"
+      - tap: "Password"
+      - inputText: "${user.pass}"
+      - tap: "Login"
+
+# 3. Duyệt mảng động từ biến Context (chuỗi JSON mảng)
+- forEach:
+    item: target_id
+    in: "${DISCOVERED_DEVICE_IDS}"
+    commands:
+      - tap: "device_${target_id}"
+```
+
+### `match`
+**Mô tả**: Cấu trúc rẽ nhánh phẳng đa trường hợp theo giá trị biến hoặc mẫu chuỗi (thay thế Switch-Case cồng kềnh). Khớp nhánh tương ứng trong `cases` hoặc rơi vào `default` nếu không có nhánh nào khớp.
+
+Ví dụ đầy đủ các tham số:
+```yaml
+- match: "${USER_ROLE}"
+  cases:
+    admin:
+      - tap: "Admin Panel"
+      - see: "System Settings"
+    editor:
+      - tap: "Content Editor"
+    viewer:
+      - see: "Read Only"
+  default:
+    - see: "Unauthorized"
 ```
 
 ---

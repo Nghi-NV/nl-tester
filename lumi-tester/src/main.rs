@@ -81,6 +81,10 @@ enum Commands {
         /// Repeat the entire test file N times
         #[arg(long, default_value = "1")]
         repeat: u32,
+
+        /// Path to test data file (CSV or JSON) for data-driven testing
+        #[arg(long, alias = "data-file")]
+        data: Option<PathBuf>,
     },
 
     /// List connected devices
@@ -642,6 +646,7 @@ async fn async_main() -> anyhow::Result<()> {
             from_command_index,
             command_name,
             repeat,
+            data,
         } => {
             let platform_val = if let Some(p) = platform {
                 normalize_platform(&p)
@@ -689,6 +694,9 @@ async fn async_main() -> anyhow::Result<()> {
             if repeat > 1 {
                 println!("  Repeat: {}", format!("{}x", repeat).yellow());
             }
+            if let Some(ref d) = data {
+                println!("  Data File: {}", d.display().to_string().cyan());
+            }
 
             runner::run_tests(
                 &path,
@@ -710,6 +718,7 @@ async fn async_main() -> anyhow::Result<()> {
                 from_command_index,
                 command_name,
                 repeat,
+                data.as_deref(),
             )
             .await?;
         }
@@ -1226,7 +1235,7 @@ async fn async_main() -> anyhow::Result<()> {
                 }
                 runner::run_tests(
                     &path, "android", None, &output, false, false, false, true, true, true, None,
-                    None, None, None, 1,
+                    None, None, None, 1, None,
                 )
                 .await?;
             }

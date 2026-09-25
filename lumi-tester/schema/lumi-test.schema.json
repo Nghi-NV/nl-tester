@@ -344,6 +344,9 @@
         "extendedWaitUntil",
         "find",
         "focusApp",
+        "forEach",
+        "for_each",
+        "foreach",
         "generate",
         "getClipboard",
         "gps",
@@ -402,6 +405,7 @@
         "lockDevice",
         "longPress",
         "longPressOn",
+        "match",
         "mockLocation",
         "mockLocationControl",
         "navigate",
@@ -485,6 +489,7 @@
         "waitLedPattern",
         "waitNotSee",
         "waitSee",
+        "when",
         "waitUntilNotVisible",
         "waitUntilVisible",
         "windowSize",
@@ -654,6 +659,16 @@
         },
         "optional": {
           "type": "boolean"
+        },
+        "when": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object"
+            }
+          ]
         },
         "timeout": {
           "type": "integer",

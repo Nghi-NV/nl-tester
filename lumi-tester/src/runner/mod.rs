@@ -5,8 +5,9 @@ pub mod js_engine;
 pub mod shell;
 pub mod state;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use colored::Colorize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub use events::*;
@@ -29,6 +30,7 @@ pub async fn run_tests(
     from_command_index: Option<usize>,
     command_name: Option<String>,
     repeat: u32,
+    data: Option<&Path>,
 ) -> Result<()> {
     let platform = platform
         .trim_matches('"')
@@ -140,6 +142,7 @@ pub async fn run_tests(
             let cmd_idx = command_index;
             let from_cmd_idx = from_command_index;
             let cmd_name = command_name.clone();
+            let data_owned = data.map(|p| p.to_path_buf());
 
             let handle = tokio::spawn(async move {
                 run_on_device(
@@ -158,6 +161,7 @@ pub async fn run_tests(
                     from_cmd_idx,
                     cmd_name,
                     repeat,
+                    data_owned.as_deref(),
                 )
                 .await
             });
@@ -189,6 +193,7 @@ pub async fn run_tests(
             from_command_index,
             command_name,
             repeat,
+            data,
         )
         .await
     }
@@ -211,6 +216,7 @@ async fn run_on_device(
     from_command_index: Option<usize>,
     command_name: Option<String>,
     repeat: u32,
+    data: Option<&Path>,
 ) -> Result<()> {
     // Pre-parse first file's `speed:` header field (e.g. "fast", "turbo") so the driver
     // can honor a flow-level speed profile when LUMI_SPEED isn't set.
@@ -315,43 +321,73 @@ async fn run_on_device(
         }
     }
 
-    // 2. Run Main files (repeated N times)
-    for round in 0..repeat {
-        if repeat > 1 {
+    // 2. Run Main files (repeated N times or per data row)
+    let data_records = if let Some(dp) = data {
+        Some(load_data_records(dp)?)
+    } else {
+        None
+    };
+
+    if let Some(ref records) = data_records {
+        for (data_idx, data_row) in records.iter().enumerate() {
             println!(
-                "\n{} Repeat round {}/{}",
-                "🔁".cyan(),
-                round + 1,
-                repeat
+                "\n{} Data iteration {}/{} ({})",
+                "📊".cyan().bold(),
+                data_idx + 1,
+                records.len(),
+                data_row
+                    .iter()
+                    .map(|(k, v)| format!("{}={}", k, v))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             );
+            for (k, v) in data_row {
+                executor.context.vars.insert(k.clone(), v.clone());
+            }
+            for file in files {
+                if let Err(e) = executor
+                    .run_file(file, command_index, from_command_index, command_name.as_deref())
+                    .await
+                {
+                    eprintln!(
+                        "  {} {} failed to run (data row {}): {} (continuing to next file - continue-on-failure)",
+                        "⚠️".yellow(),
+                        file.display(),
+                        data_idx + 1,
+                        e
+                    );
+                    if !continue_on_failure {
+                        let _ = executor.finish().await;
+                        return Err(e);
+                    }
+                }
+            }
         }
-        for file in files {
-            if let Err(e) = executor
-                .run_file(file, command_index, from_command_index, command_name.as_deref())
-                .await
-            {
-                // A file can fail two ways: a command inside it fails an assertion
-                // (recorded as a failed step, `run_file` still returns Ok and
-                // `continue_on_failure` already lets execution move on), or the
-                // whole file hits a fatal/infra-level error (e.g. `hwConnect`
-                // can't reach the hardware jig) that bubbles out of `run_file` as
-                // a hard `Err` before any step gets recorded. Previously THIS
-                // case aborted the entire remaining directory batch regardless of
-                // `continue_on_failure` - one file with no jig connected meant
-                // every other file after it in the directory silently never ran.
-                // Respect the flag here too: log and move on to the next file.
-                // Trade-off: since the error happened before any step was
-                // recorded, this file won't appear as a FAILED entry in the
-                // generated report - it's just absent from it.
-                eprintln!(
-                    "  {} {} failed to run: {} (continuing to next file - continue-on-failure)",
-                    "⚠️".yellow(),
-                    file.display(),
-                    e
+    } else {
+        for round in 0..repeat {
+            if repeat > 1 {
+                println!(
+                    "\n{} Repeat round {}/{}",
+                    "🔁".cyan(),
+                    round + 1,
+                    repeat
                 );
-                if !continue_on_failure {
-                    let _ = executor.finish().await;
-                    return Err(e);
+            }
+            for file in files {
+                if let Err(e) = executor
+                    .run_file(file, command_index, from_command_index, command_name.as_deref())
+                    .await
+                {
+                    eprintln!(
+                        "  {} {} failed to run: {} (continuing to next file - continue-on-failure)",
+                        "⚠️".yellow(),
+                        file.display(),
+                        e
+                    );
+                    if !continue_on_failure {
+                        let _ = executor.finish().await;
+                        return Err(e);
+                    }
                 }
             }
         }
@@ -370,4 +406,114 @@ async fn run_on_device(
     }
 
     executor.finish().await
+}
+
+/// Load records from a CSV or JSON data file for data-driven testing
+pub fn load_data_records(data_path: &Path) -> Result<Vec<HashMap<String, String>>> {
+    if !data_path.exists() {
+        anyhow::bail!("Data file does not exist: {}", data_path.display());
+    }
+    let ext = data_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let mut records = Vec::new();
+    if ext == "csv" {
+        let mut rdr = csv::Reader::from_path(data_path)
+            .with_context(|| format!("Failed to read CSV data file: {}", data_path.display()))?;
+        let headers = rdr.headers()?.clone();
+        for result in rdr.records() {
+            let record = result?;
+            let mut map = HashMap::new();
+            for (i, field) in record.iter().enumerate() {
+                if let Some(header) = headers.get(i) {
+                    map.insert(header.trim().to_string(), field.trim().to_string());
+                }
+            }
+            records.push(map);
+        }
+    } else if ext == "json" {
+        let content = std::fs::read_to_string(data_path)
+            .with_context(|| format!("Failed to read JSON data file: {}", data_path.display()))?;
+        let json_val: serde_json::Value = serde_json::from_str(&content)
+            .with_context(|| format!("Failed to parse JSON data in {}", data_path.display()))?;
+        if let serde_json::Value::Array(arr) = json_val {
+            for item in arr {
+                let mut map = HashMap::new();
+                if let serde_json::Value::Object(obj) = item {
+                    for (k, v) in obj {
+                        let v_str = match v {
+                            serde_json::Value::String(s) => s,
+                            _ => v.to_string(),
+                        };
+                        map.insert(k, v_str);
+                    }
+                }
+                records.push(map);
+            }
+        } else {
+            anyhow::bail!("JSON data file must contain a JSON array of objects");
+        }
+    } else {
+        anyhow::bail!(
+            "Unsupported data file format (expected .csv or .json): {}",
+            data_path.display()
+        );
+    }
+    Ok(records)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_load_csv_data_records() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "lumi_test_csv_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let csv_path = temp_dir.join("users.csv");
+        std::fs::write(&csv_path, "username,role\nalice,admin\nbob,user\n").unwrap();
+
+        let records = load_data_records(&csv_path).unwrap();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].get("username").map(|s| s.as_str()), Some("alice"));
+        assert_eq!(records[0].get("role").map(|s| s.as_str()), Some("admin"));
+        assert_eq!(records[1].get("username").map(|s| s.as_str()), Some("bob"));
+        assert_eq!(records[1].get("role").map(|s| s.as_str()), Some("user"));
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_load_json_data_records() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "lumi_test_json_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let json_path = temp_dir.join("users.json");
+        std::fs::write(
+            &json_path,
+            r#"[{"username": "charlie", "count": 10}, {"username": "david", "count": 20}]"#,
+        )
+        .unwrap();
+
+        let records = load_data_records(&json_path).unwrap();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].get("username").map(|s| s.as_str()), Some("charlie"));
+        assert_eq!(records[0].get("count").map(|s| s.as_str()), Some("10"));
+        assert_eq!(records[1].get("username").map(|s| s.as_str()), Some("david"));
+        assert_eq!(records[1].get("count").map(|s| s.as_str()), Some("20"));
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
 }

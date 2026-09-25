@@ -57,6 +57,7 @@ lumi-tester run <PATH> [OPTIONS]
 | **`--snapshot`** | `-s` | `Flag` | `false` | Tự động chụp ảnh màn hình (screenshot) sau mỗi bước và khi có lỗi |
 | **`--record`** | `-r` | `Flag` | `false` | Tự động quay video màn hình toàn bộ quá trình chạy test (`.mp4`) |
 | **`--events-jsonl`** | - | `Flag` | `false` | Xuất luồng sự kiện JSON Lines chi tiết theo từng mili-giây (`output/events.jsonl`) |
+| **`--data`** | - | `Path` | `None` | Đường dẫn file CSV hoặc JSON phục vụ kiểm thử theo dữ liệu (Data-Driven Testing) |
 | **`--output`** | `-o` | `Path` | `./output` | Thư mục lưu trữ toàn bộ báo cáo, video, ảnh chụp và log |
 
 ---
@@ -161,6 +162,29 @@ lumi-tester run tests/ --tags authentication,p0 --report
 # Combo lệnh chuẩn đầy đủ nhất cho CI/CD pipeline
 lumi-tester run tests/ --platform android --continue-on-failure --report --snapshot --record --events-jsonl --output ./artifacts
 ```
+
+---
+
+#### 2.6. Kiểm thử theo Dữ liệu (Data-Driven Testing với `--data`)
+
+Thay vì viết vòng lặp thủ công hoặc lặp code trong test flow, bạn có thể truyền trực tiếp file dữ liệu ngoại vi (`.csv` hoặc `.json`):
+```bash
+# Thực thi test flow theo từng dòng của file CSV
+lumi-tester run tests/login_flow.yaml --data users.csv --platform android --report
+
+# Hoặc với file JSON (danh sách các object)
+lumi-tester run tests/login_flow.yaml --data users.json --platform android
+```
+
+Kịch bản `login_flow.yaml` chỉ cần viết cho một trường hợp duy nhất và sử dụng biến `${tên_cột}` hoặc `${tên_thuộc_tính}`:
+```yaml
+- tap: "Email"
+- inputText: "${username}"
+- tap: "Password"
+- inputText: "${password}"
+- tap: "Login"
+```
+Lumi Tester sẽ tự động nạp từng bản ghi, truyền vào ngữ cảnh biến môi trường và chạy lần lượt từng lượt test.
 
 ---
 

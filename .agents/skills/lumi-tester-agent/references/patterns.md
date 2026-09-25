@@ -13,6 +13,7 @@ stable selectors from `selectors.csv` and validate before running.
 - Permission dialog
 - GPS route
 - Web form
+- Flat conditional and iteration
 - Failure recovery pattern
 
 ## Current Android App Smoke
@@ -293,6 +294,46 @@ Adaptation rules:
 - Prefer `css: [data-testid=...]` over visual text when available.
 - Use `role + text` for accessible buttons and links.
 - Avoid brittle `xpath` or deep CSS chains.
+
+## Flat Conditional And Iteration
+
+Use for handling dynamic banners, iterative steps, and data variations without nesting blocks.
+
+```yaml
+platform: android
+appId: com.example.app
+tags:
+  - smoke
+---
+- launchApp
+- tap:
+    text: "Accept"
+    when:
+      visible: "Accept"
+- forEach:
+    item: category
+    in: ["Electronics", "Books"]
+    commands:
+      - tap:
+          text: "${category}"
+      - see:
+          text: "${category}"
+- match:
+    value: "${ROLE}"
+    cases:
+      admin:
+        - tap:
+            text: "Admin Panel"
+    default:
+      - see:
+          text: "Dashboard"
+```
+
+Adaptation rules:
+
+- Prefer inline `when:` over wrapper blocks to keep test files flat and easy to read.
+- Use `forEach` for iterating lists or configurations instead of writing repeated YAML blocks.
+- For large datasets with many rows, run with `--data <file.csv|json>` instead of embedding large arrays into YAML.
 
 ## Failure Recovery Pattern
 
