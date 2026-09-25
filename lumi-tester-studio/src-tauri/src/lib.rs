@@ -270,7 +270,7 @@ async fn run_test_flow(
         }
     });
 
-    let run_res = executor.run_file(&temp_file_path, None, None).await;
+    let run_res = executor.run_file(&temp_file_path, None, None, None).await;
     let _ = executor.finish().await;
     let _ = std::fs::remove_file(&temp_file_path);
 
@@ -341,7 +341,7 @@ async fn list_devices(platform: String) -> Result<Vec<DeviceInfo>, String> {
             Ok(device_infos)
         }
         "ios" => {
-            let targets = lumi_tester::driver::ios::idb::list_targets()
+            let targets = lumi_tester::driver::ios::devicectl::list_targets()
                 .await
                 .map_err(|e| e.to_string())?;
             Ok(targets

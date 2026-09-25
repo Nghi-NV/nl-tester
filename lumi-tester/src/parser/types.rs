@@ -1154,6 +1154,8 @@ pub struct HardwarePingParams {
     pub baudrate: Option<u32>,
     #[serde(default, alias = "node_id", alias = "nodeId", alias = "node")]
     pub node_id: Option<u8>,
+    #[serde(default, alias = "saveAs", alias = "saveOutput", alias = "save_output")]
+    pub save_as: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1194,6 +1196,13 @@ pub struct HardwareConnectParams {
     pub relays: Option<HashMap<String, Vec<u8>>>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum ChannelOrVar {
+    Num(u64),
+    Str(String),
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServoClickParams {
@@ -1213,11 +1222,8 @@ impl<'de> Deserialize<'de> for ServoClickParams {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct RawStruct {
-            #[serde(
-                default = "default_channel_one",
-                deserialize_with = "deserialize_channel"
-            )]
-            channel: u8,
+            #[serde(default)]
+            channel: Option<ChannelOrVar>,
             #[serde(default, alias = "button", alias = "btn")]
             button: Option<String>,
             #[serde(default, alias = "hold_ms", alias = "holdMs")]
@@ -1243,11 +1249,20 @@ impl<'de> Deserialize<'de> for ServoClickParams {
                 button: Some(s),
                 hold_ms: None,
             }),
-            Helper::Obj(raw) => Ok(ServoClickParams {
-                channel: raw.channel,
-                button: raw.button,
-                hold_ms: raw.hold_ms,
-            }),
+            Helper::Obj(raw) => {
+                let (ch, btn) = match (raw.channel, raw.button) {
+                    (Some(ChannelOrVar::Str(s)), None) => (parse_channel_str(&s), Some(s)),
+                    (Some(ChannelOrVar::Str(s)), Some(b)) => (parse_channel_str(&s), Some(b)),
+                    (Some(ChannelOrVar::Num(n)), b) => (n as u8, b),
+                    (None, Some(b)) => (parse_channel_str(&b), Some(b)),
+                    (None, None) => (1, None),
+                };
+                Ok(ServoClickParams {
+                    channel: ch,
+                    button: btn,
+                    hold_ms: raw.hold_ms,
+                })
+            }
         }
     }
 }
@@ -1269,6 +1284,8 @@ pub struct ServoActionParams {
     pub channel: u8,
     #[serde(default, alias = "button", alias = "btn")]
     pub button: Option<String>,
+    #[serde(default, alias = "saveAs", alias = "saveOutput", alias = "save_output")]
+    pub save_as: Option<String>,
 }
 
 impl<'de> Deserialize<'de> for ServoActionParams {
@@ -1279,13 +1296,12 @@ impl<'de> Deserialize<'de> for ServoActionParams {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct RawStruct {
-            #[serde(
-                default = "default_channel_one",
-                deserialize_with = "deserialize_channel"
-            )]
-            channel: u8,
+            #[serde(default)]
+            channel: Option<ChannelOrVar>,
             #[serde(default, alias = "button", alias = "btn")]
             button: Option<String>,
+            #[serde(default, alias = "saveAs", alias = "saveOutput", alias = "save_output")]
+            save_as: Option<String>,
         }
 
         #[derive(Deserialize)]
@@ -1300,15 +1316,27 @@ impl<'de> Deserialize<'de> for ServoActionParams {
             Helper::Num(n) => Ok(ServoActionParams {
                 channel: n as u8,
                 button: None,
+                save_as: None,
             }),
             Helper::Str(s) => Ok(ServoActionParams {
                 channel: parse_channel_str(&s),
                 button: Some(s),
+                save_as: None,
             }),
-            Helper::Obj(raw) => Ok(ServoActionParams {
-                channel: raw.channel,
-                button: raw.button,
-            }),
+            Helper::Obj(raw) => {
+                let (ch, btn) = match (raw.channel, raw.button) {
+                    (Some(ChannelOrVar::Str(s)), None) => (parse_channel_str(&s), Some(s)),
+                    (Some(ChannelOrVar::Str(s)), Some(b)) => (parse_channel_str(&s), Some(b)),
+                    (Some(ChannelOrVar::Num(n)), b) => (n as u8, b),
+                    (None, Some(b)) => (parse_channel_str(&b), Some(b)),
+                    (None, None) => (1, None),
+                };
+                Ok(ServoActionParams {
+                    channel: ch,
+                    button: btn,
+                    save_as: raw.save_as,
+                })
+            }
         }
     }
 }
@@ -1375,11 +1403,8 @@ impl<'de> Deserialize<'de> for RelaySetParams {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct RawStruct {
-            #[serde(
-                default = "default_channel_one",
-                deserialize_with = "deserialize_channel"
-            )]
-            channel: u8,
+            #[serde(default)]
+            channel: Option<ChannelOrVar>,
             #[serde(
                 default,
                 alias = "button",
@@ -1415,12 +1440,21 @@ impl<'de> Deserialize<'de> for RelaySetParams {
                 channels: None,
                 state: "on".to_string(),
             }),
-            Helper::Obj(raw) => Ok(RelaySetParams {
-                channel: raw.channel,
-                button: raw.button,
-                channels: raw.channels,
-                state: raw.state.unwrap_or_else(|| "on".to_string()),
-            }),
+            Helper::Obj(raw) => {
+                let (ch, btn) = match (raw.channel, raw.button) {
+                    (Some(ChannelOrVar::Str(s)), None) => (parse_channel_str(&s), Some(s)),
+                    (Some(ChannelOrVar::Str(s)), Some(b)) => (parse_channel_str(&s), Some(b)),
+                    (Some(ChannelOrVar::Num(n)), b) => (n as u8, b),
+                    (None, Some(b)) => (parse_channel_str(&b), Some(b)),
+                    (None, None) => (1, None),
+                };
+                Ok(RelaySetParams {
+                    channel: ch,
+                    button: btn,
+                    channels: raw.channels,
+                    state: raw.state.unwrap_or_else(|| "on".to_string()),
+                })
+            }
         }
     }
 }
@@ -1670,11 +1704,8 @@ impl<'de> Deserialize<'de> for ServoStartRepeatParams {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct RawStruct {
-            #[serde(
-                default = "default_channel_one",
-                deserialize_with = "deserialize_channel"
-            )]
-            channel: u8,
+            #[serde(default)]
+            channel: Option<ChannelOrVar>,
             #[serde(default, alias = "button", alias = "btn")]
             button: Option<String>,
             #[serde(default, alias = "period_ms", alias = "periodMs")]
@@ -1700,11 +1731,20 @@ impl<'de> Deserialize<'de> for ServoStartRepeatParams {
                 button: Some(s),
                 period_ms: None,
             }),
-            Helper::Obj(raw) => Ok(ServoStartRepeatParams {
-                channel: raw.channel,
-                button: raw.button,
-                period_ms: raw.period_ms,
-            }),
+            Helper::Obj(raw) => {
+                let (ch, btn) = match (raw.channel, raw.button) {
+                    (Some(ChannelOrVar::Str(s)), None) => (parse_channel_str(&s), Some(s)),
+                    (Some(ChannelOrVar::Str(s)), Some(b)) => (parse_channel_str(&s), Some(b)),
+                    (Some(ChannelOrVar::Num(n)), b) => (n as u8, b),
+                    (None, Some(b)) => (parse_channel_str(&b), Some(b)),
+                    (None, None) => (1, None),
+                };
+                Ok(ServoStartRepeatParams {
+                    channel: ch,
+                    button: btn,
+                    period_ms: raw.period_ms,
+                })
+            }
         }
     }
 }

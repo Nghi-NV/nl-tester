@@ -1228,6 +1228,7 @@ fn parse_command_with_params(
                     port: None,
                     baudrate: None,
                     node_id: params.as_u64().map(|n| n as u8),
+                    save_as: None,
                 }
             } else if let Some(s) = params.as_str() {
                 if s.chars().all(|c| c.is_ascii_digit()) {
@@ -1235,12 +1236,14 @@ fn parse_command_with_params(
                         port: None,
                         baudrate: None,
                         node_id: s.parse::<u8>().ok(),
+                        save_as: None,
                     }
                 } else {
                     crate::parser::types::HardwarePingParams {
                         port: Some(s.to_string()),
                         baudrate: None,
                         node_id: None,
+                        save_as: None,
                     }
                 }
             } else if params.is_null() {
@@ -1281,15 +1284,17 @@ fn parse_command_with_params(
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
                     button: None,
+                    save_as: None,
                 }
             } else if let Some(s) = params.as_str() {
                 crate::parser::types::ServoActionParams {
                     channel: crate::parser::types::parse_channel_str(s),
                     button: Some(s.to_string()),
+                    save_as: None,
                 }
             } else {
                 serde_yaml::from_value(params.clone())
-                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None })
+                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None, save_as: None })
             };
             TestCommand::HwPress(p)
         }
@@ -1298,15 +1303,17 @@ fn parse_command_with_params(
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
                     button: None,
+                    save_as: None,
                 }
             } else if let Some(s) = params.as_str() {
                 crate::parser::types::ServoActionParams {
                     channel: crate::parser::types::parse_channel_str(s),
                     button: Some(s.to_string()),
+                    save_as: None,
                 }
             } else {
                 serde_yaml::from_value(params.clone())
-                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None })
+                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None, save_as: None })
             };
             TestCommand::HwRelease(p)
         }
@@ -1320,15 +1327,17 @@ fn parse_command_with_params(
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
                     button: None,
+                    save_as: None,
                 }
             } else if let Some(s) = params.as_str() {
                 crate::parser::types::ServoActionParams {
                     channel: crate::parser::types::parse_channel_str(s),
                     button: Some(s.to_string()),
+                    save_as: None,
                 }
             } else {
                 serde_yaml::from_value(params.clone())
-                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None })
+                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None, save_as: None })
             };
             TestCommand::HwReadServo(p)
         }
@@ -1337,15 +1346,17 @@ fn parse_command_with_params(
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
                     button: None,
+                    save_as: None,
                 }
             } else if let Some(s) = params.as_str() {
                 crate::parser::types::ServoActionParams {
                     channel: crate::parser::types::parse_channel_str(s),
                     button: Some(s.to_string()),
+                    save_as: None,
                 }
             } else {
                 serde_yaml::from_value(params.clone())
-                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None })
+                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None, save_as: None })
             };
             TestCommand::HwReadRelay(p)
         }
@@ -1354,15 +1365,17 @@ fn parse_command_with_params(
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
                     button: None,
+                    save_as: None,
                 }
             } else if let Some(s) = params.as_str() {
                 crate::parser::types::ServoActionParams {
                     channel: crate::parser::types::parse_channel_str(s),
                     button: Some(s.to_string()),
+                    save_as: None,
                 }
             } else {
                 serde_yaml::from_value(params.clone())
-                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None })
+                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None, save_as: None })
             };
             TestCommand::HwReadColor(p)
         }
@@ -1371,11 +1384,13 @@ fn parse_command_with_params(
                 Some(crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
                     button: None,
+                    save_as: None,
                 })
             } else if let Some(s) = params.as_str() {
                 Some(crate::parser::types::ServoActionParams {
                     channel: crate::parser::types::parse_channel_str(s),
                     button: Some(s.to_string()),
+                    save_as: None,
                 })
             } else if params.is_null() {
                 None
@@ -1487,6 +1502,14 @@ fn parse_command_with_params(
                         expected: Some(vec![s.to_string()]),
                         timeout_ms: None,
                     }
+                }
+            } else if params.is_number() {
+                crate::parser::types::SeeColorParams {
+                    channel: params.as_u64().unwrap_or(1) as u8,
+                    button: None,
+                    color: None,
+                    expected: None,
+                    timeout_ms: None,
                 }
             } else {
                 serde_yaml::from_value(params.clone())?
@@ -1611,6 +1634,17 @@ fn parse_command_with_params(
                     max_pulse_ms: None,
                     max_gap_ms: None,
                 }
+            } else if let Some(s) = params.as_str() {
+                crate::parser::types::SeeBlinkParams {
+                    channel: crate::parser::types::parse_channel_str(s),
+                    button: Some(s.to_string()),
+                    color: None,
+                    count: None,
+                    timeout_ms: None,
+                    min_pulse_ms: None,
+                    max_pulse_ms: None,
+                    max_gap_ms: None,
+                }
             } else if params.is_null() {
                 crate::parser::types::SeeBlinkParams {
                     channel: 1,
@@ -1675,14 +1709,16 @@ fn parse_command_with_params(
                 crate::parser::types::ServoActionParams {
                     channel: params.as_u64().unwrap_or(1) as u8,
                     button: None,
+                    save_as: None,
                 }
             } else if let Some(s) = params.as_str() {
                 crate::parser::types::ServoActionParams {
                     channel: crate::parser::types::parse_channel_str(s),
                     button: Some(s.to_string()),
+                    save_as: None,
                 }
             } else if params.is_null() {
-                crate::parser::types::ServoActionParams { channel: 1, button: None }
+                crate::parser::types::ServoActionParams { channel: 1, button: None, save_as: None }
             } else {
                 serde_yaml::from_value(params.clone())?
             };
@@ -2124,6 +2160,95 @@ platform: android
                 assert_eq!(p.max_pulse_ms, Some(800));
             }
             _ => panic!("Expected HwSeeLedBlink for command 4"),
+        }
+    }
+
+    #[test]
+    fn test_hardware_commands_variables_parsing() {
+        let yaml = r#"
+platform: android
+jig:
+  port: "${JIG_PORT:-COM5}"
+  wireFormat: "${WIRE_FORMAT:-framed}"
+---
+- hwClick: "${MY_BTN}"
+- hwClick:
+    channel: "${MY_BTN}"
+    holdMs: 300
+- hwReadColor:
+    button: "${SENSOR}"
+    saveAs: "detected_color"
+- hwReadRelay:
+    button: "${RELAY_CH}"
+    saveAs: "relay_state"
+- hwPing:
+    port: "${PING_PORT:-COM1}"
+    saveAs: "ping_ok"
+- hwSeeLed:
+    button: "${SENSOR}"
+    color: "${EXPECTED_COLOR}"
+"#;
+        let flow = parse_yaml_content(yaml, Path::new("hw_vars.yaml")).unwrap();
+        assert_eq!(flow.commands.len(), 6);
+
+        // Header jig port & wireFormat preserve expressions
+        if let Some(ref jig) = flow.jig {
+            let params = jig.resolve(None).unwrap();
+            assert_eq!(params.port, "${JIG_PORT:-COM5}");
+            assert_eq!(params.wire_format, Some("${WIRE_FORMAT:-framed}".to_string()));
+        } else {
+            panic!("Expected jig header");
+        }
+
+        // hwClick string shorthand
+        match &flow.commands[0] {
+            TestCommand::HwClick(p) => assert_eq!(p.button.as_deref(), Some("${MY_BTN}")),
+            _ => panic!("Expected HwClick for command 0"),
+        }
+
+        // hwClick map with channel expression
+        match &flow.commands[1] {
+            TestCommand::HwClick(p) => {
+                assert_eq!(p.button.as_deref(), Some("${MY_BTN}"));
+                assert_eq!(p.hold_ms, Some(300));
+            }
+            _ => panic!("Expected HwClick for command 1"),
+        }
+
+        // hwReadColor with saveAs
+        match &flow.commands[2] {
+            TestCommand::HwReadColor(p) => {
+                assert_eq!(p.button.as_deref(), Some("${SENSOR}"));
+                assert_eq!(p.save_as.as_deref(), Some("detected_color"));
+            }
+            _ => panic!("Expected HwReadColor for command 2"),
+        }
+
+        // hwReadRelay with saveAs
+        match &flow.commands[3] {
+            TestCommand::HwReadRelay(p) => {
+                assert_eq!(p.button.as_deref(), Some("${RELAY_CH}"));
+                assert_eq!(p.save_as.as_deref(), Some("relay_state"));
+            }
+            _ => panic!("Expected HwReadRelay for command 3"),
+        }
+
+        // hwPing with port default & saveAs
+        match &flow.commands[4] {
+            TestCommand::HwPing(p) => {
+                assert_eq!(p.port.as_deref(), Some("${PING_PORT:-COM1}"));
+                assert_eq!(p.save_as.as_deref(), Some("ping_ok"));
+            }
+            _ => panic!("Expected HwPing for command 4"),
+        }
+
+        // hwSeeLed with button & color expressions
+        match &flow.commands[5] {
+            TestCommand::HwSeeLed(p) => {
+                assert_eq!(p.button.as_deref(), Some("${SENSOR}"));
+                assert_eq!(p.color.as_deref(), Some("${EXPECTED_COLOR}"));
+            }
+            _ => panic!("Expected HwSeeLed for command 5"),
         }
     }
 

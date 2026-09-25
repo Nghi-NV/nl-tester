@@ -324,24 +324,26 @@ impl TestExecutor {
         // Auto connect global hardware Jig if declared in flow header (e.g. jig: "COM5" or jig: "profiles/jig_switch.yaml")
         if let Some(jig_config) = &flow.jig {
             let base_dir = path.parent().unwrap_or(Path::new("."));
-            let params = jig_config.resolve(Some(base_dir)).map_err(|e| anyhow::anyhow!(e))?;
-            let raw_port = self.context.substitute_vars(&params.port);
-            let port = if raw_port.starts_with("${") && raw_port.ends_with('}') {
-                let inner = &raw_port[2..raw_port.len() - 1];
-                if let Some((var_name, default_val)) = inner.split_once(":-") {
-                    std::env::var(var_name).unwrap_or_else(|_| default_val.to_string())
-                } else {
-                    std::env::var(inner).unwrap_or_else(|_| raw_port.clone())
+            let substituted_jig = match jig_config {
+                crate::parser::types::JigConfig::PortOrProfile(s) => {
+                    crate::parser::types::JigConfig::PortOrProfile(self.context.substitute_vars(s))
                 }
-            } else {
-                raw_port
+                crate::parser::types::JigConfig::Struct(p) => {
+                    let mut p_sub = p.clone();
+                    p_sub.port = self.context.substitute_vars(&p_sub.port);
+                    p_sub.file = p_sub.file.map(|f| self.context.substitute_vars(&f));
+                    p_sub.wire_format = p_sub.wire_format.map(|w| self.context.substitute_vars(&w));
+                    crate::parser::types::JigConfig::Struct(p_sub)
+                }
             };
+            let params = substituted_jig.resolve(Some(base_dir)).map_err(|e| anyhow::anyhow!(e))?;
+            let port = self.context.substitute_vars(&params.port);
             let mut hw_config = crate::hardware::HardwareConfig::default();
             if let Some(nid) = params.node_id {
                 hw_config.node_id = Some(nid);
             }
-            if params.wire_format.is_some() {
-                hw_config.wire_format = params.wire_format.clone();
+            if let Some(ref wf) = params.wire_format {
+                hw_config.wire_format = Some(self.context.substitute_vars(wf));
             }
             if let Some(ref btns) = params.buttons {
                 hw_config.button_mappings = btns.clone();
@@ -744,7 +746,9 @@ impl TestExecutor {
         align: &Option<String>,
         offset: &Option<String>,
     ) -> Result<crate::driver::traits::Selector> {
-        if let Some((xp, yp)) = resolve_element_offset(align, offset) {
+        let subst_align = align.as_ref().map(|a| self.context.substitute_vars(a));
+        let subst_offset = offset.as_ref().map(|o| self.context.substitute_vars(o));
+        if let Some((xp, yp)) = resolve_element_offset(&subst_align, &subst_offset) {
             let (x, y) = self
                 .driver
                 .resolve_element_point(&selector, xp, yp)
@@ -1558,7 +1562,8 @@ impl TestExecutor {
                 let params = self.resolve_tap_params(params_input);
                 // If point is specified, use TapAt
                 if let Some(point_str) = &params.point {
-                    let parts: Vec<&str> = point_str.split(',').collect();
+                    let subst_point = self.context.substitute_vars(point_str);
+                    let parts: Vec<&str> = subst_point.split(',').collect();
                     if parts.len() == 2 {
                         // Parse point - supports both absolute "500,1000" and percentage "50%,80%"
                         let (screen_width, screen_height) = self.driver.get_screen_size().await?;
@@ -1592,7 +1597,7 @@ impl TestExecutor {
                             }
                         }
                     } else {
-                        anyhow::bail!("Invalid point format: {}", point_str);
+                        anyhow::bail!("Invalid point format: {}", subst_point);
                     }
                 } else {
                     // Merge relative aliases
@@ -2213,7 +2218,7 @@ impl TestExecutor {
 
             TestCommand::TakeScreenshot(params_input) => {
                 let params = params_input.clone().into_inner();
-                let path = params.path.clone();
+                let path = self.context.substitute_vars(&params.path);
                 let output_path = self.context.output_path(&path);
                 if let Some(parent) = output_path.parent() {
                     let _ = std::fs::create_dir_all(parent);
@@ -2265,16 +2270,17 @@ impl TestExecutor {
                 // a `.webp` baseline - what `screenshot:` now creates - falling
                 // back to `.png` so repos with pre-existing PNG baselines keep
                 // working without needing to regenerate them.
-                let reference_path = if name.ends_with(".png") || name.ends_with(".webp") {
-                    self.context.resolve_path(&format!("screenshots/{}", name))
+                let subst_name = self.context.substitute_vars(name);
+                let reference_path = if subst_name.ends_with(".png") || subst_name.ends_with(".webp") {
+                    self.context.resolve_path(&format!("screenshots/{}", subst_name))
                 } else {
                     let webp_ref = self
                         .context
-                        .resolve_path(&format!("screenshots/{}.webp", name));
+                        .resolve_path(&format!("screenshots/{}.webp", subst_name));
                     if webp_ref.exists() {
                         webp_ref
                     } else {
-                        self.context.resolve_path(&format!("screenshots/{}.png", name))
+                        self.context.resolve_path(&format!("screenshots/{}.png", subst_name))
                     }
                 };
 
@@ -2301,7 +2307,8 @@ impl TestExecutor {
 
             TestCommand::StartRecording(params_input) => {
                 let params = params_input.clone().into_inner();
-                let path = self.context.output_path(&params.path);
+                let subst_path = self.context.substitute_vars(&params.path);
+                let path = self.context.output_path(&subst_path);
                 self.driver
                     .start_recording(&path.display().to_string())
                     .await
@@ -2337,7 +2344,8 @@ impl TestExecutor {
                 let commands_to_run = if let Some(cmds) = &params.commands {
                     Some(cmds.clone())
                 } else if let Some(ref path_str) = params.path {
-                    let flow_path = self.context.resolve_path(path_str);
+                    let subst_path = self.context.substitute_vars(path_str);
+                    let flow_path = self.context.resolve_path(&subst_path);
                     let commands = if let Some(cached) = self.flow_cache.get(&flow_path) {
                         cached.commands.clone()
                     } else {
@@ -2386,16 +2394,18 @@ impl TestExecutor {
 
             // TapAt - tap element by type and index
             TestCommand::TapAt(params) => {
+                let elem_type = self.context.substitute_vars(&params.element_type);
                 self.driver
-                    .tap_by_type_index(&params.element_type, params.index)
+                    .tap_by_type_index(&elem_type, params.index)
                     .await
             }
 
             // InputAt - input text at element by type and index
             TestCommand::InputAt(params) => {
+                let elem_type = self.context.substitute_vars(&params.element_type);
                 let text = self.context.substitute_vars(&params.text);
                 self.driver
-                    .input_by_type_index(&params.element_type, params.index, &text)
+                    .input_by_type_index(&elem_type, params.index, &text)
                     .await
             }
 
@@ -2853,7 +2863,8 @@ impl TestExecutor {
             // GPS Mock Location
             TestCommand::MockLocation(p_input) => {
                 let p = p_input.clone().into_inner();
-                let file_path = self.context.resolve_path(&p.file);
+                let file_str = self.context.substitute_vars(&p.file);
+                let file_path = self.context.resolve_path(&file_str);
 
                 let content = std::fs::read_to_string(&file_path)
                     .context(format!("Failed to read GPS file: {}", file_path.display()))?;
@@ -2913,6 +2924,10 @@ impl TestExecutor {
             TestCommand::AssertColor(params) => {
                 use crate::parser::types::AssertColorParams;
 
+                let mut params = params.clone();
+                params.point = self.context.substitute_vars(&params.point);
+                params.color = self.context.substitute_vars(&params.color);
+
                 // Get screen size for percentage calculation
                 let (screen_width, screen_height) = self.driver.get_screen_size().await?;
 
@@ -2957,8 +2972,9 @@ impl TestExecutor {
             // New Commands
             TestCommand::RotateScreen(params_input) => {
                 let params = params_input.clone().into_inner();
+                let mode = self.context.substitute_vars(&params.mode);
                 // Deprecated: use SetOrientation
-                self.driver.rotate_screen(&params.mode).await
+                self.driver.rotate_screen(&mode).await
             }
 
             TestCommand::SetOrientation(params) => {
@@ -2984,21 +3000,27 @@ impl TestExecutor {
             TestCommand::UnlockDevice => self.driver.unlock_device().await,
 
             TestCommand::InstallApp(path) => {
-                let resolved_path = self.context.resolve_path(path);
+                let subst_path = self.context.substitute_vars(path);
+                let resolved_path = self.context.resolve_path(&subst_path);
                 self.driver
                     .install_app(resolved_path.to_str().unwrap())
                     .await
             }
 
-            TestCommand::UninstallApp(pkg) => self.driver.uninstall_app(pkg).await,
+            TestCommand::UninstallApp(pkg) => {
+                let subst_pkg = self.context.substitute_vars(pkg);
+                self.driver.uninstall_app(&subst_pkg).await
+            }
 
             TestCommand::BackgroundApp(params) => {
-                let app_id = params.app_id.as_deref().or(self.context.app_id.as_deref());
-                self.driver.background_app(app_id, params.duration_ms).await
+                let raw_app_id = params.app_id.as_deref().or(self.context.app_id.as_deref());
+                let subst_app_id = raw_app_id.map(|id| self.context.substitute_vars(id));
+                self.driver.background_app(subst_app_id.as_deref(), params.duration_ms).await
             }
 
             TestCommand::PressKey(params) => {
-                let key = params.key();
+                let raw_key = params.key();
+                let key = self.context.substitute_vars(raw_key);
                 let times_val = params.times_value();
                 let times = match times_val {
                     serde_json::Value::Number(n) => n.as_u64().unwrap_or(1) as u32,
@@ -3009,29 +3031,36 @@ impl TestExecutor {
                     _ => 1,
                 };
                 for _ in 0..times {
-                    self.driver.press_key(key).await?;
+                    self.driver.press_key(&key).await?;
                 }
                 Ok(())
             }
 
             TestCommand::PushFile(params) => {
-                let source = self.context.resolve_path(&params.source);
+                let subst_source = self.context.substitute_vars(&params.source);
+                let subst_dest = self.context.substitute_vars(&params.destination);
+                let source = self.context.resolve_path(&subst_source);
                 if !source.exists() {
                     anyhow::bail!("Source file not found: {}", source.display());
                 }
                 self.driver
-                    .push_file(source.to_str().unwrap(), &params.destination)
+                    .push_file(source.to_str().unwrap(), &subst_dest)
                     .await
             }
 
             TestCommand::PullFile(params) => {
-                let dest = self.context.output_path(&params.destination);
+                let subst_source = self.context.substitute_vars(&params.source);
+                let subst_dest = self.context.substitute_vars(&params.destination);
+                let dest = self.context.output_path(&subst_dest);
                 self.driver
-                    .pull_file(&params.source, dest.to_str().unwrap())
+                    .pull_file(&subst_source, dest.to_str().unwrap())
                     .await
             }
 
-            TestCommand::ClearAppData(app_id) => self.driver.clear_app_data(app_id).await,
+            TestCommand::ClearAppData(app_id) => {
+                let subst_app_id = self.context.substitute_vars(app_id);
+                self.driver.clear_app_data(&subst_app_id).await
+            }
 
             TestCommand::SetClipboard(text) => {
                 let content = self.context.substitute_vars(text);
@@ -3371,21 +3400,32 @@ impl TestExecutor {
 
             // Hardware Automation Commands (Standardized hw* Commands)
             TestCommand::HwPing(params) => {
+                let default_port = "/dev/cu.usbserial-A5069RR4".to_string();
+                let port_raw = params.port.as_ref().unwrap_or(&default_port);
+                let port = self.context.substitute_vars(port_raw);
                 if let Some(ctrl) = &self.hardware_controller {
                     let resp = ctrl.ping(params.node_id)?;
                     println!("  {} Ping Node {:?} OK: {}", "🏓".green(), params.node_id.or(Some(1)), resp);
+                    if let Some(ref var_name) = params.save_as {
+                        let var = self.context.substitute_vars(var_name);
+                        self.context.set_var(&var, &resp);
+                    }
                 } else {
-                    let port = params.port.clone().unwrap_or_else(|| "/dev/cu.usbserial-A5069RR4".to_string());
                     let res = crate::hardware::ping_details(&port, params.baudrate, params.node_id, None)?;
                     println!("  {} Pinged Jig on {}: Node={:?}, Firmware={:?}, Status={:?} ({}ms)",
                         "🏓".green(), res.port, res.node_id, res.firmware_version, res.system_status, res.latency_ms);
+                    if let Some(ref var_name) = params.save_as {
+                        let var = self.context.substitute_vars(var_name);
+                        self.context.set_var(&var, &res.latency_ms.to_string());
+                    }
                 }
                 Ok(())
             }
 
             TestCommand::HwConnect(params) => {
                 let resolved_params = if let Some(ref file_path) = params.file {
-                    let candidate_path = self.context.base_dir.join(file_path);
+                    let substituted_file = self.context.substitute_vars(file_path);
+                    let candidate_path = self.context.base_dir.join(&substituted_file);
                     let content = std::fs::read_to_string(&candidate_path)
                         .map_err(|e| anyhow::anyhow!("Failed to read jig file '{}': {}", candidate_path.display(), e))?;
                     let raw_val: serde_yaml::Value = serde_yaml::from_str(&content)
@@ -3396,6 +3436,12 @@ impl TestExecutor {
                             .unwrap_or_default();
                         if let Some(servos_val) = raw_val.get("servos") {
                             p.servos = serde_yaml::from_value(servos_val.clone()).ok();
+                        }
+                        if let Some(btns_val) = raw_val.get("buttons") {
+                            p.buttons = serde_yaml::from_value(btns_val.clone()).ok();
+                        }
+                        if let Some(relays_val) = raw_val.get("relays") {
+                            p.relays = serde_yaml::from_value(relays_val.clone()).ok();
                         }
                         p
                     } else {
@@ -3409,8 +3455,20 @@ impl TestExecutor {
                     if params.baudrate.is_some() {
                         loaded.baudrate = params.baudrate;
                     }
+                    if params.node_id.is_some() {
+                        loaded.node_id = params.node_id;
+                    }
+                    if params.wire_format.is_some() {
+                        loaded.wire_format = params.wire_format.clone();
+                    }
                     if params.servos.is_some() {
                         loaded.servos = params.servos.clone();
+                    }
+                    if params.buttons.is_some() {
+                        loaded.buttons = params.buttons.clone();
+                    }
+                    if params.relays.is_some() {
+                        loaded.relays = params.relays.clone();
                     }
                     loaded
                 } else {
@@ -3422,8 +3480,14 @@ impl TestExecutor {
                 if let Some(nid) = resolved_params.node_id {
                     hw_config.node_id = Some(nid);
                 }
-                if resolved_params.wire_format.is_some() {
-                    hw_config.wire_format = resolved_params.wire_format.clone();
+                if let Some(ref wf) = resolved_params.wire_format {
+                    hw_config.wire_format = Some(self.context.substitute_vars(wf));
+                }
+                if let Some(ref btns) = resolved_params.buttons {
+                    hw_config.button_mappings = btns.clone();
+                }
+                if let Some(ref rlys) = resolved_params.relays {
+                    hw_config.relay_mappings = rlys.clone();
                 }
                 let controller = crate::hardware::HardwareController::new(Some(hw_config));
                 controller.connect(&port, resolved_params.baudrate)?;
@@ -3487,8 +3551,9 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.button.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
-                let label = format_hw_label(params.button.as_deref(), ch);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(resolved_btn.as_deref(), ch);
                 let res = ctrl.servo.click(ch, params.hold_ms)?;
                 println!("  {} Click button {}: completed={}", "⚙️".green(), label, res.completed);
                 Ok(())
@@ -3498,8 +3563,9 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.button.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
-                let label = format_hw_label(params.button.as_deref(), ch);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(resolved_btn.as_deref(), ch);
                 let res = ctrl.servo.press(ch)?;
                 println!("  {} Pressed button {}: completed={}", "⚙️".green(), label, res.completed);
                 Ok(())
@@ -3509,8 +3575,9 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.button.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
-                let label = format_hw_label(params.button.as_deref(), ch);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(resolved_btn.as_deref(), ch);
                 let res = ctrl.servo.release(ch)?;
                 println!("  {} Released button {}: completed={}", "⚙️".green(), label, res.completed);
                 Ok(())
@@ -3520,8 +3587,9 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.button.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
-                let label = format_hw_label(params.button.as_deref(), ch);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(resolved_btn.as_deref(), ch);
                 let speed = params.speed.unwrap_or(50);
                 let res = ctrl.servo.rotate(ch, params.angle, speed)?;
                 println!("  {} Rotated servo {} to {}° (speed={}): completed={}", "⚙️".green(), label, params.angle, speed, res.completed);
@@ -3532,10 +3600,15 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.button.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
-                let label = format_hw_label(params.button.as_deref(), ch);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(resolved_btn.as_deref(), ch);
                 let state_str = ctrl.servo.get_state(ch)?;
                 println!("  {} Servo {} state: {}", "⚙️".blue(), label, state_str);
+                if let Some(ref var_name) = params.save_as {
+                    let var = self.context.substitute_vars(var_name);
+                    self.context.set_var(&var, &state_str);
+                }
                 Ok(())
             }
 
@@ -3543,10 +3616,17 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.resolved_channel();
-                let label = format_hw_label(params.button.as_deref(), ch);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref()
+                    .map(|b| ctrl.resolve_relay_channels(b).first().copied().unwrap_or(1))
+                    .unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(resolved_btn.as_deref(), ch);
                 let state = ctrl.relay.get_state(ch)?;
                 println!("  {} Relay {} state: {}", "⚡".green(), label, state.as_str());
+                if let Some(ref var_name) = params.save_as {
+                    let var = self.context.substitute_vars(var_name);
+                    self.context.set_var(&var, state.as_str());
+                }
                 Ok(())
             }
 
@@ -3554,8 +3634,9 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.button.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
-                let label = format_hw_label(params.button.as_deref(), ch);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(resolved_btn.as_deref(), ch);
                 let reading = ctrl.color_sensor.read_color(ch)?;
                 println!(
                     "  {} Color sensor {}: Color={} (Conf={:?}, RGBC=[R:{} G:{} B:{} C:{}])",
@@ -3568,6 +3649,10 @@ impl TestExecutor {
                     reading.sample.blue,
                     reading.sample.clear
                 );
+                if let Some(ref var_name) = params.save_as {
+                    let var = self.context.substitute_vars(var_name);
+                    self.context.set_var(&var, reading.color.as_str());
+                }
                 Ok(())
             }
 
@@ -3575,10 +3660,16 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.as_ref().and_then(|p| p.button.as_deref()).map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.as_ref().map(|p| p.resolved_channel()).unwrap_or(1));
-                let label = format_hw_label(params.as_ref().and_then(|p| p.button.as_deref()), ch);
+                let resolved_btn = params.as_ref().and_then(|p| p.button.as_ref()).map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.as_ref().map(|p| p.resolved_channel()).unwrap_or(1));
+                let label = format_hw_label(resolved_btn.as_deref(), ch);
                 let enabled = ctrl.color_sensor.get_light_state(Some(ch))?;
+                let state_str = if enabled { "on" } else { "off" };
                 println!("  {} Color sensor {} LED (PB15): {}", "💡".blue(), label, if enabled { "ON" } else { "OFF" });
+                if let Some(var_name) = params.as_ref().and_then(|p| p.save_as.as_ref()) {
+                    let var = self.context.substitute_vars(var_name);
+                    self.context.set_var(&var, state_str);
+                }
                 Ok(())
             }
 
@@ -3586,8 +3677,9 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let channels = params.button.as_deref().map(|b| ctrl.resolve_relay_channels(b)).unwrap_or_else(|| params.resolved_channels());
-                let label = format_hw_channels_label(params.button.as_deref(), &channels);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let channels = resolved_btn.as_deref().map(|b| ctrl.resolve_relay_channels(b)).unwrap_or_else(|| params.resolved_channels());
+                let label = format_hw_channels_label(resolved_btn.as_deref(), &channels);
                 for ch in &channels {
                     let _ = ctrl.relay.set_state(*ch, crate::hardware::RelayState::On)?;
                 }
@@ -3599,8 +3691,9 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let channels = params.button.as_deref().map(|b| ctrl.resolve_relay_channels(b)).unwrap_or_else(|| params.resolved_channels());
-                let label = format_hw_channels_label(params.button.as_deref(), &channels);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let channels = resolved_btn.as_deref().map(|b| ctrl.resolve_relay_channels(b)).unwrap_or_else(|| params.resolved_channels());
+                let label = format_hw_channels_label(resolved_btn.as_deref(), &channels);
                 for ch in &channels {
                     let _ = ctrl.relay.set_state(*ch, crate::hardware::RelayState::Off)?;
                 }
@@ -3621,8 +3714,9 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let channels = params.button.as_deref().map(|b| ctrl.resolve_relay_channels(b)).unwrap_or_else(|| params.resolved_channels());
-                let label = format_hw_channels_label(params.button.as_deref(), &channels);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let channels = resolved_btn.as_deref().map(|b| ctrl.resolve_relay_channels(b)).unwrap_or_else(|| params.resolved_channels());
+                let label = format_hw_channels_label(resolved_btn.as_deref(), &channels);
                 let off_ms = params.off_ms.unwrap_or(2000);
                 for ch in &channels {
                     ctrl.relay.set_state(*ch, crate::hardware::RelayState::Off)?;
@@ -3640,8 +3734,9 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.button.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
-                let label = format_hw_label(params.button.as_deref(), ch);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(resolved_btn.as_deref(), ch);
                 let timeout_s = params.timeout_ms.unwrap_or(5000) as f64 / 1000.0;
                 let exp_list = params.resolved_expected();
                 let exp_colors: Option<Vec<crate::hardware::Color>> = if !exp_list.is_empty() {
@@ -3668,12 +3763,14 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.button.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
-                let label = format_hw_label(params.button.as_deref(), ch);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(resolved_btn.as_deref(), ch);
                 let timeout_s = params.timeout_ms.unwrap_or(5000) as f64 / 1000.0;
+                let resolved_col = params.color.as_ref().map(|c| self.context.substitute_vars(c));
                 let blink_res = ctrl.color_sensor.wait_for_blinks(
                     ch,
-                    params.color.as_deref(),
+                    resolved_col.as_deref(),
                     params.count,
                     None,
                     params.min_pulse_ms,
@@ -3739,12 +3836,14 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.button.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
-                let label = format_hw_label(params.button.as_deref(), ch);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(resolved_btn.as_deref(), ch);
                 let timeout_s = params.timeout_ms.unwrap_or(5000) as f64 / 1000.0;
+                let resolved_col = params.color.as_ref().map(|c| self.context.substitute_vars(c));
                 let blink_res = ctrl.color_sensor.wait_for_blinks_native(
                     ch,
-                    params.color.as_deref(),
+                    resolved_col.as_deref(),
                     params.count,
                     None,
                     timeout_s,
@@ -3787,8 +3886,9 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.button.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
-                let label = format_hw_label(params.button.as_deref(), ch);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(resolved_btn.as_deref(), ch);
                 let press_ms = params.press_ms.unwrap_or(200);
                 let release_ms = params.release_ms.unwrap_or(200);
                 let res = ctrl.servo.repeat(ch, params.count, press_ms, release_ms)?;
@@ -3800,8 +3900,9 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.button.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
-                let label = format_hw_label(params.button.as_deref(), ch);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(resolved_btn.as_deref(), ch);
                 let timeout_s = params.timeout_ms.unwrap_or(5000) as f64 / 1000.0;
                 let exp_colors = vec![crate::hardware::Color::Off, crate::hardware::Color::Unknown];
                 let reading = ctrl.color_sensor.wait_for_color(ch, Some(&exp_colors), timeout_s)?;
@@ -3830,8 +3931,9 @@ impl TestExecutor {
                 let release_ms = params.release_duration_ms.unwrap_or(150);
                 let hold_ms = params.hold_duration_ms.unwrap_or(300);
                 let force = params.force.unwrap_or(false);
-                let ch = params.resolved_channel();
-                let label = format_hw_label(params.button.as_deref(), ch);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(resolved_btn.as_deref(), ch);
 
                 if !force && crate::hardware::servo::is_servo_already_configured(
                     &port,
@@ -3871,8 +3973,9 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.resolved_channel();
-                let label = format_hw_label(params.button.as_deref(), ch);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(resolved_btn.as_deref(), ch);
                 let period_ms = params.period_ms.unwrap_or(1500);
                 ctrl.servo.start_repeat(ch, period_ms)?;
                 println!("  {} Started continuous click repeat {}", "⚙️".green(), label);
@@ -3883,8 +3986,9 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.resolved_channel();
-                let label = format_hw_label(params.button.as_deref(), ch);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_servo_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let label = format_hw_label(resolved_btn.as_deref(), ch);
                 ctrl.servo.stop_repeat(ch)?;
                 println!("  {} Stopped continuous click repeat {}", "⚙️".yellow(), label);
                 Ok(())
@@ -3894,9 +3998,11 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.button.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let resolved_state = params.state.as_ref().map(|s| self.context.substitute_vars(s));
                 let on = params.enabled.unwrap_or_else(|| {
-                    params.state.as_deref().unwrap_or("on").to_lowercase() == "on"
+                    resolved_state.as_deref().unwrap_or("on").to_lowercase() == "on"
                 });
                 if on {
                     ctrl.color_sensor.light_on(Some(ch))?;
@@ -3911,7 +4017,8 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.resolved_channel();
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
                 let min_pulse = params.min_pulse_ms.unwrap_or(50);
                 let max_pulse = params.max_pulse_ms.unwrap_or(1000);
                 let end_gap = params.sequence_end_gap_ms.unwrap_or(500);
@@ -3931,7 +4038,8 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.resolved_channel();
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
                 let reading = ctrl.color_sensor.read_color(ch)?;
                 println!("  {} Brightness check ch {}: sample={:?}", "💡".green(), ch, reading.sample);
                 Ok(())
@@ -3941,7 +4049,8 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.resolved_channel();
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
                 let reading = ctrl.color_sensor.read_color(ch)?;
                 println!("  {} CCT check ch {}: sample={:?}", "💡".green(), ch, reading.sample);
                 Ok(())
@@ -3951,9 +4060,11 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.resolved_channel();
-                ctrl.calibration.calibrate_color(ch, &params.color)?;
-                println!("  {} Calibrated color {} ch {}", "🎯".green(), params.color, ch);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let resolved_color = self.context.substitute_vars(&params.color);
+                ctrl.calibration.calibrate_color(ch, &resolved_color)?;
+                println!("  {} Calibrated color {} ch {}", "🎯".green(), resolved_color, ch);
                 Ok(())
             }
 
@@ -3961,9 +4072,12 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.resolved_channel();
-                ctrl.calibration.calibrate_brightness(ch, &params.mode, params.color.as_deref())?;
-                println!("  {} Calibrated brightness mode {} ch {}", "🎯".green(), params.mode, ch);
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
+                let resolved_mode = self.context.substitute_vars(&params.mode);
+                let resolved_color = params.color.as_ref().map(|c| self.context.substitute_vars(c));
+                ctrl.calibration.calibrate_brightness(ch, &resolved_mode, resolved_color.as_deref())?;
+                println!("  {} Calibrated brightness mode {} ch {}", "🎯".green(), resolved_mode, ch);
                 Ok(())
             }
 
@@ -3971,7 +4085,8 @@ impl TestExecutor {
                 let ctrl = self.hardware_controller.as_ref().ok_or_else(|| {
                     anyhow::anyhow!("Hardware controller not connected! Call hwConnect first.")
                 })?;
-                let ch = params.resolved_channel();
+                let resolved_btn = params.button.as_ref().map(|b| self.context.substitute_vars(b));
+                let ch = resolved_btn.as_deref().map(|b| ctrl.resolve_sensor_channel(b)).unwrap_or_else(|| params.resolved_channel());
                 ctrl.calibration.add_cct_point(ch, params.known_kelvin)?;
                 println!("  {} Added CCT point {}K ch {}", "🎯".green(), params.known_kelvin, ch);
                 Ok(())
@@ -4024,6 +4139,7 @@ impl TestExecutor {
                 })?;
                 let diag = ctrl.system_diagnostics()?;
                 println!("  {} System diagnostics: {}", "🔍".green(), diag);
+                self.context.set_var("hwDiagnostics", &diag);
                 Ok(())
             }
 
@@ -4179,7 +4295,14 @@ impl TestExecutor {
             }
 
             TestCommand::SetWindowSize(params_input) => {
-                if let Some((w, h)) = params_input.to_dimensions() {
+                let dimensions = match params_input {
+                    crate::parser::types::SetWindowSizeParamsInput::Struct(p) => Some((p.width, p.height)),
+                    crate::parser::types::SetWindowSizeParamsInput::String(s) => {
+                        let subst = self.context.substitute_vars(s);
+                        crate::parser::types::SetWindowSizeParamsInput::String(subst).to_dimensions()
+                    }
+                };
+                if let Some((w, h)) = dimensions {
                     self.driver.set_window_size(w, h).await?;
                     std::thread::sleep(std::time::Duration::from_millis(300));
                     self.emitter.emit(TestEvent::Log {
@@ -4193,6 +4316,7 @@ impl TestExecutor {
             // GIF Recording
             TestCommand::CaptureGifFrame(params_input) => {
                 let params = params_input.clone().into_inner();
+                let frame_name = self.context.substitute_vars(&params.name);
                 let temp_path = format!("/tmp/gif_frame_{}.png", Uuid::new_v4());
                 self.driver.take_screenshot(&temp_path).await?;
 
@@ -4201,11 +4325,12 @@ impl TestExecutor {
 
                 // Crop if specified
                 if let Some(ref crop_str) = params.crop {
-                    img_bytes = self.crop_image(&img_bytes, crop_str)?;
+                    let subst_crop = self.context.substitute_vars(crop_str);
+                    img_bytes = self.crop_image(&img_bytes, &subst_crop)?;
                 }
 
-                self.gif_frames.insert(params.name.clone(), img_bytes);
-                println!("  {} Captured GIF frame: {}", "📷".green(), params.name);
+                self.gif_frames.insert(frame_name.clone(), img_bytes);
+                println!("  {} Captured GIF frame: {}", "📷".green(), frame_name);
                 Ok(())
             }
 
@@ -4214,7 +4339,8 @@ impl TestExecutor {
                 use image::codecs::gif::{GifEncoder, Repeat};
                 use image::{Delay, Frame};
 
-                let output_path = self.context.output_path(&params.output);
+                let subst_output = self.context.substitute_vars(&params.output);
+                let output_path = self.context.output_path(&subst_output);
 
                 // Determine loop count
                 let repeat = match params.loop_count {
@@ -4234,8 +4360,8 @@ impl TestExecutor {
                 let mut frames = Vec::new();
                 for frame_input in &params.frames {
                     let (name, delay) = match frame_input {
-                        GifFrameInput::Name(n) => (n.clone(), params.delay),
-                        GifFrameInput::WithDelay { name, delay } => (name.clone(), *delay),
+                        GifFrameInput::Name(n) => (self.context.substitute_vars(n), params.delay),
+                        GifFrameInput::WithDelay { name, delay } => (self.context.substitute_vars(name), *delay),
                     };
 
                     let bytes = self
@@ -4377,12 +4503,15 @@ impl TestExecutor {
                 let direction = params
                     .as_ref()
                     .and_then(|p| p.direction.as_ref())
-                    .map(|d| match d.to_lowercase().as_str() {
-                        "left" => SwipeDirection::Left,
-                        "right" => SwipeDirection::Right,
-                        "up" => SwipeDirection::Up,
-                        "down" => SwipeDirection::Down,
-                        _ => SwipeDirection::Up,
+                    .map(|d| {
+                        let subst_d = self.context.substitute_vars(d);
+                        match subst_d.to_lowercase().as_str() {
+                            "left" => SwipeDirection::Left,
+                            "right" => SwipeDirection::Right,
+                            "up" => SwipeDirection::Up,
+                            "down" => SwipeDirection::Down,
+                            _ => SwipeDirection::Up,
+                        }
                     })
                     .unwrap_or(SwipeDirection::Up);
 
@@ -4424,7 +4553,8 @@ impl TestExecutor {
                 let to_params = self.resolve_tap_params(&params.to);
 
                 let from_selector = if let Some(point_str) = &from_params.point {
-                    let parts: Vec<&str> = point_str.split(',').collect();
+                    let subst_point = self.context.substitute_vars(point_str);
+                    let parts: Vec<&str> = subst_point.split(',').collect();
                     if parts.len() == 2 {
                         let (screen_width, screen_height) = self.driver.get_screen_size().await?;
                         let x_str = parts[0].trim();
@@ -4467,7 +4597,8 @@ impl TestExecutor {
                 .ok_or_else(|| anyhow::anyhow!("No 'from' selector specified for drag"))?;
 
                 let to_selector = if let Some(point_str) = &to_params.point {
-                    let parts: Vec<&str> = point_str.split(',').collect();
+                    let subst_point = self.context.substitute_vars(point_str);
+                    let parts: Vec<&str> = subst_point.split(',').collect();
                     if parts.len() == 2 {
                         let (screen_width, screen_height) = self.driver.get_screen_size().await?;
                         let x_str = parts[0].trim();
@@ -4636,9 +4767,10 @@ impl TestExecutor {
                 println!("  {} Stopped performance profiling", "⚡".green());
                 // Optional: Save report if path provided
                 if let Some(p) = params.as_ref().and_then(|x| x.save_path.as_ref()) {
+                    let subst_p = self.context.substitute_vars(p);
                     let metrics = self.driver.get_performance_metrics().await?;
                     let json = serde_json::to_string_pretty(&metrics)?;
-                    let path = self.context.output_path(p);
+                    let path = self.context.output_path(&subst_p);
                     std::fs::write(&path, json)?;
                     println!(
                         "  {} Saved performance report: {}",
@@ -4651,8 +4783,10 @@ impl TestExecutor {
 
             TestCommand::AssertPerformance(params) => {
                 let metrics = self.driver.get_performance_metrics().await?;
-                let metric_name = &params.metric;
-                let limit_str = &params.limit;
+                let subst_metric = self.context.substitute_vars(&params.metric);
+                let metric_name = &subst_metric;
+                let subst_limit = self.context.substitute_vars(&params.limit);
+                let limit_str = &subst_limit;
 
                 // Find metric (case-insensitive key search)
                 let value = metrics
@@ -4744,8 +4878,9 @@ impl TestExecutor {
             }
 
             TestCommand::SetNetworkConditions(profile) => {
-                self.driver.set_network_conditions(profile).await?;
-                println!("  {} Set network profile: {}", "⚡".green(), profile);
+                let subst_profile = self.context.substitute_vars(profile);
+                self.driver.set_network_conditions(&subst_profile).await?;
+                println!("  {} Set network profile: {}", "⚡".green(), subst_profile);
                 Ok(())
             }
 
@@ -4837,7 +4972,8 @@ impl TestExecutor {
 
             // Audio Test Commands
             TestCommand::PlayMedia(params) => {
-                let file_path = self.context.resolve_path(&params.file);
+                let subst_file = self.context.substitute_vars(&params.file);
+                let file_path = self.context.resolve_path(&subst_file);
                 self.driver
                     .play_media(&file_path, params.loop_playback)
                     .await
@@ -5860,5 +5996,29 @@ mod tests {
         assert_eq!(cfg.rtsp, rtsp);
         assert_eq!(cfg.profile.as_deref(), Some("profiles/switch4.json"));
         assert_eq!(cfg.transport.as_deref(), Some("tcp"));
+    }
+
+    #[test]
+    fn test_variable_substitution_in_commands() {
+        let mut context = TestContext::new(Path::new("."), None, false, None);
+        context.vars.insert("OFFSET_VAL".to_string(), "90%,50%".to_string());
+        context.vars.insert("ALIGN_VAL".to_string(), "right".to_string());
+
+        let subst_offset = Some(context.substitute_vars("${OFFSET_VAL}"));
+        let subst_align = Some(context.substitute_vars("${ALIGN_VAL}"));
+        let offset = super::resolve_element_offset(&subst_align, &subst_offset);
+        assert_eq!(offset, Some((0.9, 0.5)));
+
+        // Window size string substitution
+        context.vars.insert("WIN_DIMS".to_string(), "1920x1080".to_string());
+        let subst_win = context.substitute_vars("${WIN_DIMS}");
+        let win_input = crate::parser::types::SetWindowSizeParamsInput::String(subst_win);
+        assert_eq!(win_input.to_dimensions(), Some((1920, 1080)));
+
+        // Point substitution
+        context.vars.insert("TAP_COORDS".to_string(), "50%,80%".to_string());
+        let subst_pt = context.substitute_vars("${TAP_COORDS}");
+        let parts: Vec<&str> = subst_pt.split(',').collect();
+        assert_eq!(parts, vec!["50%", "80%"]);
     }
 }

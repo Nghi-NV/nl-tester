@@ -120,17 +120,20 @@ impl TestContext {
         self.vars.insert(name.to_string(), substituted);
     }
 
-    /// Substitute ${varname} or ${varname.json.path} patterns in a string
+    /// Substitute ${varname}, ${varname:-default}, or ${varname.json.path} patterns in a string
     pub fn substitute_vars(&self, text: &str) -> String {
-        // Regex to match ${key} where key can contain dots
-        let re = Regex::new(r"\$\{([a-zA-Z0-9_.]+)\}").unwrap();
+        // Regex to match ${key} or ${key:-default} where key can contain dots
+        let re = Regex::new(r"\$\{([a-zA-Z0-9_.]+)(?::-([^}]*))?\}").unwrap();
         let result = re
             .replace_all(text, |caps: &regex::Captures| {
                 let full_key = &caps[1];
+                let default_val = caps.get(2).map(|m| m.as_str());
 
                 // 1. Try explicit full match first
                 if let Some(val) = self.get_var(full_key) {
-                    return val;
+                    if !val.is_empty() || default_val.is_none() {
+                        return val;
+                    }
                 }
 
                 // 1b. Handle dynamic time variables
@@ -167,8 +170,13 @@ impl TestContext {
                     }
                 }
 
-                // 3. Keep original if not found
-                format!("${{{}}}", full_key)
+                // 3. Fallback to default if provided
+                if let Some(def) = default_val {
+                    return self.substitute_vars(def);
+                }
+
+                // 4. Keep original if not found and no default provided
+                caps[0].to_string()
             })
             .to_string();
 
@@ -181,5 +189,36 @@ impl TestContext {
             let substituted = self.substitute_vars(v);
             self.vars.insert(k.clone(), substituted);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_substitute_vars_basic_and_default() {
+        let mut ctx = TestContext::new(Path::new("."), None, false, None);
+        ctx.set_var("device", "Pixel 7");
+        ctx.set_var("empty_var", "");
+
+        assert_eq!(ctx.substitute_vars("Hello ${device}"), "Hello Pixel 7");
+        assert_eq!(ctx.substitute_vars("Port: ${JIG_PORT:-COM5}"), "Port: COM5");
+        assert_eq!(ctx.substitute_vars("Device: ${device:-fallback}"), "Device: Pixel 7");
+        assert_eq!(ctx.substitute_vars("Empty: ${empty_var:-default_val}"), "Empty: default_val");
+        assert_eq!(ctx.substitute_vars("Unset: ${UNSET_VAR}"), "Unset: ${UNSET_VAR}");
+    }
+
+    #[test]
+    fn test_substitute_vars_json_pointer() {
+        let mut ctx = TestContext::new(Path::new("."), None, false, None);
+        ctx.vars.insert(
+            "user".to_string(),
+            r#"{"name": "Lumi", "role": "tester", "nested": {"id": 42}}"#.to_string(),
+        );
+
+        assert_eq!(ctx.substitute_vars("Name: ${user.name}"), "Name: Lumi");
+        assert_eq!(ctx.substitute_vars("ID: ${user.nested.id}"), "ID: 42");
+        assert_eq!(ctx.substitute_vars("Missing: ${user.missing:-guest}"), "Missing: guest");
     }
 }
