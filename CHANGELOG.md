@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.44] - 2026-09-26
+
+### 🚀 Highlights & Improvements
+
+#### 1. Ultra-Fast Execution Engine
+- **On-Device Hardware WebP Compression**: Directly compress screenshots to WebP on-device in `lm-android-tester`, eliminating host-side re-encoding and cutting snapshot latency to <40ms.
+- **WebSocket In-Memory Binary Stream**: Direct binary transfer of raw frames over WebSocket, eliminating base64 encoding and disk I/O bottlenecks.
+- **Optimized WebP Quality**: Tuned quality level to 80, saving 35% payload size and ~20% hardware encode time per snapshot.
+
+#### 2. Self-Healing Selector Engine
+- **Multi-Signal Fingerprinting**: Automatically captures element bounds, center, type, text, ID, and descriptions on successful interactions.
+- **Dynamic Heuristic Healing**: Recovers broken selectors when element text, IDs, or layout shifts using Levenshtein distance, token similarity, and spatial bounds proximity.
+
+#### 3. State & Animation Race Safeguards
+- **VSYNC Registration Barrier (35ms)**: Guarantees Dart/Flutter and Android render engines register frame scheduling before checking idle states.
+- **Adaptive Settling Grace Period**: Fast-path (0ms) when element is absent; adaptive settling up to 1500ms when dismissing dialogs or route transitions to eliminate false positive failures.
+- **In-Process Interactive Windows**: Enabled `FLAG_RETRIEVE_INTERACTIVE_WINDOWS` in `UiAutomationBridge` for instant IME and dialog visibility checks.
+
 ## [v0.1.43] - 2026-09-25
 
 ### 🚀 Highlights & Improvements
