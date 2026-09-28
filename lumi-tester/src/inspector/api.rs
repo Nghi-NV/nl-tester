@@ -26,6 +26,7 @@ pub struct AppState {
     pub current_target_app: std::sync::Mutex<Option<String>>,
     /// Cached UI hierarchy (dumped during screenshot capture)
     pub cached_hierarchy: std::sync::Mutex<Option<CachedHierarchy>>,
+    pub workspace_root: Option<std::path::PathBuf>,
 }
 
 /// Resolves which app to dump the hierarchy of. A manual pick (via `/api/target-app`)
@@ -1159,6 +1160,16 @@ async fn select_file(
 ) -> impl IntoResponse {
     let path = std::path::PathBuf::from(&request.path);
 
+    if let Some(root) = state.workspace_root.as_deref() {
+        if !path_is_within_workspace(&path, root) {
+            return Json(FileResponse {
+                success: false,
+                commands: vec![],
+                message: Some("Inspector files must stay inside the open Lumi workspace".to_string()),
+            });
+        }
+    }
+
     if !path.exists() && request.create_if_missing {
         let plat = state.screen_capture.platform();
         let app_line = if let Some(ref dev) = state.device_serial {
@@ -1205,6 +1216,58 @@ async fn select_file(
         commands,
         message: None,
     })
+}
+
+fn path_is_within_workspace(path: &std::path::Path, root: &std::path::Path) -> bool {
+    let Ok(root) = std::fs::canonicalize(root) else {
+        return false;
+    };
+    let candidate = if path.exists() {
+        std::fs::canonicalize(path).ok()
+    } else {
+        path.parent()
+            .and_then(|parent| std::fs::canonicalize(parent).ok())
+            .and_then(|parent| path.file_name().map(|name| parent.join(name)))
+    };
+    candidate.is_some_and(|candidate| candidate.starts_with(root))
+}
+
+#[cfg(test)]
+mod workspace_path_tests {
+    use super::path_is_within_workspace;
+    use std::{fs, time::SystemTime};
+
+    #[test]
+    fn only_accepts_existing_or_new_files_inside_workspace() {
+        let nonce = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let temp = std::env::temp_dir().join(format!("lumi-inspector-path-{nonce}"));
+        let workspace = temp.join("workspace");
+        let outside = temp.join("outside");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        let existing = workspace.join("flow.yaml");
+        let missing_inside = workspace.join("new-flow.yaml");
+        let outside_file = outside.join("flow.yaml");
+        fs::write(&existing, "---\n").unwrap();
+        fs::write(&outside_file, "---\n").unwrap();
+
+        assert!(path_is_within_workspace(&existing, &workspace));
+        assert!(path_is_within_workspace(&missing_inside, &workspace));
+        assert!(!path_is_within_workspace(&outside_file, &workspace));
+        assert!(!path_is_within_workspace(&outside.join("new-flow.yaml"), &workspace));
+
+        #[cfg(unix)]
+        {
+            let link = workspace.join("outside.yaml");
+            std::os::unix::fs::symlink(&outside_file, &link).unwrap();
+            assert!(!path_is_within_workspace(&link, &workspace));
+        }
+
+        fs::remove_dir_all(temp).unwrap();
+    }
 }
 
 /// GET /api/file/commands - Get commands from current file

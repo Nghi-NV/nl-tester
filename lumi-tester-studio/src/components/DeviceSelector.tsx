@@ -1,7 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useDeviceStore } from '../stores';
-import { Smartphone, Monitor, RefreshCw, ChevronDown, X, Check } from 'lucide-react';
+import { Check, ChevronDown, CircleAlert, Monitor, RefreshCw, Smartphone } from 'lucide-react';
 import { clsx } from 'clsx';
+
+type Platform = 'android' | 'ios' | 'web';
+
+const platformLabel: Record<Platform, string> = {
+  android: 'Android',
+  ios: 'iOS',
+  web: 'Web',
+};
+
+const platformIcon = (platform: Platform) => platform === 'web'
+  ? <Monitor size={14} />
+  : <Smartphone size={14} className={platform === 'android' ? 'is-android' : 'is-ios'} />;
 
 export const DeviceSelector: React.FC = () => {
   const {
@@ -11,310 +23,142 @@ export const DeviceSelector: React.FC = () => {
     isLoading,
     refreshAllDevices,
     setSelectedDevice,
-    setSelectedPlatform
+    setSelectedPlatform,
   } = useDeviceStore();
-
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    refreshAllDevices();
-    // Poll for devices every 5 seconds
-    const interval = setInterval(refreshAllDevices, 5000);
-    return () => clearInterval(interval);
+    void refreshAllDevices();
   }, [refreshAllDevices]);
 
-  const getPlatformIcon = (platform: string) => {
-    switch (platform) {
-      case 'android':
-        return <Smartphone size={14} className="text-green-500" />;
-      case 'ios':
-        return <Smartphone size={14} className="text-blue-500" />;
-      case 'web':
-        return <Monitor size={14} />;
-      default:
-        return <Smartphone size={14} />;
-    }
-  };
+  useEffect(() => {
+    if (!isOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) setIsOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isOpen]);
 
-  // Extract device ID from name (format: "Name (ID)" or just "ID")
-  const extractDeviceId = (name: string, id: string): string => {
-    // If name contains ID in parentheses, extract it
-    const match = name.match(/\(([^)]+)\)$/);
-    if (match) {
-      return match[1];
-    }
-    // Otherwise return the id
-    return id;
-  };
+  const devicesFor = (platform: Exclude<Platform, 'web'>) => allDevices
+    .filter(device => device.platform === platform)
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const activeDevice = allDevices.find(device => device.id === selectedDevice && device.platform === selectedPlatform);
+  const selectedLabel = selectedPlatform === 'web'
+    ? 'Web Browser'
+    : activeDevice?.name.replace(/\s*\([^)]+\)$/, '') || selectedDevice || 'No Device Selected';
 
-  // Extract device name without ID (format: "Name (ID)" -> "Name")
-  const extractDeviceName = (name: string, id: string): string => {
-    // If name contains ID in parentheses, remove it
-    const match = name.match(/^(.+?)\s*\([^)]+\)$/);
-    if (match) {
-      return match[1].trim();
-    }
-    // If name is just the ID, return a friendly message
-    if (name === id) {
-      return 'Device';
-    }
-    return name;
-  };
-
-  const getDisplayText = () => {
-    if (selectedPlatform === 'web') {
-      return 'Web';
-    }
-    if (selectedDevice) {
-      const device = allDevices.find(d => d.id === selectedDevice && d.platform === selectedPlatform);
-      if (device) {
-        return extractDeviceName(device.name, device.id);
-      }
-      return selectedDevice;
-    }
-    return 'Select Device';
-  };
-
-  const handleDeviceSelect = (deviceId: string | null, platform: 'android' | 'ios' | 'web') => {
+  const select = (platform: Platform, deviceId: string | null) => {
     setSelectedPlatform(platform);
     setSelectedDevice(deviceId);
-    setIsModalOpen(false);
+    setIsOpen(false);
   };
 
-  // Get device priority for sorting (lower number = higher priority)
-  const getDevicePriority = (deviceName: string): number => {
-    const name = deviceName.toLowerCase();
-    if (name.includes('iphone')) return 1;
-    if (name.includes('ipad')) return 2;
-    if (name.includes('apple tv') || name.includes('appletv')) return 3;
-    if (name.includes('watch')) return 4;
-    return 5; // Other devices
-  };
-
-  // Group devices by platform and sort iOS devices by priority
-  const devicesByPlatform = {
-    android: allDevices.filter(d => d.platform === 'android'),
-    ios: allDevices
-      .filter(d => d.platform === 'ios')
-      .sort((a, b) => {
-        const priorityA = getDevicePriority(a.name);
-        const priorityB = getDevicePriority(b.name);
-        if (priorityA !== priorityB) {
-          return priorityA - priorityB;
-        }
-        // If same priority, sort alphabetically
-        return a.name.localeCompare(b.name);
-      }),
-    web: [] as typeof allDevices
+  const renderPlatform = (platform: Platform) => {
+    const devices = platform === 'web' ? [] : devicesFor(platform);
+    const isPlatformSelected = selectedPlatform === platform && !selectedDevice;
+    return (
+      <section className="ide-device-group" key={platform} aria-label={`${platformLabel[platform]} devices`}>
+        <div className="ide-device-group-heading">
+          <span>{platformIcon(platform)}{platformLabel[platform]}</span>
+          <button
+            type="button"
+            className={clsx('ide-device-platform-action', isPlatformSelected && 'is-selected')}
+            onClick={() => select(platform, null)}
+          >
+            {isPlatformSelected && <Check size={12} />}
+            Use platform
+          </button>
+        </div>
+        {platform === 'web' ? (
+          <button
+            type="button"
+            role="option"
+            aria-selected={selectedPlatform === 'web'}
+            className={clsx('ide-device-option', selectedPlatform === 'web' && 'is-selected')}
+            onClick={() => select('web', null)}
+          >
+            <span className="ide-device-option-icon">{platformIcon('web')}</span>
+            <span className="ide-device-option-copy"><strong>Web Browser</strong><small>Run with the local browser</small></span>
+            {selectedPlatform === 'web' && <Check size={15} className="ide-device-check" />}
+          </button>
+        ) : devices.length > 0 ? devices.map(device => {
+          const isSelected = selectedPlatform === platform && selectedDevice === device.id;
+          return (
+            <button
+              type="button"
+              role="option"
+              aria-selected={isSelected}
+              className={clsx('ide-device-option', isSelected && 'is-selected')}
+              key={device.id}
+              onClick={() => select(platform, device.id)}
+            >
+              <span className="ide-device-option-icon">{platformIcon(platform)}</span>
+              <span className="ide-device-option-copy">
+                <strong>{device.name.replace(/\s*\([^)]+\)$/, '')}</strong>
+                <small>{device.id}</small>
+              </span>
+              {isSelected && <Check size={15} className="ide-device-check" />}
+            </button>
+          );
+        }) : (
+          <div className="ide-device-empty">
+            <CircleAlert size={13} />
+            {platform === 'android' ? 'No Android devices found. Connect a device or start an emulator.' : 'No iOS simulators or devices found.'}
+          </div>
+        )}
+      </section>
+    );
   };
 
   return (
-    <>
-      <div className="flex items-center gap-2 mr-2">
-        <button
-          className="flex items-center gap-1 px-2 py-1.5 rounded bg-slate-800 text-slate-300 hover:text-cyan-400 hover:bg-slate-700 border border-transparent transition-all text-xs font-medium min-w-[140px] justify-between"
-          title="Select Device"
-          onClick={() => {
-            setIsModalOpen(true);
-            refreshAllDevices();
-          }}
-        >
-          <div className="flex items-center gap-1 truncate max-w-[120px]">
-            {getPlatformIcon(selectedPlatform)}
-            <span className="truncate">{getDisplayText()}</span>
+    <div className="ide-device-selector" ref={rootRef}>
+      <button
+        type="button"
+        className="ide-device-trigger"
+        title="Select device"
+        aria-label={`Selected device: ${selectedLabel}`}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        onClick={() => {
+          setIsOpen(open => !open);
+          if (!isOpen) void refreshAllDevices();
+        }}
+      >
+        <span className={clsx('ide-device-status-dot', selectedPlatform === 'web' || activeDevice ? 'is-connected' : 'is-idle')} />
+        {platformIcon(selectedPlatform)}
+        <span className="ide-device-trigger-label">{selectedLabel}</span>
+        <ChevronDown size={12} />
+      </button>
+      {isOpen && (
+        <div className="ide-device-menu" role="listbox" aria-label="Select a device">
+          <div className="ide-device-menu-header">
+            <strong>Select Device</strong>
+            <button type="button" onClick={() => void refreshAllDevices()} disabled={isLoading} title="Refresh devices">
+              <RefreshCw size={13} className={clsx(isLoading && 'is-spinning')} />
+              Refresh
+            </button>
           </div>
-          <ChevronDown size={12} />
-        </button>
-      </div>
-
-      {/* Device Selection Modal */}
-      {isModalOpen && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
-          onClick={() => setIsModalOpen(false)}
-        >
-          <div
-            className="w-[500px] max-h-[80vh] bg-slate-950 border border-slate-700 rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="p-4 border-b border-slate-700 bg-slate-900/50 backdrop-blur flex justify-between items-center">
-              <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-                <Smartphone size={20} />
-                Select Device
-              </h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-slate-500 hover:text-white transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4">
-              {/* Platform: Android */}
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm font-semibold text-slate-300 flex items-center gap-2">
-                    <Smartphone size={16} className="text-green-500" />
-                    Android
-                  </div>
-                  <button
-                    onClick={() => handleDeviceSelect(null, 'android')}
-                    className={clsx(
-                      "px-3 py-1 text-xs rounded transition-colors flex items-center gap-1.5",
-                      selectedPlatform === 'android' && !selectedDevice
-                        ? "bg-cyan-600 text-white"
-                        : "bg-slate-800 text-slate-400 hover:bg-slate-700"
-                    )}
-                  >
-                    {selectedPlatform === 'android' && !selectedDevice && (
-                      <Check size={12} />
-                    )}
-                    Select Platform
-                  </button>
-                </div>
-                {devicesByPlatform.android.length === 0 ? (
-                  <div className="text-xs text-slate-500 italic pl-6">
-                    No Android devices found. Check USB debugging.
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    {devicesByPlatform.android.map(device => {
-                      const deviceName = extractDeviceName(device.name, device.id);
-                      const deviceId = extractDeviceId(device.name, device.id);
-                      return (
-                        <button
-                          key={device.id}
-                          onClick={() => handleDeviceSelect(device.id, 'android')}
-                          className={clsx(
-                            "w-full text-left px-4 py-3 rounded transition-colors flex items-start gap-3",
-                            selectedDevice === device.id && selectedPlatform === 'android'
-                              ? "bg-cyan-600/20 text-cyan-400 border border-cyan-600/30"
-                              : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                          )}
-                        >
-                          <Smartphone size={16} className="text-green-500 mt-0.5 flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium truncate">{deviceName}</div>
-                            <div className="text-xs text-slate-500 truncate mt-0.5">{deviceId}</div>
-                          </div>
-                          {selectedDevice === device.id && selectedPlatform === 'android' && (
-                            <Check size={18} className="text-cyan-400 flex-shrink-0 mt-0.5" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Platform: iOS */}
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm font-semibold text-slate-300 flex items-center gap-2">
-                    <Smartphone size={16} className="text-blue-500" />
-                    iOS
-                  </div>
-                  <button
-                    onClick={() => handleDeviceSelect(null, 'ios')}
-                    className={clsx(
-                      "px-3 py-1 text-xs rounded transition-colors flex items-center gap-1.5",
-                      selectedPlatform === 'ios' && !selectedDevice
-                        ? "bg-cyan-600 text-white"
-                        : "bg-slate-800 text-slate-400 hover:bg-slate-700"
-                    )}
-                  >
-                    {selectedPlatform === 'ios' && !selectedDevice && (
-                      <Check size={12} />
-                    )}
-                    Select Platform
-                  </button>
-                </div>
-                {devicesByPlatform.ios.length === 0 ? (
-                  <div className="text-xs text-slate-500 italic pl-6">
-                    No iOS devices found. Check idb connection.
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    {devicesByPlatform.ios.map(device => {
-                      const deviceName = extractDeviceName(device.name, device.id);
-                      const deviceId = extractDeviceId(device.name, device.id);
-                      return (
-                        <button
-                          key={device.id}
-                          onClick={() => handleDeviceSelect(device.id, 'ios')}
-                          className={clsx(
-                            "w-full text-left px-4 py-3 rounded transition-colors flex items-start gap-3",
-                            selectedDevice === device.id && selectedPlatform === 'ios'
-                              ? "bg-cyan-600/20 text-cyan-400 border border-cyan-600/30"
-                              : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                          )}
-                        >
-                          <Smartphone size={16} className="text-blue-500 mt-0.5 flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium truncate">{deviceName}</div>
-                            <div className="text-xs text-slate-500 truncate mt-0.5">{deviceId}</div>
-                          </div>
-                          {selectedDevice === device.id && selectedPlatform === 'ios' && (
-                            <Check size={18} className="text-cyan-400 flex-shrink-0 mt-0.5" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Platform: Web */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm font-semibold text-slate-300 flex items-center gap-2">
-                    <Monitor size={16} />
-                    Web
-                  </div>
-                  <button
-                    onClick={() => handleDeviceSelect(null, 'web')}
-                    className={clsx(
-                      "px-3 py-1 text-xs rounded transition-colors flex items-center gap-1.5",
-                      selectedPlatform === 'web'
-                        ? "bg-cyan-600 text-white"
-                        : "bg-slate-800 text-slate-400 hover:bg-slate-700"
-                    )}
-                  >
-                    {selectedPlatform === 'web' && (
-                      <Check size={12} />
-                    )}
-                    Select Platform
-                  </button>
-                </div>
-                <div className="text-xs text-slate-500 italic pl-6">
-                  Web browser automation
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 bg-slate-900/30 flex justify-between items-center border-t border-slate-700">
-              <button
-                onClick={refreshAllDevices}
-                disabled={isLoading}
-                className="px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-2 disabled:opacity-50"
-              >
-                <RefreshCw size={12} className={clsx(isLoading && "animate-spin")} />
-                Refresh
-              </button>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="px-4 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-800 rounded transition-colors"
-              >
-                Close
-              </button>
-            </div>
+          <div className="ide-device-menu-content">
+            {renderPlatform('android')}
+            {renderPlatform('ios')}
+            {renderPlatform('web')}
+          </div>
+          <div className="ide-device-menu-footer">
+            {selectedDevice && !activeDevice && selectedPlatform !== 'web'
+              ? 'Previously selected device is not connected.'
+              : 'Device selection is used when running a test.'}
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 };

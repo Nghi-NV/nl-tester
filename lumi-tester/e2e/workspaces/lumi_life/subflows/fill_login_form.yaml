@@ -13,7 +13,6 @@ env:
     regex: "(Sign In|Đăng nhập)"
 - tap:
     type: "input"
-    index: 0
 - inputText:
     text: "${USER}"
     unicode: true

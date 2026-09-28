@@ -5,7 +5,6 @@ tags:
   - lumi-life
   - login
   - smoke
-defaultTimeout: 20000
 env:
   file: "../../../../.env"
 ---

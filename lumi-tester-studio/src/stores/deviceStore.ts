@@ -106,7 +106,6 @@ export const useDeviceStore = create<DeviceStore>()(
 
       setSelectedPlatform: (platform) => {
         set({ selectedPlatform: platform, selectedDevice: null });
-        get().refreshDevices();
       }
     }),
     {

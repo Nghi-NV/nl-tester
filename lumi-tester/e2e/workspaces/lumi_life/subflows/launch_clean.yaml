@@ -16,6 +16,4 @@ defaultTimeout: 15000
 - runFlow:
     file: "accept_permission_prompts.yaml"
     optional: true
-- waitUntilVisible:
-    regex: "(Sign In|Đăng nhập)"
-    timeout: 15000
+- waitUntilVisible: "(Sign In|Đăng nhập)"

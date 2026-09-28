@@ -5094,7 +5094,9 @@ impl TestExecutor {
                                 "  {} No suitable display found, creating overlay...",
                                 "⚠️".yellow()
                             );
-                            let _ = std::process::Command::new("adb")
+                            let adb_path = crate::utils::binary_resolver::find_adb()
+                                .unwrap_or_else(|_| std::path::PathBuf::from("adb"));
+                            let _ = std::process::Command::new(adb_path)
                                 .args(&[
                                     "shell",
                                     "settings",
@@ -5135,7 +5137,9 @@ impl TestExecutor {
 
                     // If switching back to display 0, cleanup overlay display
                     if id == 0 && self.driver.platform_name() == "android" {
-                        let _ = std::process::Command::new("adb")
+                        let adb_path = crate::utils::binary_resolver::find_adb()
+                            .unwrap_or_else(|_| std::path::PathBuf::from("adb"));
+                        let _ = std::process::Command::new(adb_path)
                             .args(&[
                                 "shell",
                                 "settings",

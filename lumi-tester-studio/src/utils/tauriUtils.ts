@@ -1,17 +1,41 @@
-import { readDir as tauriReadDir, readTextFile as tauriReadTextFile, writeTextFile as tauriWriteTextFile, remove as tauriRemove, rename as tauriRename, mkdir as tauriMkdir } from '@tauri-apps/plugin-fs';
+import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { Command } from '@tauri-apps/plugin-shell';
-import { homeDir, join } from '@tauri-apps/api/path';
+import { basename, dirname, homeDir, join } from '@tauri-apps/api/path';
+
+export interface WorkspaceEntry {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+}
+
+export interface WorkspaceFileReference {
+  path: string;
+  relativePath: string;
+  name: string;
+}
+
+export interface WorkspaceSearchMatch {
+  relativePath: string;
+  lineNumber: number;
+  column: number;
+  line: string;
+}
+
+export interface WorkspaceSearchResponse {
+  matches: WorkspaceSearchMatch[];
+  filesScanned: number;
+  truncated: boolean;
+}
 
 export const isTauri = () => '__TAURI_INTERNALS__' in window;
 
 // File System Wrappers
-export const readDir = async (path: string) => {
+export const readDir = async (path: string, showHidden = true): Promise<WorkspaceEntry[]> => {
   if (!isTauri()) {
     console.warn('Tauri not detected. Mocking readDir.');
     return [];
   }
-  return await tauriReadDir(path);
+  return invoke<WorkspaceEntry[]>('read_workspace_dir', { path, showHidden });
 };
 
 export const readFile = async (path: string) => {
@@ -19,7 +43,7 @@ export const readFile = async (path: string) => {
     console.warn('Tauri not detected. Mocking readFile.');
     return '';
   }
-  return await tauriReadTextFile(path);
+  return invoke<string>('read_workspace_file', { path });
 };
 
 export const writeFile = async (path: string, content: string) => {
@@ -27,7 +51,7 @@ export const writeFile = async (path: string, content: string) => {
     console.warn('Tauri not detected. Mocking writeFile.');
     return;
   }
-  await tauriWriteTextFile(path, content);
+  await invoke('write_workspace_file', { path, content });
 };
 
 export const deletePath = async (path: string) => {
@@ -35,7 +59,7 @@ export const deletePath = async (path: string) => {
     console.warn('Tauri not detected. Mocking deletePath.');
     return;
   }
-  await tauriRemove(path, { recursive: true });
+  await invoke('remove_workspace_entry', { path });
 }
 
 export const renamePath = async (oldPath: string, newPath: string) => {
@@ -43,15 +67,42 @@ export const renamePath = async (oldPath: string, newPath: string) => {
     console.warn('Tauri not detected. Mocking renamePath.');
     return;
   }
-  await tauriRename(oldPath, newPath);
+  await invoke('move_workspace_entry', {
+    path: oldPath,
+    destination: await dirname(newPath),
+    name: await basename(newPath),
+  });
 }
 
-export const createDir = async (path: string) => {
+export const createDir = async (parent: string, name: string) => {
   if (!isTauri()) {
     console.warn('Tauri not detected. Mocking createDir.');
     return;
   }
-  await tauriMkdir(path, { recursive: true });
+  await invoke('create_workspace_dir', { parent, name });
+}
+
+export const createFile = async (parent: string, name: string, content: string) => {
+  if (!isTauri()) {
+    console.warn('Tauri not detected. Mocking createFile.');
+    return;
+  }
+  await invoke('create_workspace_file', { parent, name, content });
+}
+
+export const openWorkspace = async (path: string) => {
+  if (!isTauri()) return { path, name: path.split(/[\\/]/).filter(Boolean).pop() || 'Workspace' };
+  return invoke<{ path: string; name: string }>('open_workspace', { path });
+}
+
+export const resolveWorkspaceFileReference = async (sourcePath: string, reference: string) => {
+  if (!isTauri()) throw new Error('Open a Lumi IDE workspace before opening referenced files.');
+  return invoke<WorkspaceFileReference>('resolve_workspace_file_reference', { sourcePath, reference });
+}
+
+export const searchWorkspaceText = async (workspacePath: string, query: string) => {
+  if (!isTauri()) throw new Error('Workspace search is available in the Lumi IDE desktop app.');
+  return invoke<WorkspaceSearchResponse>('search_workspace_text', { workspacePath, query });
 }
 
 export const openDialog = async (options: any) => {
@@ -63,60 +114,6 @@ export const openDialog = async (options: any) => {
 }
 
 
-// Shell Wrappers
-export const runCommand = async (command: string, args: string[]) => {
-  if (!isTauri()) {
-    console.warn('Tauri not detected. Mocking runCommand.');
-    return { code: 0, stdout: '', stderr: '' };
-  }
-  const cmd = Command.create(command, args);
-  return await cmd.execute();
-};
-
-export type SpawnCallbacks = {
-  onOutput: (data: string) => void;
-  onError: (data: string) => void;
-  onClose: (code: number) => void;
-};
-
-export const spawnCommand = async (command: string, args: string[], callbacks: SpawnCallbacks) => {
-  if (!isTauri()) {
-    console.warn('Tauri not detected. Mocking spawnCommand.');
-    setTimeout(() => {
-      callbacks.onOutput('Mock output: Command started\n');
-      callbacks.onOutput('Mock output: Executing step...\n');
-      callbacks.onClose(0);
-    }, 1000);
-    return { kill: async () => { } };
-  }
-
-  const cmd = Command.create(command, args);
-
-  cmd.on('close', (data: any) => {
-    callbacks.onClose(data.code);
-  });
-
-  cmd.on('error', (error: any) => {
-    callbacks.onError(String(error));
-  });
-
-  cmd.stdout.on('data', (line: any) => {
-    callbacks.onOutput(line);
-  });
-
-  cmd.stderr.on('data', (line: any) => {
-    callbacks.onError(line);
-  });
-
-  const child = await cmd.spawn();
-
-  return {
-    kill: async () => {
-      await child.kill();
-    }
-  };
-};
-
 export const getHomeDir = async () => {
   if (!isTauri()) return '/mock/home';
   return await homeDir();
@@ -125,4 +122,9 @@ export const getHomeDir = async () => {
 export const pathJoin = async (...args: string[]) => {
   if (!isTauri()) return args.join('/');
   return await join(...args);
+}
+
+export const pathDirname = async (path: string) => {
+  if (!isTauri()) return path.replace(/[\\/][^\\/]*$/, '') || '/';
+  return await dirname(path);
 }

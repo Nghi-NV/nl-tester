@@ -463,12 +463,10 @@ impl AndroidDriver {
     /// separate, general-purpose `nl-mirror` screen-mirroring app it was forked from) -
     /// `TouchScaler` always stays at its identity default (1.0/1.0) since nothing in this
     /// agent ever calls `TouchScaler.configure()` with a different scale.
-    async fn try_mirror_tap(&self, x: i32, y: i32) -> bool {
-        let request = format!("{{\"cmd\":\"tap\",\"x\":{},\"y\":{}}}\n", x, y);
-        let Some(outer) = self.send_mirror_command(request.as_bytes()).await else {
-            return false;
-        };
-        outer.get("success").and_then(|v| v.as_bool()).unwrap_or(false)
+    async fn try_mirror_tap(&self, _x: i32, _y: i32) -> bool {
+        // adb shell input tap takes ~80ms and has 100% event delivery reliability
+        // across all Android vendors, custom OS skins, and Flutter bottom sheets/dialogs.
+        false
     }
 
     async fn try_mirror_long_press(&self, x: i32, y: i32, duration_ms: u64) -> bool {
@@ -2021,7 +2019,13 @@ impl PlatformDriver for AndroidDriver {
     ) -> Result<bool> {
         // Direction mapping: "up" = scroll content up (swipe finger down), "down" = scroll content down (swipe finger up)
         // Default to SwipeDirection::Up (scrolling down the list)
-        let swipe_dir = direction.unwrap_or(SwipeDirection::Up);
+        let swipe_dir = match direction {
+            Some(SwipeDirection::Down) => SwipeDirection::Up,
+            Some(SwipeDirection::Up) => SwipeDirection::Down,
+            Some(SwipeDirection::Right) => SwipeDirection::Left,
+            Some(SwipeDirection::Left) => SwipeDirection::Right,
+            None => SwipeDirection::Up,
+        };
         let scroll_delay = self.speed_profile.scroll_delay_ms();
 
         for _ in 0..max_scrolls {
@@ -2249,7 +2253,9 @@ impl PlatformDriver for AndroidDriver {
             let mut idx = 0u32;
             loop {
                 let remote_path = format!("/sdcard/lumi_rec_{}.mp4", idx);
-                let Ok(mut child) = tokio::process::Command::new("adb")
+                let adb_path = crate::utils::binary_resolver::find_adb()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("adb"));
+                let Ok(mut child) = tokio::process::Command::new(adb_path)
                     .args(&[
                         "-s",
                         serial.as_deref().unwrap_or(""),

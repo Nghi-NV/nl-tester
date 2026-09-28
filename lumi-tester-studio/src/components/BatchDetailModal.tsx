@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { TestResult, StepResult } from '../types';
-import { X, Clock, CheckCircle, XCircle, ArrowRight, Folder } from 'lucide-react';
+import { X, Clock, CheckCircle, XCircle, ArrowRight, Folder, Ban, LoaderCircle } from 'lucide-react';
 import { RunDetailModal } from './RunDetailModal';
 
 interface BatchDetailModalProps {
@@ -16,8 +16,9 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({ batchId, run
 
   // Stats
   const totalFiles = runs.length;
-  const passedFiles = runs.filter(r => r.failed === 0).length;
-  const failedFiles = runs.filter(r => r.failed > 0).length;
+  const passedFiles = runs.filter(r => r.status === 'passed').length;
+  const failedFiles = runs.filter(r => r.status === 'failed').length;
+  const cancelledFiles = runs.filter(r => r.status === 'cancelled').length;
   const totalDuration = runs.reduce((acc, r) => acc + r.totalDuration, 0);
 
   // First run timestamp as batch timestamp
@@ -48,7 +49,7 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({ batchId, run
           </div>
 
           {/* KPI Summary */}
-          <div className="grid grid-cols-4 gap-4 p-5 pb-0">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 p-5 pb-0">
             <div className="bg-slate-900 rounded-lg p-3 border border-slate-800">
               <p className="text-xs text-slate-500 uppercase">Total Files</p>
               <p className="text-xl font-bold text-white">{totalFiles}</p>
@@ -60,6 +61,10 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({ batchId, run
             <div className="bg-slate-900 rounded-lg p-3 border border-slate-800">
               <p className="text-xs text-slate-500 uppercase">Failed Files</p>
               <p className="text-xl font-bold text-rose-400">{failedFiles}</p>
+            </div>
+            <div className="bg-slate-900 rounded-lg p-3 border border-slate-800">
+              <p className="text-xs text-slate-500 uppercase">Cancelled Files</p>
+              <p className="text-xl font-bold text-slate-300">{cancelledFiles}</p>
             </div>
             <div className="bg-slate-900 rounded-lg p-3 border border-slate-800">
               <p className="text-xs text-slate-500 uppercase">Duration</p>
@@ -77,10 +82,13 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({ batchId, run
                 className="bg-slate-900/50 hover:bg-slate-800 border border-white/5 rounded-lg p-3 flex items-center justify-between cursor-pointer transition-colors group"
               >
                 <div className="flex items-center gap-3">
-                  {run.failed === 0 ? <CheckCircle size={18} className="text-emerald-500" /> : <XCircle size={18} className="text-rose-500" />}
+                  {run.status === 'passed' && <CheckCircle size={18} className="text-emerald-500" />}
+                  {run.status === 'failed' && <XCircle size={18} className="text-rose-500" />}
+                  {run.status === 'cancelled' && <Ban size={18} className="text-slate-400" />}
+                  {run.status === 'running' && <LoaderCircle size={18} className="text-amber-400 animate-spin" />}
                   <div>
                     <p className="text-sm font-medium text-slate-200 group-hover:text-cyan-300 transition-colors">{run.fileName}</p>
-                    <p className="text-xs text-slate-500">{run.passed} passed, {run.failed} failed • {run.totalDuration}ms</p>
+                    <p className="text-xs text-slate-500">{run.passed} passed, {run.failed} failed, {run.skipped ?? 0} skipped • {run.totalDuration}ms</p>
                   </div>
                 </div>
                 <ArrowRight size={16} className="text-slate-600 group-hover:text-cyan-400" />

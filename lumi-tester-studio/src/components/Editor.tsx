@@ -1,190 +1,165 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useFileStore, useEditorStore, useExecutionStore, useEnvStore, useDeviceStore, findFile, useExecutionStateStore, safeYamlLoad } from '../stores';
-import { Terminal, AlertTriangle, Check, FileJson, X, Loader2, Square } from 'lucide-react';
+import { useFileStore, useEditorStore, useExecutionStore, useDeviceStore, findFile, useExecutionStateStore } from '../stores';
+import { Terminal, AlertTriangle, FileJson, X, FolderOpen, Square, Braces, Loader2, CheckCircle2, CircleAlert, Clock3 } from 'lucide-react';
 import { clsx } from 'clsx';
-import jsyaml from 'js-yaml';
-import { TestFlow } from '../types';
 import { runTestFlow } from '../services/runnerService';
-import { EditorCore } from './editor/editorCore';
-import { updateFileContentInTree } from '../utils/treeUtils';
+import { invoke } from '@tauri-apps/api/core';
+import { isTauri } from '../utils/tauriUtils';
+
+const EditorCore = React.lazy(async () => {
+    await import('./editor/monacoSetup');
+    return import('./editor/editorCore').then(module => ({ default: module.EditorCore }));
+});
+
+const getEditorLanguage = (filename: string) => {
+    const extension = filename.split('.').pop()?.toLowerCase();
+    if (extension === 'yaml' || extension === 'yml') return 'yaml';
+    if (extension === 'md' || extension === 'markdown') return 'markdown';
+    return 'plaintext';
+};
+
+interface YamlDiagnostic {
+    message: string;
+    line?: number;
+    column?: number;
+}
 
 interface EditorProps {
     onOpenHelp: () => void;
+    onOpenProject: () => void;
 }
 
-export const Editor: React.FC<EditorProps> = ({ onOpenHelp }) => {
+export const Editor: React.FC<EditorProps> = ({ onOpenHelp, onOpenProject }) => {
     const files = useFileStore(state => state.files);
+    const projectRoot = useFileStore(state => state.projectRoot);
     const updateFileContent = useFileStore(state => state.updateFileContent);
+    const saveFile = useFileStore(state => state.saveFile);
+    const saveAllFiles = useFileStore(state => state.saveAllFiles);
+    const setFileValidation = useFileStore(state => state.setFileValidation);
+    const dirtyFileIds = useFileStore(state => state.dirtyFileIds);
+    const openReferencedFile = useFileStore(state => state.openReferencedFile);
     const { activeFileId, openFiles, openFile, closeFile, setActiveView } = useEditorStore();
-    const { isRunning, runningNodeIds, startRun: startRunRaw, stopRun: stopRunRaw, addResult } = useExecutionStore();
-    const envVars = useEnvStore(state => state.envVars);
-
-    // Enhanced startRun
-    const startRun = () => {
-        const signal = startRunRaw();
-        return signal;
-    };
-
-    // Enhanced stopRun - stop all and clear execution states
-    const stopRun = () => {
-        stopRunRaw();
-        // Clear all execution states when stopping
-        useExecutionStateStore.getState().clearAllStates();
-    };
+    const pendingReveal = useEditorStore(state => state.pendingReveal);
+    const clearPendingReveal = useEditorStore(state => state.clearPendingReveal);
+    const { runningNodeIds, queueRun, stopRun } = useExecutionStore();
 
     const activeNode = findFile(files, activeFileId);
     const content = activeNode?.content || '';
+    const [fileLoadError, setFileLoadError] = useState<{ fileId: string; message: string } | null>(null);
+    const [loadAttempt, setLoadAttempt] = useState(0);
+    const [runNotice, setRunNotice] = useState<{
+        fileId: string;
+        state: 'queued' | 'running' | 'passed' | 'failed' | 'cancelled';
+        message: string;
+    } | null>(null);
 
     // Load content if missing
     const loadContent = useFileStore(state => state.loadContent);
     useEffect(() => {
-        if (activeNode && activeNode.content === undefined && !activeNode.children) {
-            loadContent(activeNode.id);
-        }
-    }, [activeNode?.id, activeNode?.content, loadContent]);
-
-    const [error, setError] = useState<string | null>(null);
-    const [runningSingleStep, setRunningSingleStep] = useState<string | null>(null);
-
-    // Helper function to map step indices to line numbers
-    const mapStepsToLines = useCallback((fileId: string, content: string) => {
-        if (!content || !fileId) return;
-
-        const lines = content.split('\n');
-
-        // Find header end (line with '---')
-        let headerEndLine = -1;
-        for (let i = 0; i < lines.length; i++) {
-            if (lines[i].trim() === '---') {
-                headerEndLine = i;
-                break;
-            }
-        }
-
-        // Parse YAML to get all steps
-        try {
-            const parsed = safeYamlLoad(content) as TestFlow;
-            if (!parsed) {
-                console.log('[Editor] Failed to parse YAML for mapping steps');
-                return;
-            }
-
-            // Collect all steps in order (beforeTest, steps, afterTest)
-            const allSteps = [
-                ...(parsed.beforeTest || []),
-                ...(parsed.steps || []),
-                ...(parsed.afterTest || [])
-            ];
-
-            console.log('[Editor] Mapping steps to lines:', {
-                fileId,
-                totalSteps: allSteps.length,
-                beforeTest: parsed.beforeTest?.length ?? 0,
-                steps: parsed.steps?.length ?? 0,
-                afterTest: parsed.afterTest?.length ?? 0
-            });
-
-            // Get store state directly to avoid dependency issues
-            const stateStore = useExecutionStateStore.getState();
-
-            // Scan for list items starting from after header
-            const listRegex = /^(\s*)-\s/;
-            let targetIndent = -1;
-            let stepCount = -1;
-
-            for (let i = headerEndLine + 1; i < lines.length; i++) {
-                const line = lines[i];
-                const listMatch = line.match(listRegex);
-
-                if (listMatch) {
-                    const indent = listMatch[1].length;
-
-                    // First step defines the indentation for top-level steps
-                    if (targetIndent === -1) {
-                        targetIndent = indent;
-                    }
-
-                    // Only count steps at the same indentation level
-                    if (indent === targetIndent) {
-                        // Check if this is a step by looking for command keys (any key ending with ':')
-                        // Commands can be: launchApp:, tapOn:, runFlow:, assertVisible:, etc.
-                        let isStep = false;
-
-                        // Check if current line has a command (key ending with ':')
-                        // Pattern: "- commandName:" or "- commandName: value"
-                        if (line.match(/^\s*-\s*\w+:\s*/)) {
-                            isStep = true;
-                        } else if (line.includes('name:') ||
-                            line.match(/^\s*-\s*flow:\s*["']?/) ||
-                            line.match(/^\s*-\s*runFlow:\s*["']?/) ||
-                            line.match(/^\s*-\s*runFlow:\s*$/)) {
-                            isStep = true;
-                        } else {
-                            // Check next few lines for command indicators
-                            for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
-                                const nextLine = lines[j];
-                                const nextListMatch = nextLine.match(/^(\s*)-\s/);
-                                if (nextListMatch && nextListMatch[1].length <= indent) {
-                                    break;
-                                }
-                                // Check for command key (ending with ':')
-                                if (nextLine.match(/^\s+\w+:\s*/) ||
-                                    nextLine.includes('name:') ||
-                                    nextLine.match(/^\s*flow:\s*["']?/) ||
-                                    nextLine.match(/^\s*runFlow:\s*["']?/) ||
-                                    nextLine.match(/^\s*runFlow:\s*$/) ||
-                                    nextLine.match(/^\s+file:\s*["']?/)) {
-                                    isStep = true;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (isStep) {
-                            stepCount++;
-                            // Map step index to line number (stepCount is 0-based, matching payload.index)
-                            stateStore.setStepLine(fileId, stepCount, i);
-                            console.log('[Editor] Mapped step', stepCount, 'to line', i);
-                        }
-                    }
-                }
-            }
-
-            console.log('[Editor] Finished mapping steps:', {
-                fileId,
-                mappedSteps: stepCount + 1,
-                expectedSteps: allSteps.length
-            });
-        } catch (e) {
-            console.error('[Editor] Failed to map steps to lines:', e);
-        }
-    }, []);
-
-    // Map steps to lines when content changes
-    useEffect(() => {
-        if (activeFileId && content) {
-            mapStepsToLines(activeFileId, content);
-        }
-    }, [activeFileId, content, mapStepsToLines]);
-
-    // Validate YAML
-    useEffect(() => {
-        if (!content) {
-            setError(null);
+        if (!activeNode || activeNode.content !== undefined || activeNode.children) {
+            setFileLoadError(null);
             return;
         }
 
-        const timer = setTimeout(() => {
+        let cancelled = false;
+        let timeoutId: number | undefined;
+        setFileLoadError(null);
+        const timeout = new Promise<never>((_, reject) => {
+            timeoutId = window.setTimeout(() => {
+                reject(new Error(`Timed out after 15 seconds while reading ${activeNode.name}.`));
+            }, 15_000);
+        });
+        void Promise.race([loadContent(activeNode.id), timeout])
+            .catch(loadError => {
+                if (cancelled) return;
+                const message = String(loadError);
+                setFileLoadError({ fileId: activeNode.id, message });
+                setFileValidation(activeNode.id, { state: 'error', message });
+            })
+            .finally(() => {
+                if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+            });
+        return () => {
+            cancelled = true;
+            if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+        };
+    }, [activeNode?.id, activeNode?.content, loadAttempt, loadContent, setFileValidation]);
+
+    const [diagnostics, setDiagnostics] = useState<YamlDiagnostic[]>([]);
+    const [formatRequest, setFormatRequest] = useState(0);
+
+    // Validate YAML
+    useEffect(() => {
+        const isYaml = !!activeNode?.name.match(/\.ya?ml$/i);
+        if (!activeFileId || !isYaml) {
+            if (activeFileId) setFileValidation(activeFileId);
+            setDiagnostics([]);
+            return;
+        }
+
+        if (activeNode?.content === undefined) {
+            setDiagnostics([]);
+            return;
+        }
+
+        if (!content.trim()) {
+            setDiagnostics([]);
+            setFileValidation(activeFileId, { state: 'invalid', message: 'File is empty.' });
+            return;
+        }
+
+        let cancelled = false;
+        let validationTimeout: number | undefined;
+        setFileValidation(activeFileId, { state: 'checking' });
+        const timer = setTimeout(async () => {
             try {
-                safeYamlLoad(content);
-                setError(null);
+                if (isTauri()) {
+                    const validation = await Promise.race([
+                        invoke<{ valid: boolean; diagnostics: YamlDiagnostic[] }>('validate_yaml_content', {
+                            path: activeFileId,
+                            content,
+                        }),
+                        new Promise<never>((_, reject) => {
+                            validationTimeout = window.setTimeout(
+                                () => reject(new Error('YAML validation timed out after 15 seconds.')),
+                                15_000,
+                            );
+                        }),
+                    ]);
+                    if (cancelled) return;
+                    setDiagnostics(validation.diagnostics);
+                    const message = validation.diagnostics[0]?.message
+                        ?? (!validation.valid ? 'YAML validation failed' : undefined);
+                    setFileValidation(activeFileId, {
+                        state: validation.valid ? 'valid' : 'invalid',
+                        message,
+                    });
+                } else {
+                    if (cancelled) return;
+                    setDiagnostics([]);
+                    setFileValidation(activeFileId, { state: 'valid' });
+                }
             } catch (e: any) {
-                setError(e.message?.split('\n')[0] || 'Invalid YAML');
+                if (cancelled) return;
+                const message = e?.message || String(e);
+                const diagnostic = {
+                    message,
+                    line: 1,
+                    column: 1,
+                };
+                setDiagnostics([diagnostic]);
+                setFileValidation(activeFileId, { state: 'error', message: diagnostic.message });
+            } finally {
+                if (validationTimeout !== undefined) window.clearTimeout(validationTimeout);
             }
         }, 300);
 
-        return () => clearTimeout(timer);
-    }, [content]);
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+            if (validationTimeout !== undefined) window.clearTimeout(validationTimeout);
+        };
+    }, [content, activeFileId, activeNode?.content, activeNode?.name, setFileValidation]);
 
     // Subscribe to execution state store changes - only specific values to avoid infinite loop
     const executingStepIndex = useExecutionStateStore(state => {
@@ -253,143 +228,126 @@ export const Editor: React.FC<EditorProps> = ({ onOpenHelp }) => {
 
         // Only highlight if actually running
         const isNodeRunning = activeNode && runningNodeIds.includes(activeNode.id);
-        if (!isRunning && !isNodeRunning) return -1;
+        if (!isNodeRunning) return -1;
 
         // Get executing line from store (using the subscribed value)
         const executingLineFromStore = currentExecutingLine;
         return executingLineFromStore >= 0 ? executingLineFromStore : -1;
-    }, [activeFileId, currentExecutingLine, isRunning, runningNodeIds, activeNode]);
+    }, [activeFileId, currentExecutingLine, runningNodeIds, activeNode]);
 
-    // Run single step
-    const handleRunStep = useCallback(async (stepName: string) => {
-        if (!activeNode || !content || isRunning) return;
+    const handleRunFlow = useCallback(async (commandIndex?: number, fromCommandIndex?: number) => {
+        if (!activeNode || !content || !/\.ya?ml$/i.test(activeNode.name)) return;
+        const actionLabel = commandIndex !== undefined
+            ? `Running command ${commandIndex + 1}…`
+            : fromCommandIndex !== undefined
+                ? `Running from command ${fromCommandIndex + 1}…`
+                : 'Running all commands…';
+        const runLabel = `${activeNode.name} · ${actionLabel}`;
+        setRunNotice({ fileId: activeNode.id, state: 'queued', message: 'Waiting in run queue…' });
 
-        setRunningSingleStep(stepName);
-
-        try {
-            const parsed = safeYamlLoad(content) as TestFlow;
-            if (!parsed) return;
-
-            const allSteps = [
-                ...(parsed.beforeTest || []),
-                ...(parsed.steps || []),
-                ...(parsed.afterTest || [])
-            ];
-
-            // Normalize step name - remove surrounding quotes and trim
-            const normalizeStepName = (name: string) => {
-                if (!name) return '';
-                let normalized = name.trim();
-                // Remove surrounding quotes if present
-                if ((normalized.startsWith('"') && normalized.endsWith('"')) ||
-                    (normalized.startsWith("'") && normalized.endsWith("'"))) {
-                    normalized = normalized.slice(1, -1);
-                }
-                return normalized.trim();
-            };
-
-            const normalizedSearchName = normalizeStepName(stepName);
-            const step = allSteps.find(s => normalizeStepName(s.name) === normalizedSearchName);
-            if (!step) return;
-
-            const singleStepFlow: TestFlow = {
-                name: `Run: ${stepName}`,
-                config: parsed.config,
-                steps: [step]
-            };
-
-            const yamlContent = jsyaml.dump(singleStepFlow);
-            const signal = startRun();
-
-            try {
-                const result = await runTestFlow(
-                    yamlContent,
-
-                    activeNode.id,
-                    `${activeNode.name}: ${stepName}`,
-                    useDeviceStore.getState().selectedPlatform,
-                    useDeviceStore.getState().selectedDevice,
-                    (partial) => {
-                        if (partial.id) {
-                            useExecutionStore.getState().upsertResult(partial as any);
-                        }
-                    },
-                    signal
-                );
-                useExecutionStore.getState().upsertResult(result);
-                
-                // Tự động chuyển sang tab Reports sau khi test chạy xong
-                setActiveView('report');
-            } finally {
-                stopRun();
+        await queueRun(runLabel, async ({ signal, runId }) => {
+          setRunNotice({ fileId: activeNode.id, state: 'running', message: actionLabel });
+          useExecutionStore.getState().setNodeRunning(activeNode.id, true);
+          try {
+            const result = await runTestFlow(
+                content,
+                activeNode.id,
+                activeNode.name,
+                useDeviceStore.getState().selectedPlatform,
+                useDeviceStore.getState().selectedDevice,
+                partial => {
+                    if (partial.id) useExecutionStore.getState().upsertResult(partial as any);
+                },
+                signal,
+                { commandIndex, fromCommandIndex, runId },
+            );
+            useExecutionStore.getState().upsertResult(result);
+            if (result.status === 'failed') {
+                setRunNotice({
+                fileId: activeNode.id,
+                state: 'failed',
+                message: result.error || (result.failed > 0
+                    ? `${result.failed} command${result.failed === 1 ? '' : 's'} failed.`
+                    : 'Test run failed.'),
+                });
+            } else if (result.status === 'cancelled') {
+                setRunNotice({ fileId: activeNode.id, state: 'cancelled', message: 'Run cancelled.' });
+            } else {
+                setRunNotice({
+                    fileId: activeNode.id,
+                    state: 'passed',
+                    message: `${result.passed} command${result.passed === 1 ? '' : 's'} passed.`,
+                });
             }
-        } catch (err) {
-            console.error('Failed to run step:', err);
-        } finally {
-            setRunningSingleStep(null);
-        }
-    }, [activeNode, content, isRunning, envVars, startRun, stopRun, addResult, setActiveView]);
+          } catch (runError) {
+            setRunNotice({ fileId: activeNode.id, state: 'failed', message: String(runError) });
+          } finally {
+            useExecutionStore.getState().setNodeRunning(activeNode.id, false);
+          }
+        });
+    }, [activeNode, content, queueRun]);
 
-    // Debounced save function
-    const saveTimeoutRef = React.useRef<number | null>(null);
-    const pendingContentRef = React.useRef<string | null>(null);
+    const handleRunAll = useCallback(() => { void handleRunFlow(); }, [handleRunFlow]);
+    const handleRunCommand = useCallback((index: number) => { void handleRunFlow(index); }, [handleRunFlow]);
+    const handleRunFromCommand = useCallback((index: number) => { void handleRunFlow(undefined, index); }, [handleRunFlow]);
 
-    // Handle content change with debounce
     const handleChange = useCallback((newContent: string) => {
         if (!activeNode) return;
-
-        // Update content in memory immediately for responsive UI (without saving to disk)
-        const stateStore = useFileStore.getState();
-        stateStore.files = updateFileContentInTree(stateStore.files, activeNode.id, newContent);
-        useFileStore.setState({ files: stateStore.files });
-
-        // Store pending content for debounced save
-        pendingContentRef.current = newContent;
-
-        // Clear previous timeout
-        if (saveTimeoutRef.current) {
-            clearTimeout(saveTimeoutRef.current);
-        }
-
-        // Debounce: Save to disk after 500ms of no changes
-        saveTimeoutRef.current = setTimeout(() => {
-            if (pendingContentRef.current && activeNode) {
-                updateFileContent(activeNode.id, pendingContentRef.current).catch(err => {
-                    console.error('Failed to save file (debounced):', err);
-                });
-                pendingContentRef.current = null;
-            }
-        }, 500);
+        updateFileContent(activeNode.id, newContent);
     }, [activeNode, updateFileContent]);
 
-    // Cleanup timeout on unmount or file change, and save pending changes
+    const dirtyFileKey = dirtyFileIds.join('\0');
     useEffect(() => {
-        return () => {
-            if (saveTimeoutRef.current) {
-                clearTimeout(saveTimeoutRef.current);
-            }
-            // Save any pending changes before switching files
-            if (pendingContentRef.current && activeNode) {
-                updateFileContent(activeNode.id, pendingContentRef.current).catch(err => {
-                    console.error('Failed to save file (cleanup):', err);
-                });
-                pendingContentRef.current = null;
-            }
-        };
-    }, [activeFileId, activeNode, updateFileContent]);
+        if (!dirtyFileIds.length) return;
+        const timer = window.setTimeout(() => {
+            void saveAllFiles().catch(saveError => {
+                if (activeFileId) setFileValidation(activeFileId, { state: 'error', message: String(saveError) });
+            });
+        }, 600);
+        return () => window.clearTimeout(timer);
+    }, [dirtyFileKey, content, dirtyFileIds.length, activeFileId, saveAllFiles, setFileValidation]);
 
-    // Line count for display
-    const lineCount = content.split('\n').length;
+    const handleCloseTab = async (fileId: string) => {
+        if (dirtyFileIds.includes(fileId)) {
+            try {
+                await saveFile(fileId);
+            } catch (saveError) {
+                setFileValidation(fileId, { state: 'error', message: String(saveError) });
+                return;
+            }
+        }
+        closeFile(fileId);
+    };
+
+    const handleOpenReferencedPath = useCallback(async (reference: string) => {
+        if (!activeFileId) return;
+        const targetPath = await openReferencedFile(activeFileId, reference);
+        openFile(targetPath);
+    }, [activeFileId, openFile, openReferencedFile]);
 
     // Empty state
     if (!openFiles.length) {
         return (
-            <div className="flex-1 flex flex-col items-center justify-center bg-slate-950 text-slate-500">
-                <div className="w-20 h-20 bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl flex items-center justify-center mb-4">
-                    <Terminal size={36} className="text-slate-600" />
+            <div className="ide-welcome flex-1 flex flex-col items-center justify-center text-slate-500">
+                <div className="ide-welcome-content">
+                    <div className="ide-welcome-icon">
+                        <Terminal size={26} />
+                    </div>
+                    <span className="ide-welcome-eyebrow">LUMI TESTER</span>
+                    <h1>{projectRoot ? 'Choose a test flow' : 'Start with a workspace'}</h1>
+                    <p>{projectRoot
+                        ? 'Open a YAML flow from Explorer to edit steps, inspect selectors, and run the test.'
+                        : 'Open a project folder to browse YAML flows, run tests, and review the results in one place.'}</p>
+                    <div className="ide-welcome-actions">
+                        <button type="button" className="ide-welcome-primary" onClick={onOpenProject}>
+                            <FolderOpen size={15} /> Open Folder
+                        </button>
+                        <button type="button" className="ide-welcome-secondary" onClick={onOpenHelp}>
+                            YAML reference
+                        </button>
+                    </div>
+                    <div className="ide-welcome-shortcut"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd><span>Search commands</span></div>
                 </div>
-                <p className="text-lg font-medium">No files open</p>
-                <p className="text-sm mt-2 text-slate-600">Select a file from the explorer</p>
             </div>
         );
     }
@@ -397,100 +355,147 @@ export const Editor: React.FC<EditorProps> = ({ onOpenHelp }) => {
     return (
         <div className="flex-1 flex flex-col bg-slate-950 overflow-hidden">
             {/* Tabs */}
-            <div className="flex items-center bg-slate-950 border-b border-slate-800 overflow-x-auto shrink-0">
-                {openFiles.map(fileId => {
-                    const file = findFile(files, fileId);
-                    if (!file) return null;
-                    const active = activeFileId === fileId;
-                    return (
-                        <div
-                            key={fileId}
-                            onClick={() => openFile(fileId)}
-                            className={clsx(
-                                "group flex items-center gap-2 px-4 py-2.5 min-w-[120px] max-w-[180px] border-r border-slate-800 cursor-pointer text-sm",
-                                active
-                                    ? "bg-slate-900 text-cyan-400 border-t-2 border-t-cyan-500"
-                                    : "text-slate-500 hover:bg-slate-900/50 hover:text-slate-300 border-t-2 border-t-transparent"
-                            )}
-                        >
-                            <span className="truncate flex-1">{file.name}</span>
-                            <button
-                                onClick={(e) => { e.stopPropagation(); closeFile(fileId); }}
-                                className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-700"
+            <div className="ide-editor-tabs flex items-center bg-slate-900 border-b border-slate-800 overflow-hidden shrink-0">
+                <div className="ide-editor-tab-strip flex items-stretch flex-1 min-w-0 overflow-x-auto">
+                    {openFiles.map(fileId => {
+                        const file = findFile(files, fileId);
+                        if (!file) return null;
+                        const active = activeFileId === fileId;
+                        return (
+                            <div
+                                key={fileId}
+                                onClick={() => openFile(fileId)}
+                                className={clsx(
+                                    "group flex items-center gap-2 px-3 py-1.5 min-w-[120px] max-w-[180px] border-r border-slate-800 cursor-pointer text-xs",
+                                    active
+                                        ? "bg-slate-950 text-slate-50 border-t-2 border-t-cyan-500"
+                                        : "text-slate-400 hover:bg-slate-800 hover:text-slate-200 border-t-2 border-t-transparent"
+                                )}
                             >
-                                <X size={12} />
-                            </button>
-                        </div>
-                    );
-                })}
-            </div>
-
-            {/* Toolbar */}
-            <div className="h-9 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-4 shrink-0">
-                <div className="flex items-center gap-3 text-xs text-slate-500">
-                    <span className="font-mono bg-slate-800 px-2 py-0.5 rounded">
-                        {lineCount} lines
-                    </span>
-                    {isRunning && (
-                        <span className="flex items-center gap-1 text-cyan-400 animate-pulse">
-                            <Loader2 size={12} className="animate-spin" />
-                            Running...
-                        </span>
-                    )}
+                                <span className="truncate flex-1">{file.name}</span>
+                                {dirtyFileIds.includes(fileId) && (
+                                    <span className="w-2 h-2 rounded-full bg-slate-400" title="Unsaved changes" />
+                                )}
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); void handleCloseTab(fileId); }}
+                                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-700"
+                                    aria-label={`Close ${file.name}`}
+                                >
+                                    <X size={12} />
+                                </button>
+                            </div>
+                        );
+                    })}
                 </div>
-                <div className="flex items-center gap-2">
-                    {isRunning && (
+                <div className="ide-editor-actions flex items-center gap-1 shrink-0 px-2">
+                    {activeNode && runningNodeIds.includes(activeNode.id) && (
                         <button
+                            type="button"
                             onClick={stopRun}
-                            className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-950/30 hover:bg-rose-950/50 rounded transition-colors"
-                            title="Stop running tests"
+                            className="ide-editor-icon-button text-rose-400"
+                            title="Stop running test"
+                            aria-label="Stop running test"
                         >
-                            <Square size={12} fill="currentColor" />
-                            Stop
+                            <Square size={13} fill="currentColor" />
                         </button>
                     )}
-                    {error ? (
-                        <div className="flex items-center gap-1 text-rose-400 text-xs px-2 py-0.5 bg-rose-950/30 rounded">
-                            <AlertTriangle size={11} />
-                            <span className="max-w-[180px] truncate">{error}</span>
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-1 text-emerald-400 text-xs px-2 py-0.5 bg-emerald-950/30 rounded">
-                            <Check size={11} />
-                            Valid
-                        </div>
+                    {activeFileId && /\.ya?ml$/i.test(activeNode?.name ?? '') && (
+                        <button
+                            onClick={() => setFormatRequest(request => request + 1)}
+                            className="ide-editor-icon-button"
+                            title="Format YAML (Shift+Option+F)"
+                            aria-label="Format YAML"
+                        >
+                            <Braces size={14} />
+                        </button>
                     )}
-                    <button onClick={onOpenHelp} className="text-slate-500 hover:text-cyan-400 p-1">
+                    <button onClick={onOpenHelp} className="ide-editor-icon-button" title="YAML reference" aria-label="YAML reference">
                         <FileJson size={14} />
                     </button>
                 </div>
             </div>
 
-            {/* Editor Core */}
-            {activeNode && (
-                <div className="flex-1 overflow-hidden">
-                    <EditorCore
-                        value={content}
-                        onChange={handleChange}
-                        executingLine={executingLine}
-                        isRunning={isRunning || (activeNode && runningNodeIds.includes(activeNode.id))}
-                        stepStatuses={stepStatuses}
-                        stepLinesMap={stepLinesMap}
-                        stepErrors={stepErrors}
-                        onRunStep={handleRunStep}
-                        onFailedStepClick={handleFailedStepClick}
-                        runningSingleStep={runningSingleStep}
-                        language={activeNode.name.endsWith('.md') ? 'markdown' : 'yaml'}
-                    />
+            {runNotice && runNotice.fileId === activeNode?.id && (
+                <div
+                    className={clsx('ide-run-notice', `is-${runNotice.state}`)}
+                    role={runNotice.state === 'failed' ? 'alert' : 'status'}
+                    aria-live={runNotice.state === 'failed' ? 'assertive' : 'polite'}
+                >
+                    <span className="ide-run-notice-icon">
+                        {runNotice.state === 'running'
+                            ? <Loader2 size={14} className="animate-spin" />
+                            : runNotice.state === 'queued'
+                                ? <Clock3 size={14} />
+                            : runNotice.state === 'passed'
+                                ? <CheckCircle2 size={14} />
+                                : runNotice.state === 'failed'
+                                    ? <CircleAlert size={14} />
+                                    : <Square size={12} />}
+                    </span>
+                    <span className="ide-run-notice-message">{runNotice.message}</span>
+                    {runNotice.state === 'running' ? (
+                        <button type="button" className="ide-run-notice-action" onClick={stopRun}>Stop</button>
+                    ) : (
+                        <button type="button" className="ide-run-notice-action" onClick={() => setActiveView('report')}>View report</button>
+                    )}
+                    <button
+                        type="button"
+                        className="ide-run-notice-dismiss"
+                        aria-label="Dismiss run status"
+                        onClick={() => setRunNotice(null)}
+                    >
+                        <X size={13} />
+                    </button>
                 </div>
             )}
 
-            {/* Shortcuts Bar */}
-            <div className="h-6 bg-slate-900/50 border-t border-slate-800 flex items-center justify-center gap-6 text-[10px] text-slate-600 shrink-0">
-                <span><span className="text-slate-500">⌘D</span> Duplicate</span>
-                <span><span className="text-slate-500">⌘/</span> Comment</span>
-                <span><span className="text-slate-500">Tab</span> Indent</span>
-            </div>
+            {/* Editor Core */}
+            {activeNode && (
+                <div className="flex-1 overflow-hidden">
+                    {activeNode.content === undefined ? (
+                        <div className="ide-loading-surface">
+                            <div className="flex flex-col items-center gap-3">
+                                {fileLoadError?.fileId === activeNode.id ? (
+                                    <>
+                                        <span>Could not load this file</span>
+                                        <span className="max-w-xl text-center text-xs text-rose-400">{fileLoadError.message}</span>
+                                        <button
+                                            type="button"
+                                            className="ide-editor-icon-button"
+                                            onClick={() => setLoadAttempt(attempt => attempt + 1)}
+                                        >
+                                            Retry
+                                        </button>
+                                    </>
+                                ) : <span>Loading file…</span>}
+                            </div>
+                        </div>
+                    ) : (
+                        <React.Suspense fallback={<div className="ide-loading-surface">Loading editor…</div>}>
+                            <EditorCore
+                                value={content}
+                                onChange={handleChange}
+                                formatRequest={formatRequest}
+                                executingLine={executingLine}
+                                isRunning={!!activeNode && runningNodeIds.includes(activeNode.id)}
+                                stepStatuses={stepStatuses}
+                                stepLinesMap={stepLinesMap}
+                                stepErrors={stepErrors}
+                                onRunAll={handleRunAll}
+                                onRunCommand={handleRunCommand}
+                                onRunFromCommand={handleRunFromCommand}
+                                onFailedStepClick={handleFailedStepClick}
+                                language={getEditorLanguage(activeNode.name)}
+                                sourcePath={activeFileId}
+                                onOpenPath={handleOpenReferencedPath}
+                                diagnostics={diagnostics}
+                                revealPosition={pendingReveal?.fileId === activeFileId ? pendingReveal : undefined}
+                                onRevealComplete={clearPendingReveal}
+                            />
+                        </React.Suspense>
+                    )}
+                </div>
+            )}
 
             {/* Error Modal */}
             {errorModal && (

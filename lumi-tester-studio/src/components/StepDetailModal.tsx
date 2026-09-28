@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { StepResult } from '../types';
 import { X, CheckCircle, XCircle, Clock, AlertCircle, Ban, Terminal, Activity } from 'lucide-react';
 import { clsx } from 'clsx';
+import './editor/monacoSetup';
 import Editor, { useMonaco } from '@monaco-editor/react';
 import { defineCodeverseTheme } from './editor/monacoUtils';
 

@@ -59,7 +59,7 @@ export interface StepResult {
 
 export interface TestResult {
   id: string;
-  status: 'passed' | 'failed' | 'running';
+  status: 'passed' | 'failed' | 'running' | 'cancelled';
   error?: string;
   fileId: string;
   fileName: string;
@@ -67,12 +67,15 @@ export interface TestResult {
   totalDuration: number;
   passed: number;
   failed: number;
+  skipped?: number;
+  totalCommands?: number;
+  artifactPath?: string;
   steps: StepResult[];
   batchId?: string; // ID for grouping folder runs
   folderName?: string; // Name of the folder executed
 }
 
-export type ViewMode = 'editor' | 'report' | 'settings';
+export type ViewMode = 'editor' | 'report' | 'inspector' | 'extensions' | 'settings';
 
 export interface Snippet {
   label: string;
@@ -92,6 +95,8 @@ export interface AiMessage {
 }
 
 export interface AiConfig {
+  provider: 'codex' | 'agy' | 'gemini';
+  binaryPath: string;
   apiKey: string;
   model: string;
 }

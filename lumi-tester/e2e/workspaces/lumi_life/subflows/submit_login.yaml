@@ -13,6 +13,4 @@ defaultTimeout: 30000
 - runFlow:
     file: "accept_permission_prompts.yaml"
     optional: true
-- waitUntilVisible:
-    regex: "(Select home|Chọn nhà|Chọn Home)"
-    timeout: 8000
+- waitUntilVisible: "(Select home|Chọn nhà|Chọn Home)"

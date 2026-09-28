@@ -31,6 +31,17 @@ impl SerialTransport {
     }
 
     pub fn connect(&mut self, port_name: &str, baudrate: u32) -> Result<()> {
+        if port_name.eq_ignore_ascii_case("mock")
+            || port_name.starts_with("mock")
+            || std::env::var("LUMI_JIG_MOCK").is_ok()
+        {
+            self.port = None;
+            self.port_name = Some(port_name.to_string());
+            let _ = self.init_log();
+            self.log_event("OPEN", &format!("Port {} @ {} (MOCK)", port_name, baudrate));
+            return Ok(());
+        }
+
         let mut port = serialport::new(port_name, baudrate)
             .timeout(Duration::from_millis(100))
             .open()
@@ -48,7 +59,7 @@ impl SerialTransport {
     }
 
     pub fn disconnect(&mut self) {
-        if self.port.is_some() {
+        if self.port.is_some() || self.is_mock() {
             self.log_event("CLOSE", "Serial port closed");
             self.port = None;
             self.port_name = None;
@@ -56,7 +67,12 @@ impl SerialTransport {
     }
 
     pub fn is_connected(&self) -> bool {
-        self.port.is_some()
+        self.port.is_some() || self.is_mock()
+    }
+
+    pub fn is_mock(&self) -> bool {
+        self.port_name.as_deref().map(|s| s.eq_ignore_ascii_case("mock") || s.starts_with("mock")).unwrap_or(false)
+            || std::env::var("LUMI_JIG_MOCK").is_ok()
     }
 
     fn init_log(&mut self) -> Result<()> {
@@ -115,11 +131,24 @@ impl SerialTransport {
             } else {
                 rendered
             }
-        } else if let Some(nid) = self.node_id {
-            format!("@{} {}\n", nid, trimmed)
         } else {
             format!("{}\n", trimmed)
         };
+
+        if self.is_mock() {
+            self.log_event("TX_MOCK", wire_cmd.trim());
+            let trimmed = cmd.trim();
+            if trimmed.eq_ignore_ascii_case("ping") || trimmed.contains("ping") {
+                return ResponseLine::parse("@1 [SYSTEM] status=ready");
+            }
+            if trimmed.contains("COLOR") || trimmed.contains("color") {
+                return ResponseLine::parse("@1 [COLOR] red=0 green=0 blue=255 clear=255 color=BLUE stable=BLUE conf=OK");
+            }
+            if trimmed.contains("LED") || trimmed.contains("led") {
+                return ResponseLine::parse("@1 [LED] status=ok color=BLUE blink=2");
+            }
+            return ResponseLine::parse("@1 [OK] status=ok");
+        }
 
         const MAX_ATTEMPTS: usize = 2;
         let mut last_error: Option<anyhow::Error> = None;

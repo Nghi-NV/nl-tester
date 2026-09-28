@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { Terminal as TerminalIcon, X, Minimize2, Maximize2 } from 'lucide-react';
+import { Terminal as TerminalIcon, X, ChevronDown, Plus, CircleX } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useExecutionStore, useFileStore } from '../stores';
+import { PtyTerminalTab } from './PtyTerminalTab';
 
 interface LogEntry {
   id: string;
@@ -11,11 +13,39 @@ interface LogEntry {
   timestamp: number;
 }
 
-export const Terminal: React.FC = () => {
+interface TerminalProps {
+  visible: boolean;
+  height: number;
+  onToggle: () => void;
+  onShow: () => void;
+}
+
+export const Terminal: React.FC<TerminalProps> = ({ visible, height, onToggle, onShow }) => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [isMinimized, setIsMinimized] = useState(true); // Mặc định minimize
+  const [activePanel, setActivePanel] = useState<'test-output' | 'terminal'>('test-output');
+  const [terminalTabs, setTerminalTabs] = useState<Array<{ key: string; label: string; running: boolean; exitCode?: number | null }>>([]);
+  const [activeTerminalKey, setActiveTerminalKey] = useState<string | null>(null);
+  const [terminalError, setTerminalError] = useState<string | null>(null);
+  const projectRoot = useFileStore(state => state.projectRoot);
+  const lastRunRequest = useExecutionStore(state => state.lastRunRequest);
+  const runRequestVersion = useExecutionStore(state => state.runRequestVersion);
+  const nextTerminalNumber = useRef(1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
+
+  useEffect(() => {
+    if (!lastRunRequest || runRequestVersion === 0) return;
+    setActivePanel('test-output');
+    setLogs(previous => previous.some(log => log.id === `run-request-${lastRunRequest.id}`)
+      ? previous
+      : [...previous, {
+          id: `run-request-${lastRunRequest.id}`,
+          message: `▶ Run requested: ${lastRunRequest.label}`,
+          type: 'flow',
+          depth: 0,
+          timestamp: Date.now(),
+        }]);
+  }, [lastRunRequest, runRequestVersion]);
 
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
@@ -28,6 +58,8 @@ export const Terminal: React.FC = () => {
 
           switch (payload.type) {
             case 'SessionStarted':
+              onShow();
+              setActivePanel('test-output');
               setLogs(prev => [...prev, {
                 id: `session-${timestamp}`,
                 message: `▶ Test session started: ${payload.session_id || 'unknown'}`,
@@ -141,6 +173,16 @@ export const Terminal: React.FC = () => {
               });
               break;
 
+            case 'CommandAutoHealed':
+              setLogs(prev => [...prev, {
+                id: `auto-healed-${timestamp}-${payload.index}-${prev.length}`,
+                message: `⚠ ${payload.flow_name || 'Flow'} [${payload.index}] selector auto-healed: ${payload.original_selector} → ${payload.healed_target} (${Math.round((payload.confidence || 0) * 100)}%)\n    ${payload.suggestion || ''}`,
+                type: 'log',
+                depth: payload.depth || 0,
+                timestamp,
+              }]);
+              break;
+
             case 'Log':
               const logIndent = '    '.repeat(payload.depth || 0);
               setLogs(prev => [...prev, {
@@ -171,13 +213,40 @@ export const Terminal: React.FC = () => {
 
   // Auto-scroll to bottom
   useEffect(() => {
-    if (scrollRef.current && !isMinimized) {
+    if (scrollRef.current && visible) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [logs, isMinimized]);
+  }, [logs, visible]);
 
   const clearLogs = () => {
     setLogs([]);
+  };
+
+  const createTerminal = () => {
+    if (!projectRoot) {
+      setTerminalError('Open a Lumi workspace before starting a terminal.');
+      return;
+    }
+    setTerminalError(null);
+    const key = `terminal-tab-${Date.now()}-${nextTerminalNumber.current++}`;
+    setTerminalTabs(previous => [...previous, { key, label: `Terminal ${nextTerminalNumber.current - 1}`, running: true }]);
+    setActiveTerminalKey(key);
+    setActivePanel('terminal');
+    onShow();
+  };
+
+  const closeTerminal = (key: string) => {
+    const nextTabs = terminalTabs.filter(tab => tab.key !== key);
+    setTerminalTabs(nextTabs);
+    if (activeTerminalKey === key) setActiveTerminalKey(nextTabs.length > 0 ? nextTabs[nextTabs.length - 1].key : null);
+  };
+
+  const updateTerminalLabel = (key: string, shell: string) => {
+    setTerminalTabs(previous => previous.map(tab => tab.key === key ? { ...tab, label: `${shell} ${key.split('-').pop()}` } : tab));
+  };
+
+  const markTerminalExited = (key: string, code: number | null) => {
+    setTerminalTabs(previous => previous.map(tab => tab.key === key ? { ...tab, running: false, exitCode: code } : tab));
   };
 
   const getLogColor = (type: LogEntry['type']) => {
@@ -197,61 +266,89 @@ export const Terminal: React.FC = () => {
 
   return (
     <div className={clsx(
-      "bg-slate-950 border-t border-slate-800 flex flex-col transition-all duration-300",
-      isMinimized ? "h-8" : "h-64"
-    )}>
+      "ide-terminal-panel bg-slate-950 border-t border-slate-800 flex flex-col",
+      !visible && "is-hidden"
+    )} style={{ height: visible ? height : 0, flex: '0 0 auto' }} aria-hidden={!visible}>
       {/* Header */}
       <div className="h-8 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-3 shrink-0">
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
-          <TerminalIcon size={14} />
-          <span>TERMINAL</span>
-          {logs.length > 0 && (
-            <span className="text-slate-500">({logs.length})</span>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
+        <div className="flex h-full items-center gap-1 text-[11px] font-semibold text-slate-400">
           <button
-            onClick={clearLogs}
-            className="text-slate-500 hover:text-slate-300 p-1 rounded transition-colors"
-            title="Clear logs"
+            onClick={() => { setActivePanel('test-output'); onShow(); }}
+            className={clsx('h-full px-2 flex items-center gap-2 border-b-2', activePanel === 'test-output' ? 'border-cyan-400 text-slate-100' : 'border-transparent hover:text-slate-200')}
           >
-            <X size={12} />
+            <TerminalIcon size={13} /> LUMI TEST OUTPUT
+            {logs.length > 0 && <span className="text-slate-500">({logs.length})</span>}
           </button>
           <button
-            onClick={() => setIsMinimized(!isMinimized)}
-            className="text-slate-500 hover:text-slate-300 p-1 rounded transition-colors"
-            title={isMinimized ? "Expand" : "Minimize"}
+            onClick={() => { setActivePanel('terminal'); onShow(); }}
+            className={clsx('h-full px-2 flex items-center gap-2 border-b-2', activePanel === 'terminal' ? 'border-cyan-400 text-slate-100' : 'border-transparent hover:text-slate-200')}
           >
-            {isMinimized ? <Maximize2 size={12} /> : <Minimize2 size={12} />}
+            TERMINAL{terminalTabs.length > 0 && <span className="text-slate-500">({terminalTabs.length})</span>}
+          </button>
+        </div>
+        <div className="flex items-center gap-1">
+          {activePanel === 'test-output' ? (
+            <button onClick={clearLogs} className="text-slate-500 hover:text-slate-300 p-1 rounded transition-colors" title="Clear test output">
+              <X size={12} />
+            </button>
+          ) : (
+            <>
+              <button onClick={createTerminal} className="text-slate-500 hover:text-slate-300 p-1 rounded transition-colors" title="Create terminal" aria-label="Create terminal">
+                <Plus size={13} />
+              </button>
+              {activeTerminalKey && <button onClick={() => closeTerminal(activeTerminalKey)} className="text-slate-500 hover:text-rose-400 p-1 rounded transition-colors" title="Close terminal" aria-label="Close terminal"><CircleX size={13} /></button>}
+            </>
+          )}
+          <button
+            onClick={onToggle}
+            className="text-slate-500 hover:text-slate-300 p-1 rounded transition-colors"
+            title="Hide Panel (⌘J / Ctrl+J)"
+            aria-label="Hide Panel"
+          >
+            <ChevronDown size={12} />
           </button>
         </div>
       </div>
 
       {/* Logs */}
-      {!isMinimized && (
-        <div
-          ref={scrollRef}
-          className="flex-1 overflow-y-auto p-3 font-mono text-xs"
-          style={{ fontFamily: 'monospace' }}
-        >
+      <div className="flex-1 min-h-0">
+        <div className={clsx('h-full overflow-y-auto p-3 font-mono text-xs', activePanel !== 'test-output' && 'hidden')} ref={scrollRef} style={{ fontFamily: 'monospace' }}>
           {logs.length === 0 ? (
-            <div className="text-slate-600 text-center py-8">
-              No logs yet. Run a test to see output here.
-            </div>
+            <div className="text-slate-600 text-center py-8">No logs yet. Run a test to see output here.</div>
           ) : (
             <div className="space-y-0.5">
-              {logs.map((log) => (
-                <div
-                  key={log.id}
-                  className={clsx("whitespace-pre-wrap break-words", getLogColor(log.type))}
-                >
-                  {log.message}
-                </div>
-              ))}
+              {logs.map((log) => <div key={log.id} className={clsx('whitespace-pre-wrap break-words', getLogColor(log.type))}>{log.message}</div>)}
             </div>
           )}
         </div>
-      )}
+        <div className={clsx('h-full flex flex-col', activePanel !== 'terminal' && 'hidden')}>
+          <div className="h-8 shrink-0 flex items-center gap-1 px-2 border-b border-white/5 overflow-x-auto">
+            {terminalTabs.map(tab => (
+              <button key={tab.key} onClick={() => setActiveTerminalKey(tab.key)} className={clsx('h-6 px-2 rounded text-[11px] flex items-center gap-2 whitespace-nowrap', activeTerminalKey === tab.key ? 'bg-slate-800 text-slate-100' : 'text-slate-500 hover:text-slate-300')}>
+                <span className={clsx('w-1.5 h-1.5 rounded-full', tab.running ? 'bg-emerald-400' : 'bg-slate-600')} />
+                {tab.label}{!tab.running && <span className="text-slate-500">({tab.exitCode ?? 'exited'})</span>}
+              </button>
+            ))}
+            {terminalTabs.length === 0 && <span className="text-[11px] text-slate-600">No terminal sessions</span>}
+            {terminalTabs.length === 0 && <button onClick={createTerminal} className="text-[11px] text-cyan-400 hover:text-cyan-300">New Terminal</button>}
+            {terminalTabs.length > 0 && <button onClick={createTerminal} className="text-slate-500 hover:text-slate-200 p-1" title="Create terminal"><Plus size={12} /></button>}
+          </div>
+          {terminalError && <div className="px-3 py-1 text-xs text-rose-400">{terminalError}</div>}
+          <div className="flex-1 min-h-0 relative">
+            {!projectRoot && terminalTabs.length === 0 && <div className="absolute inset-0 grid place-items-center text-xs text-slate-600">Open a workspace to start an interactive terminal.</div>}
+            {terminalTabs.map(tab => (
+              <div key={tab.key} className={clsx('absolute inset-0', activeTerminalKey !== tab.key && 'hidden')}>
+                {projectRoot && <PtyTerminalTab
+                  workspacePath={projectRoot}
+                  active={visible && activePanel === 'terminal' && activeTerminalKey === tab.key}
+                  onStarted={shell => updateTerminalLabel(tab.key, shell)}
+                  onExited={code => markTerminalExited(tab.key, code)}
+                />}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

@@ -85,6 +85,10 @@ enum Commands {
         /// Path to test data file (CSV or JSON) for data-driven testing
         #[arg(long, alias = "data-file")]
         data: Option<PathBuf>,
+
+        /// Execution speed profile override (turbo, fast, normal, safe)
+        #[arg(long)]
+        speed: Option<String>,
     },
 
     /// List connected devices
@@ -711,7 +715,11 @@ async fn async_main() -> anyhow::Result<()> {
             command_name,
             repeat,
             data,
+            speed,
         } => {
+            if let Some(ref s) = speed {
+                std::env::set_var("LUMI_SPEED", s);
+            }
             let platform_val = if let Some(p) = platform {
                 normalize_platform(&p)
             } else {
@@ -1383,6 +1391,7 @@ async fn async_main() -> anyhow::Result<()> {
                 platform,
                 device_serial: device,
                 output_file: output,
+                workspace_root: None,
             };
 
             let server = InspectorServer::new(config);

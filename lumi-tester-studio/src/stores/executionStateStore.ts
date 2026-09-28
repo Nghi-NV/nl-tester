@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import jsyaml from 'js-yaml';
 import { TestFlow } from '../types';
 
-export type CommandStatus = 'running' | 'passed' | 'failed' | 'pending';
+export type CommandStatus = 'running' | 'passed' | 'failed' | 'pending' | 'cancelled';
 
 // Helper function to safely parse YAML (handles both single and multi-document YAML)
 export const safeYamlLoad = (content: string): any => {

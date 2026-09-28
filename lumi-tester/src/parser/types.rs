@@ -2446,7 +2446,7 @@ pub struct ScrollUntilVisibleParams {
 }
 
 fn default_max_scrolls() -> u32 {
-    10
+    5
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

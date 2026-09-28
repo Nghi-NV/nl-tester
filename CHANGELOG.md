@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.1.45] - 2026-09-28
+
+### 🚀 Highlights & Improvements
+
+#### 1. Execution Speed & Gesture Optimization
+- **CLI Speed Override (`--speed`)**: Added `--speed <turbo|fast|normal|safe>` CLI flag (via `LUMI_SPEED`) to dynamically adjust tap delays, scroll delays, poll intervals, and UI idle settling per test run.
+- **Natural Swipe Mapping**: Inverted swipe direction logic in `scroll_until_visible` so that `direction: down` correctly executes an upward swipe to bring lower content into view.
+- **Fast Scroll Recovery**: Reduced `default_max_scrolls` from 10 to 5 in `scrollUntilVisible` for quicker evaluation and faster test turnaround.
+- **Direct ADB Tap Fast-Path**: Switched to direct ADB input tap fallback for high-reliability interaction with Flutter bottom sheets, dialogs, and dynamic pickers.
+
+#### 2. Hardware Jig & Sensor Mocking
+- **Mock Hardware Support**: Added `LUMI_JIG_MOCK=1` environment variable and `mock` port handler in `SerialTransport` and `ColorSensorService` to allow complete end-to-end hardware-in-the-loop test execution without physical test fixtures.
+
+#### 3. Driver & Service Reliability
+- **Dynamic ADB Path Resolution**: Integrated `find_adb()` across `AgentService`, `AudioService`, and `TestExecutor` to resolve ADB location robustly across varied environments and system paths.
+- **Agent Handshake Retry Loop**: Added a 1500ms connection retry window for the Android Dalvik/ART agent socket ping to prevent early connection drops on slow device boots.
+- **Embedded Inspector & Security**: Added loopback-bound `start_embedded` session management and path sandboxing for Lumi Studio integration.
+
 ## [v0.1.44] - 2026-09-26
 
 ### 🚀 Highlights & Improvements

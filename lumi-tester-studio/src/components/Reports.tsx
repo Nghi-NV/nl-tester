@@ -29,6 +29,7 @@ export const Reports: React.FC = () => {
   const totalRuns = results.length;
   const totalPassed = results.reduce((acc, r) => acc + r.passed, 0);
   const totalFailed = results.reduce((acc, r) => acc + r.failed, 0);
+  const totalSkipped = results.reduce((acc, r) => acc + (r.skipped ?? 0), 0);
   const totalSteps = totalPassed + totalFailed;
 
   const passRate = totalSteps > 0 ? ((totalPassed / totalSteps) * 100).toFixed(1) : 0;
@@ -39,7 +40,8 @@ export const Reports: React.FC = () => {
     datetime: new Date(r.timestamp).toLocaleString(),
     duration: r.totalDuration,
     passed: r.passed,
-    failed: r.failed
+    failed: r.failed,
+    skipped: r.skipped ?? 0
   }));
 
   // Batch Data Logic
@@ -61,8 +63,9 @@ export const Reports: React.FC = () => {
         timestamp: sortedRuns[0].timestamp,
         totalDuration: runs.reduce((acc, r) => acc + r.totalDuration, 0),
         totalFiles: runs.length,
-        passedFiles: runs.filter(r => r.failed === 0).length,
-        failedFiles: runs.filter(r => r.failed > 0).length,
+        passedFiles: runs.filter(r => r.status === 'passed').length,
+        failedFiles: runs.filter(r => r.status === 'failed').length,
+        cancelledFiles: runs.filter(r => r.status === 'cancelled').length,
         runs: sortedRuns
       };
     }).sort((a, b) => b.timestamp - a.timestamp);
@@ -158,8 +161,9 @@ export const Reports: React.FC = () => {
             </p>
           </div>
           <div className="bg-slate-900/50 p-6 rounded-2xl border border-white/5 backdrop-blur-sm">
-            <h3 className="text-slate-500 text-sm font-medium mb-1">Total Errors</h3>
+            <h3 className="text-slate-500 text-sm font-medium mb-1">Failed Commands</h3>
             <p className="text-3xl font-bold text-rose-400">{totalFailed}</p>
+            <p className="text-xs text-slate-500 mt-1">{totalSkipped} skipped</p>
           </div>
         </div>
 
@@ -191,6 +195,7 @@ export const Reports: React.FC = () => {
                   <Tooltip content={<CustomTooltip />} cursor={{ fill: '#ffffff', opacity: 0.05 }} />
                   <Bar dataKey="passed" stackId="a" fill="#10b981" radius={[0, 0, 4, 4]} />
                   <Bar dataKey="failed" stackId="a" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="skipped" stackId="a" fill="#f59e0b" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -256,10 +261,11 @@ export const Reports: React.FC = () => {
                       <td className="px-6 py-4">
                         <span className={clsx(
                           "px-2 py-1 rounded-full text-xs font-bold",
-                          (r.failed === 0 && r.passed > 0) ? "bg-emerald-500/10 text-emerald-400" :
-                            r.failed > 0 ? "bg-rose-500/10 text-rose-400" : "bg-slate-700/50 text-slate-400"
+                          r.status === 'passed' ? "bg-emerald-500/10 text-emerald-400" :
+                            r.status === 'failed' ? "bg-rose-500/10 text-rose-400" :
+                              r.status === 'cancelled' ? "bg-slate-700/50 text-slate-300" : "bg-amber-500/10 text-amber-400"
                         )}>
-                          {r.failed === 0 && r.passed > 0 ? 'SUCCESS' : r.failed > 0 ? 'FAILURE' : 'NO RUN'}
+                          {r.status.toUpperCase()}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -267,6 +273,7 @@ export const Reports: React.FC = () => {
                           <span className={clsx(r.passed > 0 && "text-emerald-500")}>{r.passed} passed</span>
                           <span className="text-slate-600">/</span>
                           <span className={clsx(r.failed > 0 && "text-rose-500")}>{r.failed} failed</span>
+                          {(r.skipped ?? 0) > 0 && <><span className="text-slate-600">/</span><span className="text-amber-500">{r.skipped} skipped</span></>}
                           <Eye size={16} className="text-cyan-500 ml-2 opacity-0 group-hover:opacity-100 transition-opacity" />
                         </div>
                       </td>
@@ -320,6 +327,7 @@ export const Reports: React.FC = () => {
                           <div className="flex gap-2 text-xs font-bold">
                             {batch.passedFiles > 0 && <span className="bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded">{batch.passedFiles} Passed</span>}
                             {batch.failedFiles > 0 && <span className="bg-rose-500/10 text-rose-400 px-2 py-1 rounded">{batch.failedFiles} Failed</span>}
+                            {batch.cancelledFiles > 0 && <span className="bg-slate-700/50 text-slate-300 px-2 py-1 rounded">{batch.cancelledFiles} Cancelled</span>}
                           </div>
                         </td>
                         <td className="px-6 py-4 text-right font-mono text-cyan-400 group-hover:text-cyan-300">

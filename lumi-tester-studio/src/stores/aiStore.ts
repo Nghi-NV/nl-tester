@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { AiMessage, AiConfig } from '../types';
 import { generateId } from '../utils/idGenerator';
 import { AI_CONFIG } from '../constants';
@@ -11,13 +12,13 @@ interface AiStore {
 
   // Actions
   toggleAi: () => void;
-  addAiMessage: (message: Omit<AiMessage, 'id' | 'timestamp'>) => void;
+  addAiMessage: (message: Omit<AiMessage, 'id' | 'timestamp'>) => string;
   setAiConfig: (config: Partial<AiConfig>) => void;
   setAiLoading: (loading: boolean) => void;
   clearAiChat: () => void;
 }
 
-export const useAiStore = create<AiStore>((set) => ({
+export const useAiStore = create<AiStore>()(persist((set) => ({
   isAiOpen: false,
   aiMessages: [{
     id: 'init',
@@ -26,6 +27,8 @@ export const useAiStore = create<AiStore>((set) => ({
     timestamp: Date.now()
   }],
   aiConfig: {
+    provider: 'codex',
+    binaryPath: '',
     apiKey: '',
     model: AI_CONFIG.DEFAULT_MODEL
   },
@@ -33,9 +36,11 @@ export const useAiStore = create<AiStore>((set) => ({
 
   toggleAi: () => set(state => ({ isAiOpen: !state.isAiOpen })),
 
-  addAiMessage: (msg) => set(state => ({
-    aiMessages: [...state.aiMessages, { ...msg, id: generateId(), timestamp: Date.now() }]
-  })),
+  addAiMessage: (msg) => {
+    const id = generateId();
+    set(state => ({ aiMessages: [...state.aiMessages, { ...msg, id, timestamp: Date.now() }] }));
+    return id;
+  },
 
   setAiConfig: (config) => set(state => ({ aiConfig: { ...state.aiConfig, ...config } })),
 
@@ -48,5 +53,10 @@ export const useAiStore = create<AiStore>((set) => ({
       content: AI_CONFIG.CLEARED_MESSAGE,
       timestamp: Date.now()
     }]
+  }),
+}), {
+  name: 'lumi-ai-config',
+  partialize: state => ({
+    aiConfig: { ...state.aiConfig, apiKey: '' },
   }),
 }));

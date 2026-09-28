@@ -21,6 +21,7 @@ pub struct InspectorConfig {
     pub platform: String,
     pub device_serial: Option<String>,
     pub output_file: Option<std::path::PathBuf>,
+    pub workspace_root: Option<std::path::PathBuf>,
 }
 
 impl Default for InspectorConfig {
@@ -30,6 +31,7 @@ impl Default for InspectorConfig {
             platform: "android".to_string(),
             device_serial: None,
             output_file: None,
+            workspace_root: None,
         }
     }
 }
@@ -59,6 +61,7 @@ impl InspectorServer {
             device_serial: self.config.device_serial.clone(),
             current_target_app: std::sync::Mutex::new(self.config.device_serial.clone()),
             cached_hierarchy: std::sync::Mutex::new(None),
+            workspace_root: self.config.workspace_root.clone(),
         });
 
         // Build router
@@ -80,7 +83,7 @@ impl InspectorServer {
             .layer(CorsLayer::permissive().allow_private_network(true))
             .with_state(state);
 
-        let addr = SocketAddr::from(([0, 0, 0, 0], self.config.port));
+        let addr = SocketAddr::from(([127, 0, 0, 1], self.config.port));
 
         println!("\n🔍 Inspector started!");
         println!("   Open: http://localhost:{}", self.config.port);
@@ -96,6 +99,59 @@ impl InspectorServer {
         let listener = tokio::net::TcpListener::bind(addr).await?;
         axum::serve(listener, app.into_make_service()).await?;
 
+        Ok(())
+    }
+
+    /// Start an inspector bound only to loopback for embedding inside Lumi IDE.
+    pub async fn start_embedded(&self) -> Result<InspectorSession> {
+        let screen_capture = ScreenCapture::new(
+            &self.config.platform,
+            self.config.device_serial.as_deref(),
+        )
+        .await?;
+        let state = Arc::new(AppState {
+            screen_capture,
+            yaml_file: std::sync::Mutex::new(self.config.output_file.clone()),
+            device_serial: self.config.device_serial.clone(),
+            current_target_app: std::sync::Mutex::new(self.config.device_serial.clone()),
+            cached_hierarchy: std::sync::Mutex::new(None),
+            workspace_root: self.config.workspace_root.clone(),
+        });
+        let app = Router::new()
+            .route("/", get(serve_index))
+            .merge(api::api_router())
+            .with_state(state);
+        let addr = SocketAddr::from(([127, 0, 0, 1], self.config.port));
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        let port = listener.local_addr()?.port();
+        let (shutdown, shutdown_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            axum::serve(listener, app.into_make_service())
+                .with_graceful_shutdown(async {
+                    let _ = shutdown_rx.await;
+                })
+                .await
+        });
+        Ok(InspectorSession {
+            port,
+            shutdown: Some(shutdown),
+            task,
+        })
+    }
+}
+
+pub struct InspectorSession {
+    pub port: u16,
+    shutdown: Option<tokio::sync::oneshot::Sender<()>>,
+    task: tokio::task::JoinHandle<std::io::Result<()>>,
+}
+
+impl InspectorSession {
+    pub async fn stop(mut self) -> Result<()> {
+        if let Some(shutdown) = self.shutdown.take() {
+            let _ = shutdown.send(());
+        }
+        self.task.await??;
         Ok(())
     }
 }

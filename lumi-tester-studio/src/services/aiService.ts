@@ -1,58 +1,74 @@
-import { GoogleGenAI } from "@google/genai";
-import { AiConfig, FileNode } from "../types";
-import { getAllDescendantFiles } from "../stores";
-import { AI_CONFIG, APP_CONFIG, ERROR_MESSAGES, FILE_CONFIG } from "../constants";
+import { invoke } from '@tauri-apps/api/core';
+import { GoogleGenAI } from '@google/genai';
+import { AiConfig, FileNode } from '../types';
+import { findFileById, getAllDescendantFiles } from '../stores';
+import { AI_CONFIG, APP_CONFIG, ERROR_MESSAGES, FILE_CONFIG } from '../constants';
+
+interface AiContextFile {
+  path: string;
+  content: string;
+}
+
+const getMentionedFiles = (prompt: string, files: FileNode[]): AiContextFile[] => {
+  const mentions = [...prompt.matchAll(/@"([^"]+)"|@([^\s]+)/g)].map(match => match[1] ?? match[2]);
+  const allFiles = files.flatMap(file => getAllDescendantFiles(file));
+  const selected = new Map<string, AiContextFile>();
+
+  for (const mention of mentions) {
+    const reference = mention.replace(/\\/g, '/').replace(/[),.;!?]+$/, '');
+    const file = allFiles.find(candidate => {
+      const normalizedPath = candidate.id.replace(/\\/g, '/');
+      const normalizedName = candidate.name.replace(/\\/g, '/');
+      return normalizedName === reference
+        || normalizedName === `${reference}${FILE_CONFIG.YAML_EXTENSION}`
+        || normalizedPath.endsWith(`/${reference}`)
+        || normalizedPath.endsWith(`/${reference}${FILE_CONFIG.YAML_EXTENSION}`);
+    });
+    if (file?.content !== undefined) selected.set(file.id, { path: file.id, content: file.content });
+  }
+  return [...selected.values()];
+};
 
 export const generateAiResponse = async (
   prompt: string,
   config: AiConfig,
-  files: FileNode[]
+  files: FileNode[],
+  workspaceRoot: string | null,
 ): Promise<string> => {
+  const contextFiles = getMentionedFiles(prompt, files);
+  const context = contextFiles.map(file => `\n--- FILE: ${file.path} ---\n${file.content}\n--- END FILE ---\n`).join('');
 
-  // 1. Resolve Mentions (@filename)
-  let context = "";
-  const mentions = prompt.match(AI_CONFIG.MENTION_REGEX);
-
-  if (mentions) {
-    const allFiles = files.flatMap(f => getAllDescendantFiles(f));
-
-    for (const mention of mentions) {
-      const filename = mention.substring(1); // remove @
-      const file = allFiles.find(
-        f => f.name === filename || f.name === filename + FILE_CONFIG.YAML_EXTENSION
-      );
-
-      if (file && file.content) {
-        context += `\n--- FILE: ${file.name} ---\n${file.content}\n--- END FILE ---\n`;
-      }
-    }
+  if (config.provider !== 'gemini') {
+    if (!workspaceRoot) throw new Error('Open a workspace before using a local AI provider.');
+    return invoke<string>('generate_ai_response', {
+      provider: config.provider,
+      binaryPath: config.binaryPath || null,
+      workspacePath: workspaceRoot,
+      prompt,
+      contextFiles,
+    });
   }
 
-  const fullPrompt = `${context}\n\nUser Question: ${prompt}`;
-
-  // 2. Debug Mode (No API Key)
   if (!config.apiKey) {
-    await new Promise(r => setTimeout(r, APP_CONFIG.DEBUG_MODE_DELAY));
-    return `**Debug Mode (No API Key)**\n\nI received your request:\n"${prompt}"\n\n${context ? `I also found context from ${mentions?.length} files.` : ''}\n\nTo get real AI responses, please configure a valid Google Gemini API Key in the settings menu above. For now, here is a mock YAML snippet:\n\n\`\`\`yaml\nname: Debug Test\nsteps:\n  - name: Mock Step\n    method: GET\n    url: /debug\n\`\`\``;
+    await new Promise(resolve => setTimeout(resolve, APP_CONFIG.DEBUG_MODE_DELAY));
+    return `Configure a Gemini API key in AI settings to use Gemini.\n\n${contextFiles.length > 0 ? `Included ${contextFiles.length} referenced file(s).` : 'No files were added as context.'}`;
   }
 
-  // 3. Real API Call
   try {
     const ai = new GoogleGenAI({ apiKey: config.apiKey });
-    const modelName = config.model || AI_CONFIG.DEFAULT_MODEL;
-
     const response = await ai.models.generateContent({
-      model: modelName,
-      contents: fullPrompt,
-      config: {
-        systemInstruction: AI_CONFIG.SYSTEM_INSTRUCTION,
-      }
+      model: config.model || AI_CONFIG.DEFAULT_MODEL,
+      contents: `${context}\n\nUser request: ${prompt}`,
+      config: { systemInstruction: AI_CONFIG.SYSTEM_INSTRUCTION },
     });
-
     return response.text || ERROR_MESSAGES.AI_NO_RESPONSE;
-
   } catch (error: any) {
-    console.error("AI Error:", error);
+    console.error('AI Error:', error);
     return ERROR_MESSAGES.AI_ERROR(error.message || 'Unknown error');
   }
+};
+
+export const getActiveFileContent = (files: FileNode[], path: string | null): string | null => {
+  if (!path) return null;
+  return findFileById(files, path)?.content ?? null;
 };

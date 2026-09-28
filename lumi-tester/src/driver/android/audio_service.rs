@@ -143,7 +143,9 @@ impl AudioService {
             format!("tcp:{}", AUDIO_PORT),
         ]);
 
-        let _ = tokio::process::Command::new("adb")
+        let adb_path = crate::utils::binary_resolver::find_adb()
+            .unwrap_or_else(|_| std::path::PathBuf::from("adb"));
+        let _ = tokio::process::Command::new(adb_path)
             .args(&args)
             .output()
             .await?;

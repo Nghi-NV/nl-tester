@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { openPath } from '@tauri-apps/plugin-opener';
 import { TestResult, StepResult } from '../types';
-import { X, CheckCircle, XCircle, Clock, AlertCircle, Ban, Eye } from 'lucide-react';
+import { X, CheckCircle, XCircle, Clock, AlertCircle, Ban, Eye, LoaderCircle, FolderOpen } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface RunDetailModalProps {
@@ -11,6 +12,7 @@ interface RunDetailModalProps {
 }
 
 export const RunDetailModal: React.FC<RunDetailModalProps> = ({ run, onClose, onStepSelect }) => {
+  const [artifactError, setArtifactError] = useState<string | null>(null);
   const handleStepClick = (step: StepResult) => {
     if (onStepSelect) {
       onStepSelect(step);
@@ -18,7 +20,9 @@ export const RunDetailModal: React.FC<RunDetailModalProps> = ({ run, onClose, on
   };
 
   // Calculate stats
-  const passRate = run.steps.length > 0 ? ((run.passed / (run.passed + run.failed)) * 100).toFixed(1) : '0.0';
+  const measuredCommands = run.passed + run.failed;
+  const passRate = measuredCommands > 0 ? ((run.passed / measuredCommands) * 100).toFixed(1) : '0.0';
+  const statusColor = run.status === 'passed' ? 'text-emerald-400' : run.status === 'failed' ? 'text-rose-400' : run.status === 'cancelled' ? 'text-slate-300' : 'text-amber-400';
 
   // Use portal to render outside of any stacking context
   const modalContent = (
@@ -42,8 +46,8 @@ export const RunDetailModal: React.FC<RunDetailModalProps> = ({ run, onClose, on
             <div className="flex items-center gap-4">
               <div className="text-right">
                 <p className="text-xs text-slate-500 uppercase font-bold">Pass Rate</p>
-                <p className={clsx("text-lg font-bold", run.failed === 0 ? "text-emerald-400" : "text-rose-400")}>
-                  {passRate}%
+                <p className={clsx("text-lg font-bold", statusColor)}>
+                  {run.status === 'cancelled' ? 'CANCELLED' : run.status === 'running' ? 'RUNNING' : `${passRate}%`}
                 </p>
               </div>
               <button
@@ -75,6 +79,7 @@ export const RunDetailModal: React.FC<RunDetailModalProps> = ({ run, onClose, on
                     {step.status === 'skipped' && <AlertCircle className="text-amber-500 shrink-0" size={18} />}
                     {step.status === 'cancelled' && <Ban className="text-slate-400 shrink-0" size={18} />}
                     {step.status === 'running' && <div className="w-4 h-4 rounded-full border-2 border-amber-500 border-t-transparent animate-spin shrink-0" />}
+                    {!['passed', 'failed', 'skipped', 'cancelled', 'running'].includes(step.status) && <LoaderCircle className="text-slate-400 shrink-0" size={18} />}
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
@@ -119,7 +124,18 @@ export const RunDetailModal: React.FC<RunDetailModalProps> = ({ run, onClose, on
           </div>
 
           {/* Footer */}
-          <div className="p-4 bg-slate-900 border-t border-slate-800 flex justify-end">
+          <div className="p-4 bg-slate-900 border-t border-slate-800 flex items-center justify-between">
+            <div>
+              {run.artifactPath && (
+                <button
+                  onClick={() => void openPath(run.artifactPath!).catch(error => setArtifactError(String(error)))}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-300 text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-2"
+                >
+                  <FolderOpen size={15} /> Open Artifacts
+                </button>
+              )}
+              {artifactError && <p className="text-xs text-rose-400 mt-1">{artifactError}</p>}
+            </div>
             <button
               onClick={onClose}
               className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium rounded-lg transition-colors"

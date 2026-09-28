@@ -1,214 +1,378 @@
-
 import { create } from 'zustand';
+import { useEditorStore } from './editorStore';
 import { FileNode } from '../types';
 import {
-  updateFileContentInTree,
-  toggleFolderInTree,
+  findFileById,
   findFileByName,
+  toggleFolderInTree,
+  updateFileContentInTree,
+  updateNodeInTree,
 } from '../utils/treeUtils';
 import { FILE_CONFIG } from '../constants';
-
 import {
+  createDir,
+  createFile,
+  deletePath,
+  openWorkspace,
   readDir,
   readFile,
-  writeFile,
-  createDir,
-  deletePath,
   renamePath,
-  pathJoin
+  resolveWorkspaceFileReference,
+  writeFile,
+  pathJoin,
+  pathDirname,
 } from '../utils/tauriUtils';
+
+export interface FileValidation {
+  state: 'checking' | 'valid' | 'invalid' | 'error';
+  message?: string;
+}
 
 interface FileStore {
   files: FileNode[];
   projectRoot: string | null;
   isLoading: boolean;
-
-  // Actions
+  showHiddenFiles: boolean;
+  dirtyFileIds: string[];
+  fileValidation: Record<string, FileValidation>;
   loadProject: (path: string) => Promise<void>;
   addFile: (parentId: string | null, type: 'file' | 'folder', name: string) => Promise<void>;
   deleteFile: (id: string) => Promise<void>;
-  updateFileContent: (id: string, content: string) => Promise<void>;
-  toggleFolder: (id: string) => void;
   renameFile: (id: string, newName: string) => Promise<void>;
-  moveFile: (id: string, newParentId: string | null, index: number) => Promise<void>; // Move is complex for FS, might implement basic version
+  moveFile: (id: string, newParentId: string | null, index: number) => Promise<void>;
+  updateFileContent: (id: string, content: string) => void;
+  setFileValidation: (id: string, validation?: FileValidation) => void;
+  saveFile: (id: string) => Promise<void>;
+  saveAllFiles: () => Promise<void>;
+  discardFileChanges: (id: string) => Promise<void>;
+  toggleFolder: (id: string) => Promise<void>;
+  setShowHiddenFiles: (show: boolean) => Promise<void>;
   getFileContentByName: (name: string) => string | null;
-  loadContent: (id: string) => Promise<void>; // New action
+  loadContent: (id: string) => Promise<void>;
+  loadDescendantYamlFiles: (id: string) => Promise<FileNode[]>;
+  openReferencedFile: (sourcePath: string, reference: string) => Promise<string>;
+  openSearchResult: (relativePath: string, lineNumber: number, column: number) => Promise<void>;
   refresh: () => Promise<void>;
 }
 
-// Helper to build tree from FS
-const buildFileTree = async (path: string, rootPath: string): Promise<FileNode[]> => {
-  const entries = await readDir(path);
-  const nodes: FileNode[] = [];
-
-  // Sort: folders first, then files
-  entries.sort((a: any, b: any) => {
-    if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
-    return a.isDirectory ? -1 : 1;
-  });
-
-  console.log(`[FileStore] Loaded ${entries.length} entries for ${path}`);
-
-  for (const entry of entries) {
-    // Skip hidden files/dirs if needed, e.g. .git
-    if (entry.name.startsWith('.')) continue;
-
-    const fullPath = await pathJoin(path, entry.name);
-
-    // Using full path as ID simplifies FS ops
-    const id = fullPath;
-
-    let children: FileNode[] | undefined;
-    let content: string | undefined;
-
-    if (entry.isDirectory) {
-      children = await buildFileTree(fullPath, rootPath);
-    } else {
-      // We don't load content eagerly for all files to be fast, 
-      // but current architecture expects content in node for simple access.
-      // For a large project, this is bad. For now, let's lazy load or load on demand.
-      // Existing app expects content allowed. Let's load content on openFile in editor store instead?
-      // But existing execution model relies on content in store?
-      // "runTestFlow" takes content string.
-
-      // Compromise: Don't load content here. Load it when opening or running.
-      // We'll require async `getFileContent` or update store when file opens.
-      content = undefined;
+const collectOpenDirectories = (nodes: FileNode[]): Set<string> => {
+  const open = new Set<string>();
+  for (const node of nodes) {
+    if (node.type === 'folder' && node.isOpen) open.add(node.id);
+    if (node.children) {
+      for (const path of collectOpenDirectories(node.children)) open.add(path);
     }
-
-    nodes.push({
-      id,
-      name: entry.name,
-      type: entry.isDirectory ? 'folder' : 'file',
-      children,
-      content,
-      isOpen: false
-    });
   }
-  return nodes;
+  return open;
+};
+
+const collectLoadedDirectories = (nodes: FileNode[]): Set<string> => {
+  const loaded = new Set<string>();
+  for (const node of nodes) {
+    if (node.type === 'folder' && node.children !== undefined) loaded.add(node.id);
+    if (node.children) {
+      for (const path of collectLoadedDirectories(node.children)) loaded.add(path);
+    }
+  }
+  return loaded;
+};
+
+const buildFileTree = async (
+  path: string,
+  showHidden: boolean,
+  loadedDirectories: Set<string> = new Set(),
+  openDirectories: Set<string> = new Set(),
+): Promise<FileNode[]> => {
+  const entries = await readDir(path, showHidden);
+  return Promise.all(entries.map(async entry => {
+    const isOpen = entry.isDirectory && openDirectories.has(entry.path);
+    return {
+      id: entry.path,
+      name: entry.name,
+      type: entry.isDirectory ? 'folder' as const : 'file' as const,
+      children: entry.isDirectory && loadedDirectories.has(entry.path)
+        ? await buildFileTree(entry.path, showHidden, loadedDirectories, openDirectories)
+        : undefined,
+      content: undefined,
+      isOpen,
+    };
+  }));
+};
+
+const preserveDirtyContent = (fresh: FileNode[], previous: FileNode[], dirty: string[]): FileNode[] => {
+  const previousById = new Map<string, FileNode>();
+  const index = (nodes: FileNode[]) => nodes.forEach(node => {
+    previousById.set(node.id, node);
+    if (node.children) index(node.children);
+  });
+  index(previous);
+
+  const dirtySet = new Set(dirty);
+  const merge = (nodes: FileNode[]): FileNode[] => nodes.map(node => {
+    const old = previousById.get(node.id);
+    return {
+      ...node,
+      ...(old && dirtySet.has(node.id) ? { content: old.content } : {}),
+      children: node.children ? merge(node.children) : undefined,
+    };
+  });
+  return merge(fresh);
+};
+
+const removeDirtyPath = (dirty: string[], id: string) => dirty.filter(path => path !== id);
+
+const insertReferencedFile = (
+  nodes: FileNode[],
+  ids: string[],
+  names: string[],
+  depth: number,
+  content: string,
+  preserveContent: boolean,
+): FileNode[] => {
+  const id = ids[depth];
+  const name = names[depth];
+  const isFile = depth === ids.length - 1;
+  const index = nodes.findIndex(node => node.id === id);
+  const existing = index >= 0 ? nodes[index] : undefined;
+  const node: FileNode = isFile
+    ? {
+      id,
+      name,
+      type: 'file',
+      content: preserveContent ? existing?.content ?? content : content,
+    }
+    : {
+      id,
+      name,
+      type: 'folder',
+      isOpen: true,
+      children: insertReferencedFile(existing?.children ?? [], ids, names, depth + 1, content, preserveContent),
+    };
+  if (index < 0) return [...nodes, node];
+  return nodes.map((entry, entryIndex) => entryIndex === index ? node : entry);
 };
 
 export const useFileStore = create<FileStore>((set, get) => ({
   files: [],
   projectRoot: null,
   isLoading: false,
+  showHiddenFiles: true,
+  dirtyFileIds: [],
+  fileValidation: {},
 
   loadProject: async (path: string) => {
     set({ isLoading: true });
     try {
-      const files = await buildFileTree(path, path);
-      set({ files, projectRoot: path });
-      localStorage.setItem('lumi_project_root', path);
-    } catch (e) {
-      console.error('Failed to load project', e);
+      const workspace = await openWorkspace(path);
+      const files = await buildFileTree(workspace.path, get().showHiddenFiles);
+      useEditorStore.getState().closeAllFiles();
+      set({ files, projectRoot: workspace.path, dirtyFileIds: [] });
+      localStorage.setItem('lumi_project_root', workspace.path);
+    } catch (error) {
+      console.error('Failed to load project', error);
+      throw error;
     } finally {
       set({ isLoading: false });
     }
   },
 
   refresh: async () => {
-    const root = get().projectRoot;
-    if (root) {
-      await get().loadProject(root);
-    }
+    const { projectRoot, files, dirtyFileIds, showHiddenFiles } = get();
+    if (!projectRoot) return;
+    const openDirectories = collectOpenDirectories(files);
+    const refreshed = await buildFileTree(
+      projectRoot,
+      showHiddenFiles,
+      collectLoadedDirectories(files),
+      openDirectories,
+    );
+    set({ files: preserveDirtyContent(refreshed, files, dirtyFileIds) });
   },
 
   addFile: async (parentId, type, name) => {
-    // parentId is now the absolute path of the directory
-    // If parentId is null, use projectRoot
     const root = get().projectRoot;
     if (!root) return;
-
-    const parentPath = parentId || root;
-    const newPath = await pathJoin(parentPath, name);
-
-    try {
-      if (type === 'folder') {
-        await createDir(newPath);
-      } else {
-        // Check if file exists?
-        await writeFile(newPath, FILE_CONFIG.DEFAULT_FILE_CONTENT || '');
-      }
-      // Refresh tree to keep simple sync
-      await get().refresh();
-
-      // Locate new file to set open/active? handled by caller via side effect usually involves ID.
-    } catch (e) {
-      console.error('Failed to add file', e);
+    const parent = parentId || root;
+    if (type === 'folder') {
+      await createDir(parent, name);
+    } else {
+      await createFile(parent, name, FILE_CONFIG.DEFAULT_FILE_CONTENT || '');
     }
+    await get().refresh();
   },
 
-  deleteFile: async (id) => {
-    // ID is full path
-    try {
-      await deletePath(id);
-      await get().refresh();
-    } catch (e) {
-      console.error('Failed to delete', e);
-    }
-  },
-
-  updateFileContent: async (id, content) => {
-    // Persist to disk
-    try {
-      await writeFile(id, content);
-      // Also update memory
-      set({ files: updateFileContentInTree(get().files, id, content) });
-    } catch (e) {
-      console.error('Failed to save file', e);
-    }
-  },
-
-  toggleFolder: (id) => {
-    set({ files: toggleFolderInTree(get().files, id) });
+  deleteFile: async id => {
+    await deletePath(id);
+    set(state => ({ dirtyFileIds: state.dirtyFileIds.filter(path =>
+      path !== id && !path.startsWith(`${id}/`) && !path.startsWith(`${id}\\`),
+    ) }));
+    await get().refresh();
   },
 
   renameFile: async (id, newName) => {
-    // id is old path
-    // we need to construct new path
-    // Split id by separator... path API is needed
-    // Assuming simple rename in same dir
-    // This is a bit tricky without 'dirname' helper in tauriUtils or path-browserify
-    // Let's assume we can get parent path from the tree structure or string manipulation
-
-    // Basic string manip for now (Unix/Win compat might be an issue but Tauri pathJoin handles some)
-    // Actually standard JS string replacement for filename at end of path:
-    // Last slash or backslash
-
-    // Helper to get dir from path
-    const getDir = (p: string) => p.substring(0, Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\')));
-    const parentDir = getDir(id);
-
-    const newPath = await pathJoin(parentDir, newName);
-
-    try {
-      await renamePath(id, newPath);
-      await get().refresh();
-    } catch (e) {
-      console.error('Failed to rename', e);
+    if (get().dirtyFileIds.some(path => path === id || path.startsWith(`${id}/`) || path.startsWith(`${id}\\`))) {
+      await get().saveAllFiles();
     }
+    const parent = await pathDirname(id);
+    const newPath = await pathJoin(parent, newName);
+    await renamePath(id, newPath);
+    useEditorStore.getState().replaceFilePath(id, newPath);
+    await get().refresh();
   },
 
-  moveFile: async (_id, _newParentId, _index) => {
-    // Skipping complicated move (drag & drop) for now to ensure stability 
-    // as it involves moving files on disk and potentially recursively
-    console.warn('Move not fully implemented for FS');
+  moveFile: async (id, newParentId, _index) => {
+    const source = findFileById(get().files, id);
+    const destination = newParentId || get().projectRoot;
+    if (!source || !destination) return;
+    if (get().dirtyFileIds.some(path => path === id || path.startsWith(`${id}/`) || path.startsWith(`${id}\\`))) {
+      await get().saveAllFiles();
+    }
+    const newPath = await pathJoin(destination, source.name);
+    await renamePath(id, newPath);
+    useEditorStore.getState().replaceFilePath(id, newPath);
+    await get().refresh();
   },
 
-  getFileContentByName: (name: string) => {
-    // This is used for simple lookups, might fail if multiple files have same name
-    // This legacy method assumes unique names or flat list maybe.
-    const file = findFileByName(get().files, name);
-    return file?.content || null;
+  updateFileContent: (id, content) => {
+    set(state => ({
+      files: updateFileContentInTree(state.files, id, content),
+      dirtyFileIds: state.dirtyFileIds.includes(id) ? state.dirtyFileIds : [...state.dirtyFileIds, id],
+    }));
   },
 
-  loadContent: async (id: string) => {
+  setFileValidation: (id, validation) => set(state => {
+    const fileValidation = { ...state.fileValidation };
+    if (validation) fileValidation[id] = validation;
+    else delete fileValidation[id];
+    return { fileValidation };
+  }),
+
+  saveFile: async id => {
+    const node = findFileById(get().files, id);
+    if (!node || node.type !== 'file' || node.content === undefined) return;
+    const content = node.content;
+    await writeFile(id, content);
+    set(state => {
+      const latestNode = findFileById(state.files, id);
+      return latestNode?.content === content
+        ? { dirtyFileIds: removeDirtyPath(state.dirtyFileIds, id) }
+        : {};
+    });
+  },
+
+  saveAllFiles: async () => {
+    const ids = [...get().dirtyFileIds];
+    for (const id of ids) await get().saveFile(id);
+  },
+
+  discardFileChanges: async id => {
+    const content = await readFile(id);
+    set(state => ({
+      files: updateFileContentInTree(state.files, id, content),
+      dirtyFileIds: removeDirtyPath(state.dirtyFileIds, id),
+    }));
+  },
+
+  toggleFolder: async id => {
+    const node = findFileById(get().files, id);
+    if (!node || node.type !== 'folder') return;
+    if (node.isOpen || node.children !== undefined) {
+      set(state => ({ files: toggleFolderInTree(state.files, id) }));
+      return;
+    }
+
+    const children = await buildFileTree(id, get().showHiddenFiles);
+    set(state => ({
+      files: updateNodeInTree(state.files, id, current => ({ ...current, children, isOpen: true })),
+    }));
+  },
+
+  setShowHiddenFiles: async show => {
+    set({ showHiddenFiles: show });
+    await get().refresh();
+  },
+
+  getFileContentByName: name => findFileByName(get().files, name)?.content ?? null,
+
+  loadContent: async id => {
     try {
       const content = await readFile(id);
-      set({ files: updateFileContentInTree(get().files, id, content) });
-    } catch (e) {
-      console.error('Failed to load content', e);
+      set(state => ({ files: updateFileContentInTree(state.files, id, content) }));
+    } catch (error) {
+      console.error('Failed to load file', error);
+      throw error;
     }
   },
-}));
 
+  loadDescendantYamlFiles: async id => {
+    const showHidden = get().showHiddenFiles;
+    const collect = async (path: string): Promise<FileNode[]> => {
+      const node = findFileById(get().files, path);
+      if (node?.type === 'file') {
+        if (!/\.ya?ml$/i.test(node.name)) return [];
+        return [{ ...node, content: node.content ?? await readFile(path) }];
+      }
+
+      const entries = await readDir(path, showHidden);
+      const files = await Promise.all(entries.map(async entry => {
+        if (entry.isDirectory) return collect(entry.path);
+        if (!/\.ya?ml$/i.test(entry.name)) return [];
+
+        const cached = findFileById(get().files, entry.path);
+        const content = cached?.content ?? await readFile(entry.path);
+        return [{
+          id: entry.path,
+          name: entry.name,
+          type: 'file' as const,
+          content,
+        }];
+      }));
+      return files.flat();
+    };
+
+    return collect(id);
+  },
+
+  openReferencedFile: async (sourcePath, reference) => {
+    const root = get().projectRoot;
+    if (!root) throw new Error('Open a workspace first.');
+    const resolved = await resolveWorkspaceFileReference(sourcePath, reference);
+    const content = await readFile(resolved.path);
+    const names = resolved.relativePath.split(/[\\/]/).filter(Boolean);
+    const ids: string[] = [];
+    let path = root;
+    for (const name of names) {
+      path = await pathJoin(path, name);
+      ids.push(path);
+    }
+    if (ids.length === 0) throw new Error('The referenced file is outside the open workspace.');
+    const preserveContent = get().dirtyFileIds.includes(resolved.path);
+    set(state => ({
+      files: insertReferencedFile(state.files, ids, names, 0, content, preserveContent),
+    }));
+    return resolved.path;
+  },
+
+  openSearchResult: async (relativePath, lineNumber, column) => {
+    const root = get().projectRoot;
+    if (!root) throw new Error('Open a workspace first.');
+    const names = relativePath.split(/[\\/]/).filter(Boolean);
+    if (names.length === 0 || names.some(name => name === '.' || name === '..')) {
+      throw new Error('The search result path is invalid.');
+    }
+
+    const ids: string[] = [];
+    let path = root;
+    for (const name of names) {
+      path = await pathJoin(path, name);
+      ids.push(path);
+    }
+    const filePath = ids[ids.length - 1];
+    const content = await readFile(filePath);
+    const preserveContent = get().dirtyFileIds.includes(filePath);
+    set(state => ({
+      files: insertReferencedFile(state.files, ids, names, 0, content, preserveContent),
+    }));
+    useEditorStore.getState().openFileAt(filePath, lineNumber, column);
+  },
+}));

@@ -4,15 +4,34 @@ import { TestResult } from '../types';
 import { generateRunId } from '../utils/idGenerator';
 import { useExecutionStateStore } from './executionStateStore';
 
+export interface QueuedRun {
+  id: string;
+  label: string;
+}
+
+export interface RunContext {
+  signal: AbortSignal;
+  runId: string;
+}
+
+type RunTask = QueuedRun & {
+  execute: (context: RunContext) => Promise<void>;
+  resolve: () => void;
+  reject: (error: unknown) => void;
+};
+
 interface ExecutionStore {
   isRunning: boolean;
   abortController: AbortController | null;
   runningNodeIds: string[];
   currentRunId: string | null;
+  currentRunLabel: string | null;
+  queuedRuns: QueuedRun[];
+  lastRunRequest: QueuedRun | null;
+  runRequestVersion: number;
   results: TestResult[];
 
-  // Actions
-  startRun: () => AbortSignal;
+  queueRun: (label: string, execute: (context: RunContext) => Promise<void>) => Promise<void>;
   stopRun: () => void;
   setNodeRunning: (id: string, isRunning: boolean) => void;
   addResult: (result: TestResult) => void;
@@ -22,63 +41,96 @@ interface ExecutionStore {
 
 export const useExecutionStore = create<ExecutionStore>()(
   persist(
-    (set, get) => ({
-      isRunning: false,
-      abortController: null,
-      runningNodeIds: [],
-      currentRunId: null,
-      results: [],
+    (set, get) => {
+      const pendingRuns: RunTask[] = [];
 
-      startRun: () => {
-        const ac = new AbortController();
-        // Clear all execution states when starting a new run
+      const runNext = () => {
+        if (get().isRunning) return;
+        const task = pendingRuns.shift();
+        if (!task) return;
+
+        const controller = new AbortController();
         useExecutionStateStore.getState().clearAllStates();
-        set({
+        set(state => ({
           isRunning: true,
-          abortController: ac,
-          currentRunId: generateRunId(),
-        });
-        return ac.signal;
-      },
+          abortController: controller,
+          currentRunId: task.id,
+          currentRunLabel: task.label,
+          queuedRuns: state.queuedRuns.filter(run => run.id !== task.id),
+        }));
 
-      stopRun: () => {
-        const { abortController } = get();
-        if (abortController) {
-          abortController.abort();
-        }
-        set({
-          isRunning: false,
-          abortController: null,
-          runningNodeIds: [],
-        });
-      },
+        void (async () => {
+          try {
+            await task.execute({ signal: controller.signal, runId: task.id });
+            task.resolve();
+          } catch (error) {
+            task.reject(error);
+          } finally {
+            if (get().currentRunId === task.id) {
+              set({
+                isRunning: false,
+                abortController: null,
+                currentRunId: null,
+                currentRunLabel: null,
+                runningNodeIds: [],
+              });
+            }
+            runNext();
+          }
+        })();
+      };
 
-      setNodeRunning: (id, isRunning) => set(state => {
-        if (isRunning) {
-          return { runningNodeIds: [...state.runningNodeIds, id] };
-        } else {
-          return { runningNodeIds: state.runningNodeIds.filter(nid => nid !== id) };
-        }
-      }),
+      return {
+        isRunning: false,
+        abortController: null,
+        runningNodeIds: [],
+        currentRunId: null,
+        currentRunLabel: null,
+        queuedRuns: [],
+        lastRunRequest: null,
+        runRequestVersion: 0,
+        results: [],
 
-      addResult: (result) => set(state => ({ results: [result, ...state.results] })),
+        queueRun: (label, execute) => new Promise<void>((resolve, reject) => {
+          const task: RunTask = { id: generateRunId(), label, execute, resolve, reject };
+          pendingRuns.push(task);
+          set(state => ({
+            queuedRuns: [...state.queuedRuns, { id: task.id, label }],
+            lastRunRequest: { id: task.id, label },
+            runRequestVersion: state.runRequestVersion + 1,
+          }));
+          runNext();
+        }),
 
-      upsertResult: (result) => set(state => {
-        const index = state.results.findIndex(r => r.id === result.id);
-        if (index >= 0) {
-          const newResults = [...state.results];
-          newResults[index] = result;
-          return { results: newResults };
-        } else {
+        stopRun: () => {
+          get().abortController?.abort();
+        },
+
+        setNodeRunning: (id, isRunning) => set(state => {
+          if (isRunning) {
+            return { runningNodeIds: state.runningNodeIds.includes(id) ? state.runningNodeIds : [...state.runningNodeIds, id] };
+          }
+          return { runningNodeIds: state.runningNodeIds.filter(nodeId => nodeId !== id) };
+        }),
+
+        addResult: result => set(state => ({ results: [result, ...state.results] })),
+
+        upsertResult: result => set(state => {
+          const index = state.results.findIndex(existing => existing.id === result.id);
+          if (index >= 0) {
+            const results = [...state.results];
+            results[index] = result;
+            return { results };
+          }
           return { results: [result, ...state.results] };
-        }
-      }),
+        }),
 
-      clearResults: () => set({ results: [] }),
-    }),
+        clearResults: () => set({ results: [] }),
+      };
+    },
     {
       name: 'nexus-execution-store',
-      partialize: (state) => ({ results: state.results }), // Only persist results, not running state
-    }
-  )
+      partialize: state => ({ results: state.results }),
+    },
+  ),
 );

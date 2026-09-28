@@ -3,6 +3,22 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { StepResult, TestResult } from '../types';
 import { useExecutionStateStore, useFileStore } from '../stores';
 import { findFileById } from '../utils/treeUtils';
+import { generateRunId } from '../utils/idGenerator';
+
+interface RunSummary {
+    total_flows: number;
+    total_commands: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+    total_duration_ms?: number;
+}
+
+export interface RunTestOptions {
+    commandIndex?: number;
+    fromCommandIndex?: number;
+    runId?: string;
+}
 
 export const runTestFlow = async (
     yamlContent: string,
@@ -11,16 +27,9 @@ export const runTestFlow = async (
     platform: string,
     device: string | null,
     onUpdate: (result: Partial<TestResult>) => void,
-    signal: AbortSignal
+    signal: AbortSignal,
+    options: RunTestOptions = {},
 ): Promise<TestResult> => {
-    // signal is used if we implement cancellation via backend, 
-    // but for now we just pass it to satisfy interface or could remove if unused.
-    // If unused by invoke, just suppressing or using it?
-    // Invoke doesn't support signal directly unless we manually call cancel.
-    // Let's pretend to use it or suppress warning.
-    void signal;
-
-    return new Promise(async (resolve) => {
         // Clear previous state for this file
         const stateStore = useExecutionStateStore.getState();
         stateStore.clearFileState(fileId);
@@ -38,7 +47,7 @@ export const runTestFlow = async (
         const startTime = Date.now();
         const steps: StepResult[] = [];
         let currentResult: TestResult = {
-            id: `run-${Date.now()}`,
+            id: options.runId ?? generateRunId(),
             fileId: fileId,
             fileName: fileName,
             status: 'running',
@@ -63,17 +72,55 @@ export const runTestFlow = async (
             onUpdate(currentResult);
         };
 
+        const settleRunningSteps = (status: 'failed' | 'cancelled', error?: string) => {
+            for (const step of steps) {
+                if (step.status !== 'running') continue;
+                step.status = status;
+                if (error) step.error = error;
+            }
+
+            const executionState = useExecutionStateStore.getState();
+            for (const fileState of executionState.fileStates.values()) {
+                for (const [stepIndex, stepStatus] of fileState.stepStatuses) {
+                    if (stepStatus !== 'running') continue;
+                    executionState.setStepStatus(fileState.fileId, stepIndex, status);
+                    if (error) executionState.setStepError(fileState.fileId, stepIndex, error);
+                }
+                executionState.clearExecutingStep(fileState.fileId);
+                executionState.stopFileExecution(fileState.fileId);
+            }
+        };
+
         update();
 
         let unlisten: UnlistenFn | undefined;
+        let runInvocationFinished = false;
+        let abortLoopStarted = false;
+        const handleAbort = () => {
+            if (abortLoopStarted) return;
+            abortLoopStarted = true;
+            void (async () => {
+                while (!runInvocationFinished) {
+                    try {
+                        const stopped = await invoke<boolean>('stop_test_flow', { runId: currentResult.id });
+                        if (stopped) return;
+                    } catch {
+                        // The run command may still be registering its cancellation token.
+                    }
+                    if (!runInvocationFinished) await new Promise(resolve => window.setTimeout(resolve, 100));
+                }
+            })();
+        };
 
         // Track global offset for steps and flow path stack
+        const commandOffset = options.commandIndex ?? options.fromCommandIndex ?? 0;
         let globalOffset = 0;
         // Stack to track [path, offset] pairs - we need to restore the offset that was active before sub-flow started
         const flowPathStack: Array<{ path: string; offset: number }> = [{ path: fileId, offset: 0 }];
         let currentFlowPath = fileId;
         // Track the runFlow step index in parent file when sub-flow starts
         let parentRunFlowStepIndex: number | null = null;
+        let sessionSummary: RunSummary | null = null;
         
         // Get base directory from original fileId for resolving relative paths
         const getBaseDir = (filePath: string): string => {
@@ -90,7 +137,12 @@ export const runTestFlow = async (
         try {
             unlisten = await listen<any>('test-event', (event) => {
                 const payload = event.payload;
+                if (payload.run_id !== currentResult.id) return;
                 console.log('[Lumi Event]', payload);
+
+                if (payload.type === 'SessionFinished') {
+                    sessionSummary = payload.summary;
+                }
 
                 if (payload.type === 'FlowStarted') {
                     // Save current offset before starting new flow
@@ -463,6 +515,7 @@ export const runTestFlow = async (
                     };
                     
                     const targetFileId = findFileIdFromPath(currentFlowPath);
+                    const fileCommandIndex = payload.depth === 0 ? commandOffset + payload.index : payload.index;
                     
                     // Update execution state for the file that contains this command
                     let fileState = stateStore.getFileState(targetFileId);
@@ -497,7 +550,7 @@ export const runTestFlow = async (
                     
                     console.log('[Runner] CommandStarted:', {
                         targetFileId,
-                        stepIndex: payload.index,
+                        stepIndex: fileCommandIndex,
                         command: payload.command,
                         fileStateExists: !!fileState,
                         stepLinesSize: fileState?.stepLines.size ?? 0,
@@ -506,19 +559,19 @@ export const runTestFlow = async (
                     });
                     
                     if (fileState) {
-                        stateStore.setStepStatus(targetFileId, payload.index, 'running');
+                        stateStore.setStepStatus(targetFileId, fileCommandIndex, 'running');
                         
                         // Re-check stepLines after potential mapping
                         const updatedFileState = stateStore.getFileState(targetFileId);
-                        const lineNumber = updatedFileState?.stepLines.get(payload.index);
+                        const lineNumber = updatedFileState?.stepLines.get(fileCommandIndex);
                         
                         if (lineNumber !== undefined && lineNumber >= 0) {
-                            console.log('[Runner] Found line number from store:', lineNumber, 'for step index:', payload.index);
-                            stateStore.setExecutingStep(targetFileId, payload.index, lineNumber);
+                            console.log('[Runner] Found line number from store:', lineNumber, 'for step index:', fileCommandIndex);
+                            stateStore.setExecutingStep(targetFileId, fileCommandIndex, lineNumber);
                         } else {
-                            console.log('[Runner] Line number not found in store for step', payload.index, 'stepLines size:', updatedFileState?.stepLines.size ?? 0, 'will be updated by Editor');
+                            console.log('[Runner] Line number not found in store for step', fileCommandIndex, 'stepLines size:', updatedFileState?.stepLines.size ?? 0, 'will be updated by Editor');
                             // Set executing step - line number will be updated by Editor when it maps steps
-                            stateStore.setExecutingStep(targetFileId, payload.index, -1);
+                            stateStore.setExecutingStep(targetFileId, fileCommandIndex, -1);
                         }
                     } else {
                         console.warn('[Runner] CommandStarted: File state not found for', targetFileId);
@@ -587,9 +640,10 @@ export const runTestFlow = async (
                         return normalizedPath;
                     };
                     const targetFileId = findFileIdFromPath(currentFlowPath);
+                    const fileCommandIndex = payload.depth === 0 ? commandOffset + payload.index : payload.index;
                     
-                    console.log('[Runner] CommandPassed: Setting status for', targetFileId, 'step', payload.index);
-                    stateStore.setStepStatus(targetFileId, payload.index, 'passed');
+                    console.log('[Runner] CommandPassed: Setting status for', targetFileId, 'step', fileCommandIndex);
+                    stateStore.setStepStatus(targetFileId, fileCommandIndex, 'passed');
                     stateStore.clearExecutingStep(targetFileId);
                     
                     console.log('[Runner] CommandPassed:', {
@@ -661,17 +715,18 @@ export const runTestFlow = async (
                         return normalizedPath;
                     };
                     const targetFileId = findFileIdFromPath(currentFlowPath);
+                    const fileCommandIndex = payload.depth === 0 ? commandOffset + payload.index : payload.index;
                     
-                    console.log('[Runner] CommandFailed: Setting status for', targetFileId, 'step', payload.index);
-                    stateStore.setStepStatus(targetFileId, payload.index, 'failed');
+                    console.log('[Runner] CommandFailed: Setting status for', targetFileId, 'step', fileCommandIndex);
+                    stateStore.setStepStatus(targetFileId, fileCommandIndex, 'failed');
                     if (payload.error) {
-                        stateStore.setStepError(targetFileId, payload.index, payload.error);
+                        stateStore.setStepError(targetFileId, fileCommandIndex, payload.error);
                     }
                     stateStore.clearExecutingStep(targetFileId);
                     
                     console.log('[Runner] CommandFailed:', {
                         targetFileId,
-                        stepIndex: payload.index,
+                        stepIndex: fileCommandIndex,
                         error: payload.error
                     });
 
@@ -688,41 +743,73 @@ export const runTestFlow = async (
                 }
             });
 
+            signal.addEventListener('abort', handleAbort, { once: true });
+            if (signal.aborted) handleAbort();
+
             // Start the run
             // Defaulting platform to 'android' for now. 
             // TODO: Expose platform selection in UI.
-            await invoke('run_test_flow', {
+            const runPromise = invoke<{
+                summary: RunSummary | null;
+                outputPath: string;
+                cancelled: boolean;
+            }>('run_test_flow', {
                 content: yamlContent,
-                filename: fileName,
                 filePath: fileId,
+                runId: currentResult.id,
                 platform: platform,
-                device: device
+                device: device,
+                commandIndex: options.commandIndex ?? null,
+                fromCommandIndex: options.fromCommandIndex ?? null,
             });
+            if (signal.aborted) handleAbort();
+            const runOutput = await runPromise;
+            runInvocationFinished = true;
 
-            // Run finished successfully (if invoke returns)
-            currentResult.status = 'passed'; // Or determined by steps?
-            if (steps.some(s => s.status === 'failed')) {
-                currentResult.status = 'failed';
+            // The executor's final session summary is authoritative. Per-command
+            // events still drive editor decorations and detailed output.
+            const summary = runOutput.summary ?? sessionSummary;
+            if (runOutput.cancelled) settleRunningSteps('cancelled');
+            if (summary) {
+                currentResult = {
+                    ...currentResult,
+                    passed: summary.passed,
+                    failed: summary.failed,
+                    skipped: summary.skipped,
+                    totalCommands: summary.total_commands,
+                    totalDuration: summary.total_duration_ms ?? Date.now() - startTime,
+                    artifactPath: runOutput.outputPath,
+                    status: runOutput.cancelled ? 'cancelled' : summary.failed > 0 ? 'failed' : 'passed',
+                    steps: [...steps],
+                };
+            } else {
+                currentResult = {
+                    ...currentResult,
+                    artifactPath: runOutput.outputPath,
+                    status: runOutput.cancelled ? 'cancelled' : steps.some(step => step.status === 'failed') ? 'failed' : 'passed',
+                };
             }
-            update();
+            onUpdate(currentResult);
 
             // Stop file execution state
             useExecutionStateStore.getState().stopFileExecution(fileId);
 
-            resolve(currentResult);
+            return currentResult;
 
         } catch (error) {
             console.error('Run failed', error);
             currentResult.status = 'failed';
-            // currentResult.error = String(error);
+            currentResult.error = String(error);
+            settleRunningSteps('failed', currentResult.error);
             update();
 
             // Stop file execution state
             useExecutionStateStore.getState().stopFileExecution(fileId);
 
-            resolve(currentResult);
+            return currentResult;
         } finally {
+            runInvocationFinished = true;
+            signal.removeEventListener('abort', handleAbort);
             if (unlisten) unlisten();
         }
-    });
 };

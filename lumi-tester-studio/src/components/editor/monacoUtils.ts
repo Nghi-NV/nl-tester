@@ -2,52 +2,34 @@ import { Monaco } from "@monaco-editor/react";
 import { editor } from "monaco-editor";
 import { configCommands, nexusCommands, commandProperties } from './yamlExtension';
 
-// Codeverse Dark Theme
+// Antigravity Dark Modern palette
 export const defineCodeverseTheme = (monaco: Monaco) => {
   monaco.editor.defineTheme("codeverse-dark", {
     base: "vs-dark",
     inherit: true,
     rules: [
-      { token: "", background: "282C34" }, // Atom BG
-      { token: "comment", foreground: "5C6370", fontStyle: "italic" }, // Grey
-      { token: "keyword", foreground: "C678DD", fontStyle: "bold" }, // Purple
-      { token: "string", foreground: "98C379" }, // Green
-      { token: "string.key", foreground: "E06C75", fontStyle: "bold" }, // Red for Keys (Atom style)
-      { token: "number", foreground: "f472b6" }, // pink-400
-      { token: "delimiter", foreground: "94a3b8" }, // slate-400
-      { token: "type.identifier", foreground: "c084fc" }, // violet-400
-      { token: "attribute.name", foreground: "60a5fa" }, // blue-400
+      { token: "", background: "1F1F1F" },
+      { token: "comment", foreground: "6A9955", fontStyle: "italic" },
+      { token: "keyword", foreground: "569CD6" },
+      { token: "string", foreground: "CE9178" },
+      { token: "string.key", foreground: "9CDCFE" },
+      { token: "number", foreground: "B5CEA8" },
+      { token: "delimiter", foreground: "D4D4D4" },
+      { token: "type.identifier", foreground: "4EC9B0" },
+      { token: "attribute.name", foreground: "9CDCFE" },
     ],
     colors: {
-      "editor.background": "#0f172a", // slate-950
-      "editor.foreground": "#e2e8f0", // slate-200
-      "editorCursor.foreground": "#22d3ee", // cyan-400
-      "editor.lineHighlightBackground": "#1e293b", // slate-800
-      "editorLineNumber.foreground": "#475569", // slate-600
-      "editorLineNumber.activeForeground": "#22d3ee",
-      "editor.selectionBackground": "#22d3ee33", // cyan-400 with opacity
-      "editor.inactiveSelectionBackground": "#22d3ee1a",
+      "editor.background": "#1F1F1F",
+      "editor.foreground": "#D4D4D4",
+      "editorCursor.foreground": "#AEAFAD",
+      "editor.lineHighlightBackground": "#252526",
+      "editorLineNumber.foreground": "#858585",
+      "editorLineNumber.activeForeground": "#C6C6C6",
+      "editor.selectionBackground": "#264F78",
+      "editor.inactiveSelectionBackground": "#3A3D41",
     },
   });
 };
-
-// CSS class for the run button in glyph margin
-// This style should be injected globally or via a convenient place
-export const RUN_BUTTON_CLASS_NAME = "run-step-glyph";
-export const RUN_BUTTON_CSS = `
-  .${RUN_BUTTON_CLASS_NAME} {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2310b981' stroke='%2310b981' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='5 3 19 12 5 21 5 3'/%3E%3C/svg%3E");
-    background-size: 12px 12px;
-    background-repeat: no-repeat;
-    background-position: center;
-    cursor: pointer;
-    transition: transform 0.2s ease, filter 0.2s ease;
-  }
-  .${RUN_BUTTON_CLASS_NAME}:hover {
-    transform: scale(1.2);
-    filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.5));
-  }
-`;
 
 export const EXECUTING_CSS = `
   .executing-line-glyph {
@@ -95,51 +77,12 @@ export const EXECUTING_CSS = `
 
 // Helper to create decorations for step lines
 export const createStepDecorations = (
-  stepLines: Map<number, string>,
   executingLine: number,
-  stepStatuses?: Map<number, 'running' | 'passed' | 'failed' | 'pending'>,
+  stepStatuses?: Map<number, 'running' | 'passed' | 'failed' | 'pending' | 'cancelled'>,
   stepLinesMap?: Map<number, number>, // Map from stepIndex to lineNumber (0-based)
   stepErrors?: Map<number, string> // Map from stepIndex to error message
 ): editor.IModelDeltaDecoration[] => {
   const decorations: editor.IModelDeltaDecoration[] = [];
-
-  // Build a map of line numbers that have passed/failed status to avoid showing run button
-  const linesWithStatus = new Set<number>();
-  if (stepStatuses && stepLinesMap) {
-    stepStatuses.forEach((status, stepIndex) => {
-      if (status === 'passed' || status === 'failed') {
-        const lineNumber0Based = stepLinesMap.get(stepIndex);
-        if (lineNumber0Based !== undefined && lineNumber0Based >= 0) {
-          linesWithStatus.add(lineNumber0Based);
-        }
-      }
-    });
-  }
-
-  // Add Run Buttons for steps (only if not passed/failed)
-  stepLines.forEach((stepName, lineIndex) => {
-    // Monaco lines are 1-based
-    const lineNumber = lineIndex + 1;
-    
-    // Skip run button if this line has passed/failed status
-    if (linesWithStatus.has(lineIndex)) {
-      return;
-    }
-    
-    decorations.push({
-      range: {
-        startLineNumber: lineNumber,
-        startColumn: 1,
-        endLineNumber: lineNumber,
-        endColumn: 1,
-      },
-      options: {
-        isWholeLine: true,
-        glyphMarginClassName: RUN_BUTTON_CLASS_NAME,
-        glyphMarginHoverMessage: { value: `Run step: ${stepName} ` },
-      },
-    });
-  });
 
   // Add executing line highlight if running (do this first so it can be overridden by passed/failed)
   if (executingLine >= 0) {

@@ -167,6 +167,21 @@ impl ColorSensorControl for ColorSensorService {
         expected: Option<&[Color]>,
         timeout_s: f64,
     ) -> Result<ColorReading> {
+        if self.transport.lock().unwrap().is_mock() {
+            let color = expected.and_then(|exp| exp.first().copied()).unwrap_or(Color::Blue);
+            return Ok(ColorReading {
+                channel,
+                color,
+                confidence: ColorConfidence::Ok,
+                sample: RawColorSample {
+                    red: 0,
+                    green: 0,
+                    blue: 255,
+                    clear: 255,
+                },
+            });
+        }
+
         let start = Instant::now();
         let timeout = Duration::from_secs_f64(timeout_s);
 
@@ -232,6 +247,18 @@ impl ColorSensorControl for ColorSensorService {
         max_pulse_ms: Option<u64>,
         timeout_s: f64,
     ) -> Result<BlinkResult> {
+        if self.transport.lock().unwrap().is_mock() {
+            let count = expected_count.unwrap_or(1);
+            let color = expected_color.map(Color::from_str);
+            return Ok(BlinkResult {
+                event_id: 1,
+                blink_count: count,
+                color,
+                durations_ms: vec![200; count],
+                pulses: vec![],
+            });
+        }
+
         let _ = self.select_channel(channel);
         let start = Instant::now();
         let timeout = Duration::from_secs_f64(timeout_s);
@@ -473,6 +500,18 @@ impl ColorSensorControl for ColorSensorService {
         after_event_id: Option<u32>,
         timeout_s: f64,
     ) -> Result<BlinkResult> {
+        if self.transport.lock().unwrap().is_mock() {
+            let count = expected_count.unwrap_or(1);
+            let color = expected_color.map(Color::from_str);
+            return Ok(BlinkResult {
+                event_id: 1,
+                blink_count: count,
+                color,
+                durations_ms: vec![200; count],
+                pulses: vec![],
+            });
+        }
+
         let _ = self.select_channel(channel);
         let start = Instant::now();
         let timeout = Duration::from_secs_f64(timeout_s);

@@ -123,32 +123,38 @@ impl AgentService {
     pub async fn verify_connection(serial: Option<&str>) -> bool {
         use std::io::{Read, Write};
 
-        let addr = format!("127.0.0.1:{}", agent_port_for(serial));
-        match std::net::TcpStream::connect_timeout(
-            &addr.parse().unwrap(),
-            std::time::Duration::from_millis(500),
-        ) {
-            Ok(mut stream) => {
-                let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(500)));
-                let _ = stream.set_write_timeout(Some(std::time::Duration::from_millis(500)));
+        let host_port = agent_port_for(serial);
+        let addr_str = format!("127.0.0.1:{}", host_port);
+        let Ok(addr) = addr_str.parse() else {
+            return false;
+        };
+
+        // Retry connection up to 1500ms to allow ART/Dalvik VM time to bind socket on slow devices
+        let start = std::time::Instant::now();
+        let timeout = std::time::Duration::from_millis(1500);
+
+        while start.elapsed() < timeout {
+            if let Ok(mut stream) = std::net::TcpStream::connect_timeout(
+                &addr,
+                std::time::Duration::from_millis(300),
+            ) {
+                let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(300)));
+                let _ = stream.set_write_timeout(Some(std::time::Duration::from_millis(300)));
 
                 // Send ping command
-                if stream.write_all(b"{\"cmd\":\"ping\"}\n").is_err() {
-                    return false;
-                }
-
-                // Must receive a response to confirm server is actually processing commands
-                let mut buf = [0u8; 256];
-                match stream.read(&mut buf) {
-                    Ok(n) if n > 0 => true,
-                    _ => {
-                        // No response = server is stuck/zombie, force restart
-                        false
+                if stream.write_all(b"{\"cmd\":\"ping\"}\n").is_ok() {
+                    let mut buf = [0u8; 256];
+                    if let Ok(n) = stream.read(&mut buf) {
+                        if n > 0 {
+                            return true;
+                        }
                     }
                 }
             }
-            Err(_) => false,
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
         }
+
+        false
     }
 
     /// Get the APK file size on device (0 if not exists)
@@ -212,7 +218,9 @@ impl AgentService {
             DEVICE_APK_PATH.to_string(),
         ]);
 
-        let output = tokio::process::Command::new("adb")
+        let adb_path = crate::utils::binary_resolver::find_adb()
+            .map_err(|e| anyhow!("Failed to find adb: {}", e))?;
+        let output = tokio::process::Command::new(adb_path)
             .args(&args)
             .output()
             .await
@@ -287,7 +295,9 @@ impl AgentService {
             format!("tcp:{}", AGENT_PORT),
         ]);
 
-        let output = tokio::process::Command::new("adb")
+        let adb_path = crate::utils::binary_resolver::find_adb()
+            .map_err(|e| anyhow!("Failed to find adb: {}", e))?;
+        let output = tokio::process::Command::new(adb_path)
             .args(&args)
             .output()
             .await
