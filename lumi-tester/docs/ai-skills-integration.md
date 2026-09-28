@@ -25,14 +25,19 @@ curl -fsSL https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/
 iwr https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install-ai.ps1 -UseB | iex
 ```
 
+The built-in command shows a client picker. To install only one client without
+the picker, use `lumi-tester ai install --client codex`, `--client claude`, or
+`--client antigravity`.
+
 ## 3. Google Antigravity Integration
 
-`lumi-tester ai install` installs the skill for both roots Antigravity
+Choose Antigravity from the `lumi-tester ai install` menu or pass
+`--client antigravity`. This installs the skill for both roots Antigravity
 discovers automatically - run it from the workspace you want the
 workspace-level copy in:
 
 ```bash
-lumi-tester ai install
+lumi-tester ai install --client antigravity
 # writes ./.agents/skills/lumi-tester-agent/ (this workspace only)
 # writes ~/.gemini/config/skills/lumi-tester-agent/ (all workspaces)
 ```
@@ -60,8 +65,13 @@ cp -r lumi-tester/ai/antigravity-skill/lumi-tester-agent ~/.gemini/config/skills
 
 ## 4. OpenAI Codex Skill Integration
 
-`lumi-tester ai install` also installs this. Codex discovers skills in
-`~/.codex/skills/`; to install manually instead:
+Choose Codex from the `lumi-tester ai install` menu or pass `--client codex`.
+Codex discovers skills in `~/.codex/skills/`:
+```bash
+lumi-tester ai install --client codex
+```
+
+To install manually instead:
 ```bash
 mkdir -p ~/.codex/skills
 cp -r lumi-tester/ai/codex-skill/lumi-tester-agent ~/.codex/skills/
@@ -69,12 +79,11 @@ cp -r lumi-tester/ai/codex-skill/lumi-tester-agent ~/.codex/skills/
 
 ## 5. Claude Code Skill Integration
 
-`lumi-tester ai install` also installs the skill for Claude Code, which
-discovers skills in `~/.claude/skills/`:
+Choose Claude Code from the `lumi-tester ai install` menu or pass
+`--client claude`. Claude Code discovers skills in `~/.claude/skills/`:
 
 ```bash
-lumi-tester ai install
-# writes ~/.claude/skills/lumi-tester-agent/ (same bundle as the Codex skill)
+lumi-tester ai install --client claude
 ```
 
 To install manually without running `ai install`:
@@ -87,6 +96,9 @@ cp -r lumi-tester/ai/codex-skill/lumi-tester-agent ~/.claude/skills/
 ## 6. Lumi Tester MCP Server (`lumi-tester-mcp`)
 
 Connect AI assistants to Lumi Tester via Model Context Protocol (MCP):
+The installer downloads the MCP package for Codex and Claude selections. Codex
+is configured automatically unless `--no-configure-codex` is used; for Claude,
+merge the generated `lumi-tester-mcp.claude.json` snippet into its MCP settings.
 
 ### Configuration snippet (`mcp_config.json` / Claude Desktop / Antigravity):
 ```json

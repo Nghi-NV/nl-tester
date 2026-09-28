@@ -12,6 +12,7 @@ import { parseAdbDevices } from './deviceDiscovery';
 import { DeviceManager } from './deviceManager';
 import { InspectorPanel } from './inspectorPanel';
 import { MockLocationPanel } from './mockLocationPanel';
+import { LumiPathLinkProvider } from './pathLinkProvider';
 import {
   LumiRuntime,
   resolveAdbExecutable,
@@ -81,6 +82,13 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.languages.registerCodeLensProvider(
       { language: 'yaml', scheme: 'file' },
       codeLensProvider
+    )
+  );
+
+  context.subscriptions.push(
+    vscode.languages.registerDocumentLinkProvider(
+      { language: 'yaml', scheme: 'file' },
+      new LumiPathLinkProvider()
     )
   );
 

@@ -139,7 +139,7 @@ Formula behavior:
 - Download the correct release tar/binary for macOS.
 - Install `lumi-tester` into Homebrew's `bin`.
 - Do not run `system install --all` automatically; print caveats telling users to run it.
-- Users who want Codex/MCP support run `lumi-tester ai install`.
+- Users who want an AI skill or MCP integration run `lumi-tester ai install` and choose the client(s) to configure.
 
 ### Scoop
 

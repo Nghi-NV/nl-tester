@@ -13,6 +13,7 @@ VSCode extension for [lumi-tester](https://github.com/Nghi-NV/nl-tester) - A pow
 - **Run File**: Click the ▶ button in editor title bar to run entire test file
 - **Run Command**: Click ▷ on any command line to run just that command
 - **Stop Test**: Cancel running tests anytime
+- **Open referenced files**: Ctrl/Cmd-click `runFlow`, command file-path values, `env.file`, path-valued `env`/`vars`, and paths resolved through `${VAR}` declared in YAML or the process environment
 
 ### 📊 Status Display
 - ⚪ Pending - Not yet executed
@@ -29,13 +30,15 @@ binary plus common Android/Web dependencies; Rust and Cargo are not required.
 iwr https://raw.githubusercontent.com/Nghi-NV/nl-tester/main/lumi-tester/scripts/install.ps1 -UseB | iex
 ```
 
-Then install the extension VSIX:
+Then install the latest extension release. The CLI detects one IDE automatically or lets you choose when it finds several:
 
-```powershell
-code --install-extension lumi-tester-0.1.19.vsix
+```bash
+lumi-tester extension install
 ```
 
-Reload VS Code after installation. The extension automatically checks `PATH`
+To also install an AI client integration, add `--ai` to choose interactively, or pass `--ai-client codex`, `--ai-client claude`, or `--ai-client antigravity`.
+
+Reload the IDE after installation. The extension automatically checks `PATH`
 and `%USERPROFILE%\.lumi-tester\bin\lumi-tester.exe`.
 
 ## Configuration

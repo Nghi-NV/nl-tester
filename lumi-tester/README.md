@@ -44,6 +44,11 @@ brew install nghi-nv/tap/lumi-tester
 lumi-tester ai install
 ```
 
+The built-in installer lets you choose Codex, Claude Code, and/or Antigravity.
+Codex and Claude Code also receive the MCP package; Antigravity receives its
+global and workspace skills. To skip the picker, pass `--client codex`,
+`--client claude`, or `--client antigravity`.
+
 macOS / Linux:
 
 ```bash

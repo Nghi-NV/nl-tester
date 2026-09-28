@@ -1,5 +1,5 @@
 use anyhow::Context;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use colored::Colorize;
 use serde::Serialize;
 use std::path::PathBuf;
@@ -341,6 +341,12 @@ enum Commands {
         json: bool,
     },
 
+    /// Install the latest Lumi Tester IDE extension
+    Extension {
+        #[command(subcommand)]
+        command: ExtensionCommands,
+    },
+
     /// Check installed and latest version of Lumi Tester CLI and VS Code Extension
     Version {
         /// GitHub repository hosting releases
@@ -368,6 +374,60 @@ enum Commands {
         #[arg(long, default_value = "false")]
         json: bool,
     },
+}
+
+#[derive(Subcommand)]
+enum ExtensionCommands {
+    /// Install the latest extension into selected IDEs, with an optional AI client integration
+    Install {
+        /// IDE target: vscode, antigravity, cursor, windsurf, vscodium, vscode-insiders, or all. If omitted, choose from detected IDEs.
+        #[arg(long, value_enum)]
+        ide: Option<ExtensionIde>,
+
+        /// Also install the AI integration. If no --ai-client is given, the CLI shows a client picker.
+        #[arg(long, default_value = "false")]
+        ai: bool,
+
+        /// AI client target (also enables AI installation); repeat or separate with commas: codex, claude, antigravity
+        #[arg(long = "ai-client", value_enum, value_delimiter = ',')]
+        ai_clients: Vec<ai::AiClient>,
+
+        /// GitHub repository hosting extension releases
+        #[arg(long, default_value = "Nghi-NV/nl-tester", env = "LUMI_TESTER_REPO")]
+        repo: String,
+    },
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum ExtensionIde {
+    #[value(name = "all")]
+    All,
+    #[value(name = "vscode", alias = "vs-code")]
+    Vscode,
+    #[value(name = "antigravity")]
+    Antigravity,
+    #[value(name = "cursor")]
+    Cursor,
+    #[value(name = "windsurf")]
+    Windsurf,
+    #[value(name = "vscodium")]
+    Vscodium,
+    #[value(name = "vscode-insiders", alias = "insiders")]
+    VscodeInsiders,
+}
+
+impl ExtensionIde {
+    fn selector(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Vscode => "vscode",
+            Self::Antigravity => "antigravity",
+            Self::Cursor => "cursor",
+            Self::Windsurf => "windsurf",
+            Self::Vscodium => "vscodium",
+            Self::VscodeInsiders => "vscode-insiders",
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -574,7 +634,7 @@ enum SystemCommands {
 
 #[derive(Subcommand)]
 enum AiCommands {
-    /// Install Codex skill and MCP server for AI-assisted test authoring/debugging
+    /// Install Lumi Tester skills and MCP integration for selected AI clients
     Install {
         /// GitHub repo that hosts release assets and skill files
         #[arg(long, default_value = "Nghi-NV/nl-tester", env = "LUMI_TESTER_REPO")]
@@ -599,6 +659,10 @@ enum AiCommands {
         /// Write snippets only; do not modify CODEX_HOME/config.toml
         #[arg(long, default_value = "false")]
         no_configure_codex: bool,
+
+        /// AI client target; repeat or separate with commas to select multiple: codex, claude, antigravity
+        #[arg(long = "client", value_enum, value_delimiter = ',')]
+        clients: Vec<ai::AiClient>,
     },
 }
 
@@ -881,6 +945,39 @@ async fn async_main() -> anyhow::Result<()> {
             .await?;
         }
 
+        Commands::Extension { command } => match command {
+            ExtensionCommands::Install {
+                ide,
+                ai: install_ai,
+                ai_clients,
+                repo,
+            } => {
+                let ai_clients = if install_ai || !ai_clients.is_empty() {
+                    ai::choose_clients(ai_clients, None)?
+                } else {
+                    Vec::new()
+                };
+                let ide_selector = ide.map(ExtensionIde::selector);
+                lumi_tester::updater::install_latest_extension(
+                    &repo,
+                    ide_selector.as_deref(),
+                )
+                .await?;
+                if !ai_clients.is_empty() {
+                    ai::install(ai::AiInstallOptions {
+                        repo,
+                        version: Some("latest".to_string()),
+                        git_ref: "main".to_string(),
+                        ai_home: None,
+                        codex_home: None,
+                        clients: ai_clients,
+                        configure_codex: true,
+                    })
+                    .await?;
+                }
+            }
+        },
+
         Commands::Version { repo, json } => {
             lumi_tester::updater::run_update(lumi_tester::updater::UpdateOptions {
                 repo,
@@ -995,6 +1092,7 @@ async fn async_main() -> anyhow::Result<()> {
                 ai_home,
                 codex_home,
                 no_configure_codex,
+                clients,
             } => {
                 let options = ai::AiInstallOptions {
                     repo,
@@ -1002,6 +1100,7 @@ async fn async_main() -> anyhow::Result<()> {
                     git_ref,
                     ai_home,
                     codex_home,
+                    clients,
                     configure_codex: !no_configure_codex,
                 };
                 ai::install(options).await?;

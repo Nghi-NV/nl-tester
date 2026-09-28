@@ -153,13 +153,15 @@ Manual download from the [lumi-tester Releases](https://github.com/Nghi-NV/nl-te
 
 ### Lumi Tester VS Code Extension
 
-Download the latest `.vsix` package from the [Extension Releases](https://github.com/Nghi-NV/nl-tester/releases?q=extension-v):
+Install the latest extension release into a supported VS Code-based IDE:
 
-- **Extension Package**: `lumi-tester-0.1.25.vsix`
-- **Installation in VS Code**:
-  ```bash
-  code --install-extension lumi-tester-0.1.25.vsix
-  ```
+```bash
+lumi-tester extension install
+```
+
+The CLI picks the only detected IDE or shows a list when it finds more than one. To choose directly, use `--ide vscode` or `--ide antigravity`; use `--ide all` only to install into every supported IDE.
+
+To install an AI client integration in the same flow, add `--ai` and choose from the displayed list. For a scripted install, use `--ai-client codex`, `--ai-client claude`, or `--ai-client antigravity`.
 
 ## 🛠️ Development
 

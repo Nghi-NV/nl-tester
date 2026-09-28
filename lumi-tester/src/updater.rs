@@ -3,7 +3,7 @@ use colored::Colorize;
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::io::IsTerminal;
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -360,6 +360,182 @@ pub fn discover_supported_ides() -> Vec<SupportedIde> {
     }
 
     ides
+}
+
+pub async fn install_latest_extension(repo: &str, ide_selector: Option<&str>) -> Result<()> {
+    let discovered_ides = discover_supported_ides();
+    let detected_names = discovered_ides
+        .iter()
+        .map(|ide| ide.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let ides = discovered_ides
+        .into_iter()
+        .filter(|ide| {
+            ide_selector
+                .map(|selector| ide_selector_matches(&ide.name, selector))
+                .unwrap_or(true)
+        })
+        .collect::<Vec<_>>();
+
+    let ides = if ide_selector.is_none() {
+        choose_supported_ides(ides)?
+    } else {
+        ides
+    };
+
+    if ides.is_empty() {
+        if ide_selector == Some("all") {
+            anyhow::bail!("No supported IDE command line tools were detected");
+        }
+        if let Some(selector) = ide_selector {
+            anyhow::bail!(
+                "IDE '{}' was not detected. Detected IDEs: {}",
+                selector,
+                if detected_names.is_empty() {
+                    "none"
+                } else {
+                    &detected_names
+                }
+            );
+        }
+        anyhow::bail!("No supported IDE command line tools were detected");
+    }
+
+    let report = fetch_version_check(repo).await?;
+    let vsix_url = report
+        .extension_download_url
+        .as_deref()
+        .ok_or_else(|| anyhow!("No VSIX asset found in the latest extension release"))?;
+
+    let version_name = report.extension_latest.trim_start_matches("extension-");
+    let vsix_name = format!("lumi-tester-{}-{}.vsix", version_name, uuid::Uuid::new_v4());
+    let vsix_path = std::env::temp_dir().join(&vsix_name);
+    let client = reqwest::Client::builder()
+        .user_agent(format!("lumi-tester/{}", env!("CARGO_PKG_VERSION")))
+        .build()?;
+
+    println!(
+        "\n{} Downloading Lumi Tester extension {}...",
+        "⬇️".cyan(),
+        report.extension_latest.cyan()
+    );
+    download_file_with_progress(&client, vsix_url, &vsix_path, &vsix_name).await?;
+
+    let vsix_path_arg = vsix_path.to_string_lossy().into_owned();
+    let mut failed_ides = Vec::new();
+    for ide in &ides {
+        println!(
+            "{} Installing into {} ({})...",
+            "🔌".cyan(),
+            ide.name,
+            ide.executable.display()
+        );
+
+        match Command::new(&ide.executable)
+            .arg("--install-extension")
+            .arg(&vsix_path_arg)
+            .arg("--force")
+            .status()
+        {
+            Ok(status) if status.success() => println!(
+                "  {} Installed latest Lumi Tester extension into {}",
+                "✓".green(),
+                ide.name.green()
+            ),
+            Ok(status) => failed_ides.push(format!("{} (exit status {})", ide.name, status)),
+            Err(error) => failed_ides.push(format!("{} ({})", ide.name, error)),
+        }
+    }
+
+    if !failed_ides.is_empty() {
+        anyhow::bail!(
+            "Could not install into {}. The VSIX is available at {}",
+            failed_ides.join(", "),
+            vsix_path.display()
+        );
+    }
+
+    let _ = std::fs::remove_file(&vsix_path);
+    Ok(())
+}
+
+fn ide_selector_matches(name: &str, selector: &str) -> bool {
+    match selector {
+        "all" => true,
+        "vscode" => name == "VS Code",
+        "antigravity" => name == "Antigravity IDE",
+        "cursor" => name == "Cursor",
+        "windsurf" => name == "Windsurf",
+        "vscodium" => name == "VSCodium",
+        "vscode-insiders" => name == "VS Code Insiders",
+        _ => false,
+    }
+}
+
+fn choose_supported_ides(ides: Vec<SupportedIde>) -> Result<Vec<SupportedIde>> {
+    match ides.as_slice() {
+        [] => anyhow::bail!("No supported IDE command line tools were detected"),
+        [_] => return Ok(ides),
+        _ if !io::stdin().is_terminal() => anyhow::bail!(
+            "Several supported IDEs were detected: {}. Run in a terminal to choose, or pass --ide vscode, --ide antigravity, --ide cursor, --ide windsurf, --ide vscodium, --ide vscode-insiders, or --ide all.",
+            ides.iter()
+                .map(|ide| ide.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        _ => {}
+    }
+
+    println!("\nSupported IDEs detected:");
+    for (index, ide) in ides.iter().enumerate() {
+        println!(
+            "  {}) {} ({})",
+            index + 1,
+            ide.name,
+            ide.executable.display()
+        );
+    }
+    println!("Enter one or more numbers separated by commas, or 'all' for every detected IDE.");
+    print!("Selection: ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let input = input.trim();
+    if input.eq_ignore_ascii_case("all") {
+        return Ok(ides);
+    }
+    if input.is_empty() {
+        anyhow::bail!("No IDE selected; rerun and choose one or more listed IDEs");
+    }
+
+    let mut selected = Vec::new();
+    for raw_index in input.split(',') {
+        let index = raw_index.trim().parse::<usize>().with_context(|| {
+            format!(
+                "Invalid IDE selection '{}'; enter a number from 1 to {}",
+                raw_index.trim(),
+                ides.len()
+            )
+        })?;
+        let ide = ides
+            .get(index.checked_sub(1).unwrap_or(usize::MAX))
+            .ok_or_else(|| {
+                anyhow!(
+                    "IDE selection {} is out of range; enter a number from 1 to {}",
+                    index,
+                    ides.len()
+                )
+            })?;
+        if !selected
+            .iter()
+            .any(|selected_ide: &SupportedIde| selected_ide.executable == ide.executable)
+        {
+            selected.push(ide.clone());
+        }
+    }
+    Ok(selected)
 }
 
 fn detect_installed_extension_version() -> Option<String> {

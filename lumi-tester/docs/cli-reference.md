@@ -17,13 +17,14 @@ Tài liệu tra cứu chi tiết và đầy đủ nhất về tất cả các c�
 | **`record`** | Ghi lại thao tác thực tế của tester và tự động sinh file YAML | `lumi-tester record --platform android -o recorded.yaml` |
 | **`studio`** | Mở ứng dụng Desktop Studio giao diện trực quan | `lumi-tester studio` |
 | **`upgrade` / `update`** | Cập nhật CLI và VS Code Extension đa IDE lên bản mới nhất | `lumi-tester upgrade --all --force` |
+| **`extension`** | Cài bản Lumi Tester IDE Extension mới nhất vào IDE được chọn | `lumi-tester extension install --ide antigravity` |
 | **`version`** | Xem phiên bản hiện tại và đối chiếu với bản mới nhất trên GitHub | `lumi-tester version --json` |
 | **`schema`** | Xuất JSON Schema chuẩn phục vụ autocompletion trong IDE | `lumi-tester schema --json` |
 | **`report`** | Tái tạo báo cáo HTML Dashboard từ file kết quả JSON có sẵn | `lumi-tester report ./output/test-results.json` |
 | **`shell`** | Terminal tương tác, hoặc `-c` để chạy thẳng 1-nhiều lệnh không cần file YAML | `lumi-tester shell -d <serial> -c 'tapOn: "Login"' --json` |
 | **`requirements-coverage`** | Đối chiếu `requirements/index.yaml` với `cases.csv` để tìm requirement chưa có testcase thật | `lumi-tester requirements-coverage requirements/index.yaml --cases cases.csv --json` |
 | **`system`** | Tự động cài đặt / cập nhật các driver và package hệ thống | `lumi-tester system install --all` |
-| **`ai`** | Cài đặt các AI Skill vào Codex, Antigravity, Claude Code | `lumi-tester ai install` |
+| **`ai`** | Chọn client rồi cài AI Skill và MCP tương ứng | `lumi-tester ai install` |
 | **`camera`** | Bộ công cụ kiểm thử thị giác & nhận diện trạng thái LED qua RTSP | `lumi-tester camera doctor` |
 | **`jig`** | Kiểm tra cổng Serial và giao tiếp với mạch kiểm thử Jig phần cứng | `lumi-tester jig ping COM5 --node 1` |
 | **`docs`** | Mở trang tài liệu web chính thức trên trình duyệt mặc định | `lumi-tester docs` |
@@ -231,9 +232,34 @@ lumi-tester upgrade --force
 lumi-tester upgrade --version v0.1.29
 ```
 
+### 3.4. `extension install` - Cài IDE Extension mới nhất
+Tải VSIX từ GitHub Extension Release mới nhất. Nếu bỏ `--ide`, CLI tự chọn IDE duy nhất được phát hiện hoặc hiện danh sách để bạn chọn khi có nhiều IDE:
+```bash
+# Chọn IDE trong danh sách được phát hiện
+lumi-tester extension install
+
+# Chỉ cài vào VS Code
+lumi-tester extension install --ide vscode
+
+# Chỉ cài vào Antigravity
+lumi-tester extension install --ide antigravity
+
+# Cài vào tất cả IDE được hỗ trợ đang có trên máy (chỉ khi yêu cầu rõ)
+lumi-tester extension install --ide all
+
+# Cài Extension và chọn AI client trong danh sách
+lumi-tester extension install --ai
+
+# Cài Extension và AI integration cho Codex
+lumi-tester extension install --ai-client codex
+```
+
+Các giá trị `--ide` được hỗ trợ: `vscode`, `antigravity`, `cursor`, `windsurf`, `vscodium`, `vscode-insiders`, `all`.
+AI client hỗ trợ: `codex`, `claude`, `antigravity`. Có thể chọn nhiều client bằng cách lặp lại `--ai-client` hoặc phân tách bằng dấu phẩy.
+
 ---
 
-### 3.4. `inspect` - Trình soi Phần tử Giao diện Trực quan
+### 3.5. `inspect` - Trình soi Phần tử Giao diện Trực quan
 Mở máy chủ Web Inspector giúp tester xem trực quan cây UI hierarchy, xem toạ độ, bounding box và nhận gợi ý selector chuẩn xác:
 ```bash
 # Bật Inspector cho Android trên cổng 9333
@@ -247,7 +273,7 @@ Nếu cổng đang bị chiếm bởi 1 tiến trình `lumi-tester inspect` cũ 
 
 ---
 
-### 3.5. `record` - Ghi lại Thao tác Người dùng ra YAML
+### 3.6. `record` - Ghi lại Thao tác Người dùng ra YAML
 Tester thao tác trực tiếp trên màn hình điện thoại, CLI sẽ lắng nghe và tự động tạo ra file kịch bản YAML:
 ```bash
 # Ghi lại thao tác trên app và lưu vào flow.yaml
@@ -256,7 +282,7 @@ lumi-tester record --platform android -o flows/recorded_flow.yaml --app com.exam
 
 ---
 
-### 3.6. `jig` - Điều khiển Mạch Kiểm thử Phần cứng
+### 3.7. `jig` - Điều khiển Mạch Kiểm thử Phần cứng
 Dùng cho kiểm thử thiết bị IoT / Smart Home (như công tắc thông minh, relay, servo, cảm biến màu LED):
 ```bash
 # Liệt kê danh sách các cổng COM / Serial đang kết nối
@@ -268,7 +294,7 @@ lumi-tester jig ping COM5 --node 1 --baudrate 115200 --json
 
 ---
 
-### 3.7. `camera` - Kiểm thử Thị giác & Trạng thái LED qua Camera RTSP
+### 3.8. `camera` - Kiểm thử Thị giác & Trạng thái LED qua Camera RTSP
 Dùng camera RTSP để đọc trạng thái nhấp nháy, đổi màu của đèn LED trên bo mạch phần cứng:
 ```bash
 # Kiểm tra môi trường Camera & AI detect
@@ -286,15 +312,20 @@ lumi-tester camera check --profile device_led_profile.json --watch
 
 ---
 
-### 3.8. `ai` - Cài đặt Skill cho AI Coding Agent
-Cài đặt trực tiếp bộ công cụ và hướng dẫn thiết kế test case vào các trợ lý AI:
+### 3.9. `ai` - Cài đặt Skill cho AI Coding Agent
+Cài đặt skill cho các AI client được chọn. Khi chạy trong terminal mà không có `--client`, CLI hiện danh sách Codex, Claude Code và Antigravity; nếu chỉ phát hiện một client thì nhấn Enter để chọn client đó. Chỉ client đã chọn mới được cài:
 ```bash
-# Tự động cài đặt vào Codex (~/.codex/skills), Claude Code (~/.claude/skills),
-# và Antigravity (workspace ./.agents/skills + global ~/.gemini/config/skills)
+# Chọn client trong danh sách
 lumi-tester ai install
+
+# Chỉ cài Codex
+lumi-tester ai install --client codex
+
+# Cài Claude Code và Antigravity
+lumi-tester ai install --client claude,antigravity
 ```
 
-### 3.9. `docs` - Mở Tài liệu Web
+### 3.10. `docs` - Mở Tài liệu Web
 Mở trang tài liệu chính thức (https://nghi-nv.github.io/nl-tester/) trên trình duyệt mặc định:
 ```bash
 lumi-tester docs
@@ -303,7 +334,7 @@ lumi-tester docs
 lumi-tester docs --print
 ```
 
-### 3.10. `which` - Kiểm tra Binary & Thư mục Đang Dùng
+### 3.11. `which` - Kiểm tra Binary & Thư mục Đang Dùng
 Hiện đường dẫn binary đang thực thi, đường dẫn binary mà PATH sẽ resolve tới, và
 các thư mục AI skill/config liên quan. Hữu ích khi một IDE/MCP client có vẻ
 đang dùng một bản `lumi-tester` cũ (build khác với bản vừa cập nhật):
@@ -316,7 +347,7 @@ Nếu binary đang chạy khác với binary mà PATH resolve tới, lệnh sẽ
 rõ ràng (`pathMismatch: true` trong JSON) - đây chính xác là nguyên nhân phổ
 biến khiến một bản fix "không có tác dụng" trong IDE dù đã build lại CLI.
 
-### 3.11. `shell` - Terminal Tương tác & Chạy Lệnh Trực Tiếp
+### 3.12. `shell` - Terminal Tương tác & Chạy Lệnh Trực Tiếp
 
 Có 2 chế độ:
 
@@ -345,7 +376,7 @@ với "lệnh trong file YAML".
 Cả 2 chế độ hiện chỉ hỗ trợ `android`, `ios`, `macos`, `windows` (chưa hỗ
 trợ `web`/`android_auto` - dùng `run`/`validate`/`list` cho 2 nền tảng đó).
 
-### 3.12. `requirements-coverage` - Đối Chiếu SRS với Testcase Thật
+### 3.13. `requirements-coverage` - Đối Chiếu SRS với Testcase Thật
 
 Đọc `requirements/index.yaml` (định dạng mô tả trong AI skill's
 `testcase-design.md`, mục "SRS Requirements Format"), gộp `requirements:`
