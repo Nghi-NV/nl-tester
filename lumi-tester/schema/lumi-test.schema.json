@@ -349,6 +349,7 @@
         "foreach",
         "generate",
         "getClipboard",
+        "getDeviceState",
         "gps",
         "hideKbd",
         "hideKeyboard",

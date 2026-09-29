@@ -38,6 +38,8 @@ pub struct ExtensionContributions {
     pub selector_packs: Vec<ExtensionSelectorPack>,
     #[serde(default)]
     pub report_views: Vec<ExtensionReportView>,
+    #[serde(default)]
+    pub inspector_guides: Vec<ExtensionInspectorGuide>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +79,18 @@ pub struct ExtensionReportView {
     pub id: String,
     pub label: String,
     pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionInspectorGuide {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub platforms: Vec<String>,
+    #[serde(default)]
+    pub selector_examples: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -253,6 +267,7 @@ fn validate_manifest(manifest: &ExtensionManifest) -> Result<(), String> {
         contributions.templates.len(),
         contributions.selector_packs.len(),
         contributions.report_views.len(),
+        contributions.inspector_guides.len(),
     ]
     .into_iter()
     .any(|count| count > MAX_CONTRIBUTIONS_PER_KIND)
@@ -263,6 +278,27 @@ fn validate_manifest(manifest: &ExtensionManifest) -> Result<(), String> {
         if template.name.trim().is_empty() || !is_safe_file_name(&template.file_name) {
             return Err(
                 "Template names must be non-empty and template file names must not contain a path"
+                    .to_string(),
+            );
+        }
+    }
+    for guide in &contributions.inspector_guides {
+        if guide.name.trim().is_empty() || guide.name.len() > 120 || guide.description.len() > 2000
+        {
+            return Err(
+                "Inspector guide names and descriptions are invalid or too long".to_string(),
+            );
+        }
+        if guide.platforms.len() > 12
+            || guide.selector_examples.len() > 128
+            || guide.platforms.iter().any(|platform| platform.len() > 64)
+            || guide
+                .selector_examples
+                .iter()
+                .any(|selector| selector.trim().is_empty() || selector.len() > 512)
+        {
+            return Err(
+                "Inspector guides may contain up to 12 platforms and 128 selector examples"
                     .to_string(),
             );
         }

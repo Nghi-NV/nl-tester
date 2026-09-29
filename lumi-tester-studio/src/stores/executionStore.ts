@@ -37,6 +37,7 @@ interface ExecutionStore {
   addResult: (result: TestResult) => void;
   upsertResult: (result: TestResult) => void;
   clearResults: () => void;
+  clearResultsForWorkspace: (workspacePath: string) => void;
 }
 
 export const useExecutionStore = create<ExecutionStore>()(
@@ -126,6 +127,16 @@ export const useExecutionStore = create<ExecutionStore>()(
         }),
 
         clearResults: () => set({ results: [] }),
+
+        clearResultsForWorkspace: workspacePath => {
+          const root = workspacePath.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+          set(state => ({
+            results: state.results.filter(result => {
+              const filePath = result.fileId.replace(/\\/g, '/').toLowerCase();
+              return filePath !== root && !filePath.startsWith(`${root}/`);
+            }),
+          }));
+        },
       };
     },
     {

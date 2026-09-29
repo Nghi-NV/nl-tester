@@ -1,6 +1,7 @@
 import React from 'react';
 import { useDeviceStore, useEditorStore, useExecutionStore, useFileStore } from '../stores';
 import { CheckCircle2, CircleAlert, Clock3, Loader2 } from 'lucide-react';
+import { GpsControl } from './GpsControl';
 
 export const StatusBar: React.FC = () => {
   const dirtyCount = useFileStore(state => state.dirtyFileIds.length);
@@ -21,6 +22,7 @@ export const StatusBar: React.FC = () => {
         {queuedRuns.length > 0 && <span className="ide-status-item"><Clock3 size={13} /> {queuedRuns.length} queued</span>}
       </div>
       <div className="ide-status-right">
+        <GpsControl />
         {validation && (
           <span
             className={`ide-status-item ide-validation-status is-${validation.state}`}

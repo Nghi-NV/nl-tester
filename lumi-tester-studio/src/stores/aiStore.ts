@@ -30,7 +30,7 @@ export const useAiStore = create<AiStore>()(persist((set) => ({
     provider: 'codex',
     binaryPath: '',
     apiKey: '',
-    model: AI_CONFIG.DEFAULT_MODEL
+    model: AI_CONFIG.CHATGPT_MODEL
   },
   isAiLoading: false,
 

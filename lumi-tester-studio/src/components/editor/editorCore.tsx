@@ -3,7 +3,7 @@ import type { Monaco } from '@monaco-editor/react';
 import * as monacoApi from 'monaco-editor/esm/vs/editor/editor.api.js';
 import type { editor } from 'monaco-editor';
 import { defineCodeverseTheme, createStepDecorations, EXECUTING_CSS } from './monacoUtils';
-import { lumiYamlPathAt, registerLumiYamlCodeLenses, registerLumiYamlFileLinks, registerLumiYamlLanguage } from './lumiYamlLanguage';
+import { lumiYamlPathAtModel, registerLumiYamlCodeLenses, registerLumiYamlFileLinks, registerLumiYamlLanguage, setLumiYamlWorkspaceFiles } from './lumiYamlLanguage';
 
 interface EditorCoreProps {
   value: string;
@@ -27,6 +27,8 @@ interface EditorCoreProps {
   onFailedStepClick?: (stepIndex: number, error: string, lineNumber: number) => void;
   language?: string;
   sourcePath?: string | null;
+  workspaceRoot?: string | null;
+  workspacePaths?: string[];
   onOpenPath?: (reference: string) => Promise<void> | void;
   diagnostics?: Array<{ message: string; line?: number; column?: number }>;
   revealPosition?: { fileId: string; lineNumber: number; column: number };
@@ -49,6 +51,8 @@ export const EditorCore: React.FC<EditorCoreProps> = ({
   onFailedStepClick,
   language = 'yaml',
   sourcePath = null,
+  workspaceRoot = null,
+  workspacePaths = [],
   onOpenPath = () => undefined,
   diagnostics = [],
   revealPosition,
@@ -59,10 +63,36 @@ export const EditorCore: React.FC<EditorCoreProps> = ({
   const isApplyingValueRef = useRef(false);
   const pendingRevealRef = useRef(revealPosition);
   const onRevealCompleteRef = useRef(onRevealComplete);
+  const sourcePathRef = useRef(sourcePath);
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
   const onOpenPathRef = useRef(onOpenPath);
+  const stepLinesMapRef = useRef(stepLinesMap);
+  const stepErrorsRef = useRef(stepErrors);
   const monaco = monacoApi as Monaco;
+  const diagnosticsRef = useRef(diagnostics);
+  diagnosticsRef.current = diagnostics;
+  stepLinesMapRef.current = stepLinesMap;
+  stepErrorsRef.current = stepErrors;
+
+  const applyDiagnostics = () => {
+    const model = editorRef.current?.getModel();
+    if (!model) return;
+    monaco.editor.setModelMarkers(model, 'lumi-tester', diagnosticsRef.current.map(diagnostic => {
+      const startLineNumber = Math.max(1, Math.min(model.getLineCount(), diagnostic.line ?? 1));
+      const maxColumn = model.getLineMaxColumn(startLineNumber);
+      const startColumn = Math.max(1, Math.min(maxColumn, diagnostic.column ?? 1));
+      return {
+        severity: monaco.MarkerSeverity.Error,
+        message: diagnostic.message,
+        startLineNumber,
+        endLineNumber: startLineNumber,
+        startColumn,
+        endColumn: Math.min(maxColumn, startColumn + 1),
+        source: 'Lumi Tester',
+      };
+    }));
+  };
 
   useEffect(() => {
     valueRef.current = value;
@@ -75,6 +105,10 @@ export const EditorCore: React.FC<EditorCoreProps> = ({
   useEffect(() => {
     onRevealCompleteRef.current = onRevealComplete;
   }, [onRevealComplete]);
+
+  useEffect(() => {
+    sourcePathRef.current = sourcePath;
+  }, [sourcePath]);
 
   useEffect(() => {
     onOpenPathRef.current = onOpenPath;
@@ -116,17 +150,11 @@ export const EditorCore: React.FC<EditorCoreProps> = ({
   }, [monaco, language, onRunAll, onRunCommand, onRunFromCommand]);
 
   useEffect(() => {
-    const model = editorRef.current?.getModel();
-    if (!monaco || !model) return;
-    monaco.editor.setModelMarkers(model, 'lumi-tester', diagnostics.map(diagnostic => ({
-      severity: monaco.MarkerSeverity.Error,
-      message: diagnostic.message,
-      startLineNumber: diagnostic.line ?? 1,
-      endLineNumber: diagnostic.line ?? 1,
-      startColumn: diagnostic.column ?? 1,
-      endColumn: (diagnostic.column ?? 1) + 1,
-      source: 'Lumi Tester',
-    })));
+    setLumiYamlWorkspaceFiles(workspaceRoot, workspacePaths);
+  }, [workspaceRoot, workspacePaths]);
+
+  useEffect(() => {
+    applyDiagnostics();
   }, [monaco, diagnostics, value]);
 
   // Initialize Theme and Completion
@@ -146,6 +174,7 @@ export const EditorCore: React.FC<EditorCoreProps> = ({
       const model = editorRef.current.getModel();
       if (model) {
         monaco.editor.setModelLanguage(model, language);
+        editorRef.current.updateOptions({ wordBasedSuggestions: language === 'yaml' ? 'off' : 'allDocuments' });
       }
     }
   }, [monaco, language]);
@@ -182,6 +211,7 @@ export const EditorCore: React.FC<EditorCoreProps> = ({
 
   const handleEditorDidMount = (editor: editor.IStandaloneCodeEditor, monaco: Monaco) => {
     editorRef.current = editor;
+    applyDiagnostics();
     applyPendingReveal();
     editor.addAction({
       id: 'lumi-tester.format-yaml',
@@ -202,87 +232,53 @@ export const EditorCore: React.FC<EditorCoreProps> = ({
     });
     requestAnimationFrame(applyPendingReveal);
 
-    // Handle Enter key to auto-indent for YAML commands
-    // Use onKeyDown to intercept Enter and handle it ourselves
+    // Indent command parameters beneath the command currently being edited.
     editor.onKeyDown((e) => {
-      if (e.keyCode === monaco.KeyCode.Enter) {
-        const model = editor.getModel();
-        if (!model) return;
+      if (e.keyCode !== monaco.KeyCode.Enter) return;
+      const model = editor.getModel();
+      const position = editor.getPosition();
+      if (!model || !position) return;
 
-        const position = editor.getPosition();
-        if (!position || position.lineNumber < 2) return;
+      const currentLine = model.getLineContent(position.lineNumber);
+      const beforeCursor = currentLine.slice(0, position.column - 1);
+      const afterCursor = currentLine.slice(position.column - 1);
+      const commandMatch = /^(\s*)-\s*[\w-]+:\s*$/.exec(beforeCursor);
+      if (!commandMatch || afterCursor.trim()) return;
 
-        // Check if previous line ends with command: (e.g., "- swipe:")
-        const prevLine = model.getLineContent(position.lineNumber - 1);
-        const prevTrimmed = prevLine.trim();
-        
-        // Match pattern: "- command:" (ends with colon and optional spaces)
-        const commandMatch = prevTrimmed.match(/^-\s*(\w+):\s*$/);
-        if (commandMatch) {
-          // Get current line content before Enter
-          const currentLine = model.getLineContent(position.lineNumber);
-          const beforeCursor = currentLine.substring(0, position.column - 1);
-          const afterCursor = currentLine.substring(position.column - 1);
-          
-          // Only handle if cursor is at end of line or line is empty
-          if (afterCursor.trim() === '' || currentLine.trim() === '') {
-            // Prevent default Enter behavior
-            e.preventDefault();
-            e.stopPropagation();
-            
-            // Calculate property indent: 4 spaces from start (2 tabs)
-            const propertyIndent = '    ';
-            
-            console.log('[Auto-Indent] Intercepting Enter for command:', {
-              command: commandMatch[1],
-              prevLine,
-              currentLine,
-              beforeCursor,
-              afterCursor,
-              position
-            });
-            
-            // Insert newline with proper indent
-            const newLine = '\n' + propertyIndent;
-            
-            editor.executeEdits('auto-indent-yaml', [{
-              range: new monaco.Range(
-                position.lineNumber,
-                position.column,
-                position.lineNumber,
-                position.column
-              ),
-              text: newLine,
-            }]);
-            
-            // Move cursor to end of indent
-            setTimeout(() => {
-              const newPosition = new monaco.Position(
-                position.lineNumber + 1,
-                propertyIndent.length + 1
-              );
-              editor.setPosition(newPosition);
-              console.log('[Auto-Indent] Completed, cursor at:', newPosition);
-            }, 0);
-          }
-        }
-      }
+      e.preventDefault();
+      e.stopPropagation();
+
+      const propertyIndent = ' '.repeat(commandMatch[1].length + 4);
+      editor.executeEdits('auto-indent-yaml', [{
+        range: new monaco.Range(
+          position.lineNumber,
+          position.column,
+          position.lineNumber,
+          position.column
+        ),
+        text: `\n${propertyIndent}`,
+      }]);
+      editor.setPosition({
+        lineNumber: position.lineNumber + 1,
+        column: propertyIndent.length + 1,
+      });
+      requestAnimationFrame(() => editor.trigger('keyboard', 'editor.action.triggerSuggest', null));
     });
 
-    // Click listener for Glyph Margin (Run Buttons and Failed Icons)
     editor.onMouseDown((e) => {
+      const model = editor.getModel();
+      if (!model) return;
+
       if (
         e.event.leftButton
         && !e.event.ctrlKey
         && !e.event.metaKey
         && e.target.type === monaco.editor.MouseTargetType.CONTENT_TEXT
         && e.target.position
-        && editor.getModel()?.getLanguageId() === 'yaml'
+        && model.getLanguageId() === 'yaml'
       ) {
-        const reference = lumiYamlPathAt(
-          editor.getModel()!.getLineContent(e.target.position.lineNumber),
-          e.target.position.column,
-        );
+        const lineNumber = e.target.position.lineNumber;
+        const reference = lumiYamlPathAtModel(model, lineNumber, e.target.position.column);
         if (reference) {
           Promise.resolve(onOpenPathRef.current(reference)).catch(error => {
             window.alert(`Could not open referenced file: ${String(error)}`);
@@ -290,25 +286,18 @@ export const EditorCore: React.FC<EditorCoreProps> = ({
         }
       }
 
-      if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
-        const lineNumber = e.target.position?.lineNumber;
-        if (!lineNumber) return;
+      if (e.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) return;
+      const lineNumber = e.target.position?.lineNumber;
+      const lines = stepLinesMapRef.current;
+      const errors = stepErrorsRef.current;
+      if (!lineNumber || !lines || !errors) return;
 
-        // Check if this is a failed step
-        if (stepErrors && stepLinesMap) {
-          // Find step index for this line (convert 1-based to 0-based)
-          const lineNumber0Based = lineNumber - 1;
-          for (const [stepIndex, stepLine] of stepLinesMap.entries()) {
-            if (stepLine === lineNumber0Based && stepErrors.has(stepIndex)) {
-              const error = stepErrors.get(stepIndex)!;
-              if (onFailedStepClickRef.current) {
-                onFailedStepClickRef.current(stepIndex, error, lineNumber0Based);
-              }
-              return;
-            }
-          }
-        }
-
+      const zeroBasedLineNumber = lineNumber - 1;
+      for (const [stepIndex, stepLine] of lines.entries()) {
+        if (stepLine !== zeroBasedLineNumber) continue;
+        const error = errors.get(stepIndex);
+        if (error) onFailedStepClickRef.current?.(stepIndex, error, zeroBasedLineNumber);
+        return;
       }
     });
   };
@@ -333,13 +322,13 @@ export const EditorCore: React.FC<EditorCoreProps> = ({
       minimap: { enabled: true },
       scrollBeyondLastLine: false,
       glyphMargin: true,
-      quickSuggestions: { other: true, comments: true, strings: true },
-      quickSuggestionsDelay: 100,
+      quickSuggestions: { other: true, comments: false, strings: true },
+      quickSuggestionsDelay: 0,
       suggestOnTriggerCharacters: true,
       acceptSuggestionOnCommitCharacter: true,
       acceptSuggestionOnEnter: 'on',
       tabCompletion: 'on',
-      wordBasedSuggestions: 'allDocuments',
+      wordBasedSuggestions: language === 'yaml' ? 'off' : 'allDocuments',
       suggestSelection: 'first',
       codeLens: true,
       links: true,
@@ -371,6 +360,27 @@ export const EditorCore: React.FC<EditorCoreProps> = ({
       instance.dispose();
       editorRef.current = null;
     };
+  }, []);
+
+  useEffect(() => {
+    const insertInspectorCommand = (event: Event) => {
+      const detail = (event as CustomEvent<{ fileId: string; value: string; inserted: boolean }>).detail;
+      const editor = editorRef.current;
+      const model = editor?.getModel();
+      if (!detail || !editor || !model || sourcePathRef.current !== detail.fileId || model.getLanguageId() !== 'yaml') return;
+
+      const position = editor.getPosition();
+      if (!position) return;
+      detail.inserted = editor.executeEdits('lumi-inspector', [{
+        range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+        text: detail.value,
+        forceMoveMarkers: true,
+      }]);
+      if (detail.inserted) editor.focus();
+    };
+
+    window.addEventListener('lumi-inspector-insert', insertInspectorCommand);
+    return () => window.removeEventListener('lumi-inspector-insert', insertInspectorCommand);
   }, []);
 
   useEffect(() => {

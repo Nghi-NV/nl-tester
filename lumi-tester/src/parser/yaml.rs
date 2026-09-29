@@ -1,10 +1,10 @@
 use super::types::{
     AssertColorParams, AssertParams, AssertParamsInput, AssertVarParams, BuildGifParams,
-    CaptureGifFrameParamsInput, ConditionalParams, GenerateParams, HttpRequestParams,
-    InputAtParams, LaunchAppParams, MockLocationParamsInput, Platform, RepeatParams, ReportParams,
-    RetryParams, ScrollUntilVisibleInput, ScrollUntilVisibleParams, SetVarParams, TapAtParams,
-    TapParams, TapParamsInput, TestCommand, TestFlow, WaitParams, WaitParamsInput,
-    ForEachParams, MatchParams, WhenParams,
+    CaptureGifFrameParamsInput, ConditionalParams, ForEachParams, GenerateParams,
+    HttpRequestParams, InputAtParams, LaunchAppParams, MatchParams, MockLocationParamsInput,
+    Platform, RepeatParams, ReportParams, RetryParams, ScrollUntilVisibleInput,
+    ScrollUntilVisibleParams, SetVarParams, TapAtParams, TapParams, TapParamsInput, TestCommand,
+    TestFlow, WaitParams, WaitParamsInput, WhenParams,
 };
 use anyhow::{Context, Result};
 use std::collections::HashMap;
@@ -59,27 +59,30 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
     }
 
     // 2. Try parsing entire content as a list of commands (legacy simple format)
-    if let Ok(commands) = parse_commands(content) {
-        return Ok(TestFlow {
-            app_id: None,
-            url: None,
-            platform: Some(Platform::default()),
-            env: None,
-            vars: None,
-            data: None,
-            default_timeout_ms: None,
-            commands,
-            tags: Vec::new(),
-            speed: None,
-            browser: None,
-            close_when_finish: None,
-            desktop_state: None,
-            cameras: None,
-            window_size: None,
-            jig: None,
-            skip: None,
-        });
-    }
+    let legacy_commands = match parse_commands(content) {
+        Ok(commands) => {
+            return Ok(TestFlow {
+                app_id: None,
+                url: None,
+                platform: Some(Platform::default()),
+                env: None,
+                vars: None,
+                data: None,
+                default_timeout_ms: None,
+                commands,
+                tags: Vec::new(),
+                speed: None,
+                browser: None,
+                close_when_finish: None,
+                desktop_state: None,
+                cameras: None,
+                window_size: None,
+                jig: None,
+                skip: None,
+            });
+        }
+        Err(error) => error,
+    };
 
     // 3. Try parsing entire content as TestFlow struct (Map with commands field)
     // We need to deserialize into a Value first to check structure/fields manually or use TestFlow struct directly
@@ -94,6 +97,10 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
 
     let value: serde_yaml::Value =
         serde_yaml::from_str(content).context("Failed to parse YAML content")?;
+
+    if matches!(&value, serde_yaml::Value::Sequence(_)) {
+        return Err(legacy_commands);
+    }
 
     if let serde_yaml::Value::Mapping(map) = value {
         let mut flow = TestFlow {
@@ -141,7 +148,10 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
         }
 
         if let Some(val) = map.get(&serde_yaml::Value::String("platform".to_string())) {
-            flow.platform = Some(serde_yaml::from_value(val.clone())?);
+            flow.platform = Some(
+                serde_yaml::from_value(val.clone())
+                    .context("Failed to parse header field: platform")?,
+            );
         }
 
         if let Some(val) = map.get(&serde_yaml::Value::String("speed".to_string())) {
@@ -165,7 +175,10 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
         }
 
         if let Some(val) = map.get(&serde_yaml::Value::String("desktopState".to_string())) {
-            flow.desktop_state = Some(serde_yaml::from_value(val.clone())?);
+            flow.desktop_state = Some(
+                serde_yaml::from_value(val.clone())
+                    .context("Failed to parse header field: desktopState")?,
+            );
         }
 
         if let Some(val) = map
@@ -193,8 +206,8 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
             // Parse commands using our custom parser helper
             if let serde_yaml::Value::Sequence(seq) = val {
                 let mut cmds = Vec::new();
-                for item in seq {
-                    if let Some(cmd) = parse_command_value(item)? {
+                for (index, item) in seq.iter().enumerate() {
+                    if let Some(cmd) = parse_command_at_index(item, index)? {
                         cmds.push(cmd);
                     }
                 }
@@ -204,8 +217,8 @@ pub fn parse_yaml_content(content: &str, _source_path: &Path) -> Result<TestFlow
             // Support 'steps' alias
             if let serde_yaml::Value::Sequence(seq) = val {
                 let mut cmds = Vec::new();
-                for item in seq {
-                    if let Some(cmd) = parse_command_value(item)? {
+                for (index, item) in seq.iter().enumerate() {
+                    if let Some(cmd) = parse_command_at_index(item, index)? {
                         cmds.push(cmd);
                     }
                 }
@@ -377,8 +390,8 @@ fn parse_commands(yaml: &str) -> Result<Vec<TestCommand>> {
 
     let mut commands = Vec::new();
 
-    for value in values {
-        if let Some(cmd) = parse_command_value(&value)? {
+    for (index, value) in values.into_iter().enumerate() {
+        if let Some(cmd) = parse_command_at_index(&value, index)? {
             commands.push(cmd);
         }
     }
@@ -391,8 +404,8 @@ pub fn parse_commands_from_value(value: &serde_yaml::Value) -> Result<Vec<TestCo
     match value {
         serde_yaml::Value::Sequence(seq) => {
             let mut cmds = Vec::new();
-            for item in seq {
-                if let Some(cmd) = parse_command_value(item)? {
+            for (index, item) in seq.iter().enumerate() {
+                if let Some(cmd) = parse_command_at_index(item, index)? {
                     cmds.push(cmd);
                 }
             }
@@ -406,6 +419,11 @@ pub fn parse_commands_from_value(value: &serde_yaml::Value) -> Result<Vec<TestCo
             }
         }
     }
+}
+
+fn parse_command_at_index(value: &serde_yaml::Value, index: usize) -> Result<Option<TestCommand>> {
+    parse_command_value(value)
+        .map_err(|error| anyhow::anyhow!("Failed to parse command #{}: {error:#}", index + 1))
 }
 
 /// Parse a single command from a YAML value
@@ -468,8 +486,11 @@ pub fn parse_command_value(value: &serde_yaml::Value) -> Result<Option<TestComma
                 if map.len() > 1 {
                     let mut remaining_map = map.clone();
                     remaining_map.remove(&when_key);
-                    let inner_cmd = parse_command_value(&serde_yaml::Value::Mapping(remaining_map))?
-                        .ok_or_else(|| anyhow::anyhow!("Failed to parse command with 'when' modifier"))?;
+                    let inner_cmd =
+                        parse_command_value(&serde_yaml::Value::Mapping(remaining_map))?
+                            .ok_or_else(|| {
+                                anyhow::anyhow!("Failed to parse command with 'when' modifier")
+                            })?;
                     let condition_json: serde_json::Value =
                         serde_yaml::from_value(when_val.clone())?;
                     return Ok(Some(TestCommand::When(WhenParams {
@@ -817,13 +838,12 @@ fn parse_command_with_params(
                 let cmds = parse_commands_from_value(v)?;
                 cases.insert(case_key, cmds);
             }
-            let default_cmds = if let Some(def_val) =
-                map.get(&serde_yaml::Value::String("default".to_string()))
-            {
-                Some(parse_commands_from_value(def_val)?)
-            } else {
-                None
-            };
+            let default_cmds =
+                if let Some(def_val) = map.get(&serde_yaml::Value::String("default".to_string())) {
+                    Some(parse_commands_from_value(def_val)?)
+                } else {
+                    None
+                };
             TestCommand::Match(MatchParams {
                 value,
                 cases,
@@ -1458,8 +1478,13 @@ fn parse_command_with_params(
                     save_as: None,
                 }
             } else {
-                serde_yaml::from_value(params.clone())
-                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None, save_as: None })
+                serde_yaml::from_value(params.clone()).unwrap_or(
+                    crate::parser::types::ServoActionParams {
+                        channel: 1,
+                        button: None,
+                        save_as: None,
+                    },
+                )
             };
             TestCommand::HwPress(p)
         }
@@ -1477,8 +1502,13 @@ fn parse_command_with_params(
                     save_as: None,
                 }
             } else {
-                serde_yaml::from_value(params.clone())
-                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None, save_as: None })
+                serde_yaml::from_value(params.clone()).unwrap_or(
+                    crate::parser::types::ServoActionParams {
+                        channel: 1,
+                        button: None,
+                        save_as: None,
+                    },
+                )
             };
             TestCommand::HwRelease(p)
         }
@@ -1501,8 +1531,13 @@ fn parse_command_with_params(
                     save_as: None,
                 }
             } else {
-                serde_yaml::from_value(params.clone())
-                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None, save_as: None })
+                serde_yaml::from_value(params.clone()).unwrap_or(
+                    crate::parser::types::ServoActionParams {
+                        channel: 1,
+                        button: None,
+                        save_as: None,
+                    },
+                )
             };
             TestCommand::HwReadServo(p)
         }
@@ -1520,8 +1555,13 @@ fn parse_command_with_params(
                     save_as: None,
                 }
             } else {
-                serde_yaml::from_value(params.clone())
-                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None, save_as: None })
+                serde_yaml::from_value(params.clone()).unwrap_or(
+                    crate::parser::types::ServoActionParams {
+                        channel: 1,
+                        button: None,
+                        save_as: None,
+                    },
+                )
             };
             TestCommand::HwReadRelay(p)
         }
@@ -1539,8 +1579,13 @@ fn parse_command_with_params(
                     save_as: None,
                 }
             } else {
-                serde_yaml::from_value(params.clone())
-                    .unwrap_or(crate::parser::types::ServoActionParams { channel: 1, button: None, save_as: None })
+                serde_yaml::from_value(params.clone()).unwrap_or(
+                    crate::parser::types::ServoActionParams {
+                        channel: 1,
+                        button: None,
+                        save_as: None,
+                    },
+                )
             };
             TestCommand::HwReadColor(p)
         }
@@ -1651,7 +1696,9 @@ fn parse_command_with_params(
                         expected: Some(vec![col.trim().to_string()]),
                         timeout_ms: None,
                     }
-                } else if ["NC1", "NC2", "NC3", "BUTTON1", "BUTTON2", "BUTTON3"].contains(&s.trim().to_uppercase().as_str()) {
+                } else if ["NC1", "NC2", "NC3", "BUTTON1", "BUTTON2", "BUTTON3"]
+                    .contains(&s.trim().to_uppercase().as_str())
+                {
                     crate::parser::types::SeeColorParams {
                         channel: crate::parser::types::parse_channel_str(s),
                         button: Some(s.trim().to_string()),
@@ -1883,7 +1930,11 @@ fn parse_command_with_params(
                     save_as: None,
                 }
             } else if params.is_null() {
-                crate::parser::types::ServoActionParams { channel: 1, button: None, save_as: None }
+                crate::parser::types::ServoActionParams {
+                    channel: 1,
+                    button: None,
+                    save_as: None,
+                }
             } else {
                 serde_yaml::from_value(params.clone())?
             };
@@ -1977,6 +2028,12 @@ fn parse_command_with_params(
             TestCommand::AssertDeviceState(p)
         }
 
+        "getDeviceState" => {
+            let p: crate::parser::types::GetDeviceStateParams =
+                serde_yaml::from_value(params.clone())?;
+            TestCommand::GetDeviceState(p)
+        }
+
         "waitDeviceState" => {
             let p: crate::parser::types::WaitDeviceStateParams =
                 serde_yaml::from_value(params.clone())?;
@@ -1990,18 +2047,17 @@ fn parse_command_with_params(
         }
 
         "waitLedPattern" | "assertDevicePattern" => {
-            let p: crate::parser::types::LedPatternParams =
-                serde_yaml::from_value(params.clone())?;
+            let p: crate::parser::types::LedPatternParams = serde_yaml::from_value(params.clone())?;
             TestCommand::WaitLedPattern(p)
         }
 
         "setWindowSize" | "resizeWindow" | "windowSize" | "setWindow" => {
-            let p: crate::parser::types::SetWindowSizeParamsInput =
-                if let Some(s) = params.as_str() {
-                    crate::parser::types::SetWindowSizeParamsInput::String(s.to_string())
-                } else {
-                    serde_yaml::from_value(params.clone())?
-                };
+            let p: crate::parser::types::SetWindowSizeParamsInput = if let Some(s) = params.as_str()
+            {
+                crate::parser::types::SetWindowSizeParamsInput::String(s.to_string())
+            } else {
+                serde_yaml::from_value(params.clone())?
+            };
             TestCommand::SetWindowSize(p)
         }
 
@@ -2231,6 +2287,24 @@ platform: android
     }
 
     #[test]
+    fn parses_get_device_state_command_from_custom_parser() {
+        let yaml = r#"
+platform: android
+---
+- getDeviceState:
+    saveAs: device_state
+"#;
+
+        let flow = parse_yaml_content(yaml, Path::new("test.yaml")).unwrap();
+        match &flow.commands[0] {
+            TestCommand::GetDeviceState(params) => {
+                assert_eq!(params.save_as, "device_state");
+            }
+            _ => panic!("Expected GetDeviceState command"),
+        }
+    }
+
+    #[test]
     fn invalid_camera_header_fails_clearly() {
         let yaml = r#"
 platform: android
@@ -2360,7 +2434,10 @@ jig:
         if let Some(ref jig) = flow.jig {
             let params = jig.resolve(None).unwrap();
             assert_eq!(params.port, "${JIG_PORT:-COM5}");
-            assert_eq!(params.wire_format, Some("${WIRE_FORMAT:-framed}".to_string()));
+            assert_eq!(
+                params.wire_format,
+                Some("${WIRE_FORMAT:-framed}".to_string())
+            );
         } else {
             panic!("Expected jig header");
         }
@@ -2543,7 +2620,10 @@ jig:
         let params = flow.jig.unwrap().resolve(None).unwrap();
         assert_eq!(params.port, "COM7");
         assert_eq!(params.node_id, Some(2));
-        assert_eq!(params.wire_format, Some("[NODE:{node}] {command}\r\n".to_string()));
+        assert_eq!(
+            params.wire_format,
+            Some("[NODE:{node}] {command}\r\n".to_string())
+        );
     }
 
     #[test]
@@ -2565,9 +2645,15 @@ platform: android
 
         match &flow.commands[0] {
             TestCommand::When(p) => {
-                assert_eq!(p.condition.get("visible").and_then(|v| v.as_str()), Some("Accept Cookies"));
+                assert_eq!(
+                    p.condition.get("visible").and_then(|v| v.as_str()),
+                    Some("Accept Cookies")
+                );
                 match p.command.as_ref() {
-                    TestCommand::TapOn(t) => assert_eq!(t.clone().into_inner().text.as_deref(), Some("Accept Cookies")),
+                    TestCommand::TapOn(t) => assert_eq!(
+                        t.clone().into_inner().text.as_deref(),
+                        Some("Accept Cookies")
+                    ),
                     _ => panic!("Expected TapOn inner command"),
                 }
             }
@@ -2578,7 +2664,9 @@ platform: android
             TestCommand::When(p) => {
                 assert_eq!(p.condition.as_str(), Some("${ENV} == 'staging'"));
                 match p.command.as_ref() {
-                    TestCommand::InputText(it) => assert_eq!(it.clone().into_inner().text.as_str(), "staging_user"),
+                    TestCommand::InputText(it) => {
+                        assert_eq!(it.clone().into_inner().text.as_str(), "staging_user")
+                    }
                     _ => panic!("Expected InputText inner command"),
                 }
             }
@@ -2587,9 +2675,12 @@ platform: android
 
         match &flow.commands[2] {
             TestCommand::When(p) => {
-                assert_eq!(p.condition.get("notVisible").and_then(|v| v.as_str()), Some("Welcome"));
+                assert_eq!(
+                    p.condition.get("notVisible").and_then(|v| v.as_str()),
+                    Some("Welcome")
+                );
                 match p.command.as_ref() {
-                    TestCommand::Back => {},
+                    TestCommand::Back => {}
                     _ => panic!("Expected Back inner command"),
                 }
             }
@@ -2640,4 +2731,3 @@ platform: android
         }
     }
 }
-

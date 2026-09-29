@@ -9,6 +9,9 @@ let currentActionType = 'tap'; // 'tap' | 'see' | 'wait' | 'drag' | 'inputText' 
 let activeTab = 'selectors'; // 'selectors' | 'attributes'
 let allApps = [];
 let selectedAppTarget = null;
+let currentQueryResults = [];
+let queryTimer = 0;
+let queryRequestId = 0;
 let scaleX = 1;
 let scaleY = 1;
 let zoomLevel = 1.0;
@@ -46,6 +49,68 @@ function initDeviceBar() {
 function requestDeviceSwitch() {
   if (window.parent === window) return;
   window.parent.postMessage({ type: 'switchDevice' }, '*');
+}
+
+function searchUiElements() {
+  const input = document.getElementById('elementQueryInput');
+  const results = document.getElementById('elementQueryResults');
+  if (!input || !results) return;
+
+  const query = input.value.trim();
+  const requestId = ++queryRequestId;
+  window.clearTimeout(queryTimer);
+  currentQueryResults = [];
+  if (!query) {
+    results.innerHTML = '';
+    results.style.display = 'none';
+    return;
+  }
+
+  results.style.display = 'block';
+  if (query.length < 2) {
+    results.innerHTML = '<div class="element-query-hint">Enter at least 2 characters to search the current screen.</div>';
+    return;
+  }
+  results.innerHTML = '<div class="element-query-hint">Searching current screen…</div>';
+
+  queryTimer = window.setTimeout(async () => {
+    try {
+      const response = await fetch(`/api/suggest-selectors?query=${encodeURIComponent(query)}&limit=30`);
+      if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
+      const data = await response.json();
+      if (requestId !== queryRequestId) return;
+      currentQueryResults = data.suggestions || [];
+
+      if (!currentQueryResults.length) {
+        results.innerHTML = `<div class="element-query-hint">No elements match “${escapeHtml(query)}”.</div>`;
+        return;
+      }
+
+      const moreCount = Math.max(0, (data.count || currentQueryResults.length) - currentQueryResults.length);
+      results.innerHTML = `
+        <div class="element-query-summary">${data.count || currentQueryResults.length} matches${moreCount ? ` · showing ${currentQueryResults.length}` : ''}</div>
+        ${currentQueryResults.map((item, index) => {
+          const label = item.text || item.content_desc || item.resource_id || item.class || 'UI element';
+          const selector = item.best_selector;
+          const detail = [item.class, item.clickable ? 'clickable' : ''].filter(Boolean).join(' · ');
+          return `<button type="button" class="element-query-result" role="option" aria-selected="false" onclick="selectSearchResult(${index})" title="${escapeHtml(selector?.yaml || '')}">
+            <span class="element-query-result-main"><strong>${escapeHtml(label)}</strong><small>${escapeHtml(detail)}</small></span>
+            ${selector ? `<code>${escapeHtml(selector.value)}</code><span class="element-query-score">${selector.score}</span>` : ''}
+          </button>`;
+        }).join('')}`;
+    } catch (error) {
+      if (requestId !== queryRequestId) return;
+      results.innerHTML = `<div class="element-query-hint is-error">Could not query this screen: ${escapeHtml(String(error))}</div>`;
+    }
+  }, 180);
+}
+
+function selectSearchResult(index) {
+  const result = currentQueryResults[index];
+  if (!result || !result.bounds) return;
+  const x = Math.round((result.bounds.left + result.bounds.right) / 2);
+  const y = Math.round((result.bounds.top + result.bounds.bottom) / 2);
+  inspectAt(x, y, x, y);
 }
 
 // Auto-attach to the app the open YAML test declares (`appId:`), passed in via the
@@ -318,6 +383,7 @@ async function capture() {
 
     syncOverlaySize();
     if (statusText) statusText.textContent = `Connected • ${d.width} × ${d.height} px`;
+    if (document.getElementById('elementQueryInput')?.value.trim()) searchUiElements();
 
   } catch (e) {
     console.error(e);
@@ -728,7 +794,7 @@ function transformYamlForAction(rawYaml, actionType) {
   if (actionType === 'inputText') {
     const attrs = currentElementData?.attributes || {};
     const textVal = attrs['text'] || attrs['hint'] || 'example_text';
-    return `${rawYaml}\n- inputText: "${escapeHtml(textVal)}"`;
+    return `${rawYaml}\n- inputText: ${JSON.stringify(textVal)}`;
   }
 
   return rawYaml;
@@ -940,13 +1006,24 @@ function insertToEditor(idx) {
   const baseYaml = s.yaml || s.value || '';
   const transformed = transformYamlForAction(baseYaml, currentActionType);
 
+  if (window.parent === window) {
+    void copyToClipboard(idx);
+    return;
+  }
+
   window.parent.postMessage({
     type: 'insertSelector',
     value: transformed,
     selector: s
   }, '*');
-  showToast('Inserted to VS Code Flow');
+  showToast('Sent to Flow');
 }
+
+window.addEventListener('message', event => {
+  if (event.source !== window.parent || event.data?.type !== 'insertSelectorResult') return;
+  if (event.data.success) showToast('Added to Flow');
+  else showToast(event.data.error || 'Could not add command to Flow');
+});
 
 // App Selection & Search
 async function loadPackages() {

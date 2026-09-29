@@ -4,13 +4,14 @@
 
 use anyhow::Result;
 use axum::{
+    http::{header, HeaderValue, Method},
     response::{Html, IntoResponse},
     routing::get,
     Router,
 };
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use super::api::{self, AppState};
 use super::screen_capture::ScreenCapture;
@@ -64,6 +65,10 @@ impl InspectorServer {
             workspace_root: self.config.workspace_root.clone(),
         });
 
+        let addr = SocketAddr::from(([127, 0, 0, 1], self.config.port));
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        let port = listener.local_addr()?.port();
+
         // Build router
         //
         // `.allow_private_network(true)` matters specifically for newer
@@ -74,19 +79,16 @@ impl InspectorServer {
         // `.permissive()` alone doesn't set this, so `curl`/direct requests to
         // this server worked fine while every `fetch()` call from inside the
         // Inspector's embedded webview iframe failed outright with "Failed to
-        // fetch" - the initial iframe navigation isn't gated by PNA, only the
-        // JS-initiated subresource requests afterward, which is exactly the
-        // failure pattern this surfaced as.
+        // fetch". Keep the PNA opt-in, while restricting CORS to the Inspector's
+        // own loopback origin so arbitrary websites cannot control a device.
         let app = Router::new()
             .route("/", get(serve_index))
             .merge(api::api_router())
-            .layer(CorsLayer::permissive().allow_private_network(true))
+            .layer(inspector_cors_layer(port))
             .with_state(state);
 
-        let addr = SocketAddr::from(([127, 0, 0, 1], self.config.port));
-
         println!("\n🔍 Inspector started!");
-        println!("   Open: http://localhost:{}", self.config.port);
+        println!("   Open: http://localhost:{port}");
         println!("   Platform: {}", self.config.platform);
         if let Some(ref serial) = self.config.device_serial {
             println!("   Device: {}", serial);
@@ -96,7 +98,6 @@ impl InspectorServer {
         }
         println!("\n   Press Ctrl+C to stop.\n");
 
-        let listener = tokio::net::TcpListener::bind(addr).await?;
         axum::serve(listener, app.into_make_service()).await?;
 
         Ok(())
@@ -104,11 +105,8 @@ impl InspectorServer {
 
     /// Start an inspector bound only to loopback for embedding inside Lumi IDE.
     pub async fn start_embedded(&self) -> Result<InspectorSession> {
-        let screen_capture = ScreenCapture::new(
-            &self.config.platform,
-            self.config.device_serial.as_deref(),
-        )
-        .await?;
+        let screen_capture =
+            ScreenCapture::new(&self.config.platform, self.config.device_serial.as_deref()).await?;
         let state = Arc::new(AppState {
             screen_capture,
             yaml_file: std::sync::Mutex::new(self.config.output_file.clone()),
@@ -117,13 +115,16 @@ impl InspectorServer {
             cached_hierarchy: std::sync::Mutex::new(None),
             workspace_root: self.config.workspace_root.clone(),
         });
-        let app = Router::new()
-            .route("/", get(serve_index))
-            .merge(api::api_router())
-            .with_state(state);
+
         let addr = SocketAddr::from(([127, 0, 0, 1], self.config.port));
         let listener = tokio::net::TcpListener::bind(addr).await?;
         let port = listener.local_addr()?.port();
+
+        let app = Router::new()
+            .route("/", get(serve_index))
+            .merge(api::api_router())
+            .layer(inspector_cors_layer(port))
+            .with_state(state);
         let (shutdown, shutdown_rx) = tokio::sync::oneshot::channel();
         let task = tokio::spawn(async move {
             axum::serve(listener, app.into_make_service())
@@ -138,6 +139,23 @@ impl InspectorServer {
             task,
         })
     }
+}
+
+fn inspector_cors_layer(port: u16) -> CorsLayer {
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::predicate(
+            move |origin: &HeaderValue, _request| is_allowed_inspector_origin(origin, port),
+        ))
+        .allow_methods([Method::GET, Method::POST])
+        .allow_headers([header::CONTENT_TYPE])
+        .allow_private_network(true)
+}
+
+fn is_allowed_inspector_origin(origin: &HeaderValue, port: u16) -> bool {
+    let Ok(origin) = origin.to_str() else {
+        return false;
+    };
+    origin == format!("http://127.0.0.1:{port}") || origin == format!("http://localhost:{port}")
 }
 
 pub struct InspectorSession {
@@ -168,7 +186,10 @@ impl InspectorSession {
 /// (requires `lsof`/`ps`, present on macOS/Linux; silently does nothing where they aren't,
 /// e.g. Windows - `bind()` still surfaces the normal "address in use" error there).
 async fn ensure_port_free(port: u16) {
-    if tokio::net::TcpListener::bind(("0.0.0.0", port)).await.is_ok() {
+    if tokio::net::TcpListener::bind(("0.0.0.0", port))
+        .await
+        .is_ok()
+    {
         // Nothing was listening - the probe listener drops (releasing the port) as this
         // function returns, before the caller's own bind() runs.
         return;
@@ -198,7 +219,9 @@ async fn ensure_port_free(port: u16) {
             .args(["-p", &pid.to_string(), "-o", "command="])
             .output()
             .await;
-        let cmdline = ps.ok().map(|o| String::from_utf8_lossy(&o.stdout).to_string());
+        let cmdline = ps
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).to_string());
         let looks_like_us = cmdline
             .as_deref()
             .map(|c| c.contains("lumi-tester") || c.contains("lumi_tester"))
@@ -229,6 +252,32 @@ async fn ensure_port_free(port: u16) {
     if killed_any {
         // Give the OS a moment to actually release the socket after kill -9.
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    }
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::is_allowed_inspector_origin;
+    use axum::http::HeaderValue;
+
+    #[test]
+    fn cors_only_allows_the_inspector_loopback_origin() {
+        assert!(is_allowed_inspector_origin(
+            &HeaderValue::from_static("http://127.0.0.1:9341"),
+            9341
+        ));
+        assert!(is_allowed_inspector_origin(
+            &HeaderValue::from_static("http://localhost:9341"),
+            9341
+        ));
+        assert!(!is_allowed_inspector_origin(
+            &HeaderValue::from_static("https://attacker.example"),
+            9341
+        ));
+        assert!(!is_allowed_inspector_origin(
+            &HeaderValue::from_static("http://127.0.0.1:9342"),
+            9341
+        ));
     }
 }
 

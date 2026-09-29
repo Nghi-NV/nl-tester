@@ -27,6 +27,42 @@ export interface WorkspaceSearchResponse {
   truncated: boolean;
 }
 
+export interface WorkspaceSearchOptions {
+  caseSensitive: boolean;
+  wholeWord: boolean;
+  regex: boolean;
+  includePattern: string;
+  excludePattern: string;
+}
+
+export interface WorkspaceReplaceResponse {
+  filesChanged: number;
+  replacements: number;
+  truncated: boolean;
+}
+
+export interface SourceControlFile {
+  path: string;
+  indexStatus: string;
+  worktreeStatus: string;
+  staged: boolean;
+  modified: boolean;
+  deleted: boolean;
+  untracked: boolean;
+  conflict: boolean;
+}
+
+export interface SourceControlSnapshot {
+  branch: string;
+  branches: string[];
+  files: SourceControlFile[];
+}
+
+export interface SourceControlDiff {
+  text: string;
+  truncated: boolean;
+}
+
 export const isTauri = () => '__TAURI_INTERNALS__' in window;
 
 // File System Wrappers
@@ -36,6 +72,11 @@ export const readDir = async (path: string, showHidden = true): Promise<Workspac
     return [];
   }
   return invoke<WorkspaceEntry[]>('read_workspace_dir', { path, showHidden });
+};
+
+export const listWorkspaceFilePaths = async (showHidden = true): Promise<string[]> => {
+  if (!isTauri()) return [];
+  return invoke<string[]>('list_workspace_file_paths', { showHidden });
 };
 
 export const readFile = async (path: string) => {
@@ -74,6 +115,14 @@ export const renamePath = async (oldPath: string, newPath: string) => {
   });
 }
 
+export const copyWorkspaceEntry = async (path: string, destination: string, name: string) => {
+  if (!isTauri()) {
+    console.warn('Tauri not detected. Mocking copyWorkspaceEntry.');
+    return;
+  }
+  return invoke<string>('copy_workspace_entry', { path, destination, name });
+}
+
 export const createDir = async (parent: string, name: string) => {
   if (!isTauri()) {
     console.warn('Tauri not detected. Mocking createDir.');
@@ -100,10 +149,44 @@ export const resolveWorkspaceFileReference = async (sourcePath: string, referenc
   return invoke<WorkspaceFileReference>('resolve_workspace_file_reference', { sourcePath, reference });
 }
 
-export const searchWorkspaceText = async (workspacePath: string, query: string) => {
+export const searchWorkspaceText = async (
+  workspacePath: string,
+  query: string,
+  scopePath: string | null = null,
+  options: WorkspaceSearchOptions = { caseSensitive: false, wholeWord: false, regex: false, includePattern: '', excludePattern: '' },
+) => {
   if (!isTauri()) throw new Error('Workspace search is available in the Lumi IDE desktop app.');
-  return invoke<WorkspaceSearchResponse>('search_workspace_text', { workspacePath, query });
+  return invoke<WorkspaceSearchResponse>('search_workspace_text', { workspacePath, query, scopePath, options });
 }
+
+export const replaceWorkspaceText = async (
+  workspacePath: string,
+  query: string,
+  replacement: string,
+  scopePath: string | null,
+  options: WorkspaceSearchOptions,
+) => {
+  if (!isTauri()) throw new Error('Workspace replace is available in the Lumi IDE desktop app.');
+  return invoke<WorkspaceReplaceResponse>('replace_workspace_text', { workspacePath, query, replacement, scopePath, options });
+}
+
+export const getSourceControlStatus = async (workspacePath: string) =>
+  invoke<SourceControlSnapshot>('source_control_status', { workspacePath });
+
+export const initializeSourceControl = async (workspacePath: string) =>
+  invoke<void>('source_control_init', { workspacePath });
+
+export const getSourceControlDiff = async (workspacePath: string, path: string, staged: boolean) =>
+  invoke<SourceControlDiff>('source_control_diff', { workspacePath, path, staged });
+
+export const stageSourceControlFile = async (workspacePath: string, path: string, stage: boolean) =>
+  invoke<void>('source_control_stage', { workspacePath, path, stage });
+
+export const switchSourceControlBranch = async (workspacePath: string, branch: string) =>
+  invoke<void>('source_control_switch_branch', { workspacePath, branch });
+
+export const commitSourceControlChanges = async (workspacePath: string, message: string) =>
+  invoke<string>('source_control_commit', { workspacePath, message });
 
 export const openDialog = async (options: any) => {
   if (!isTauri()) {

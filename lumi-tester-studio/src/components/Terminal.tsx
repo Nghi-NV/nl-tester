@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { Terminal as TerminalIcon, X, ChevronDown, Plus, CircleX } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -31,10 +31,10 @@ export const Terminal: React.FC<TerminalProps> = ({ visible, height, onToggle, o
   const runRequestVersion = useExecutionStore(state => state.runRequestVersion);
   const nextTerminalNumber = useRef(1);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const unlistenRef = useRef<UnlistenFn | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!lastRunRequest || runRequestVersion === 0) return;
+    onShow();
     setActivePanel('test-output');
     setLogs(previous => previous.some(log => log.id === `run-request-${lastRunRequest.id}`)
       ? previous
@@ -45,14 +45,15 @@ export const Terminal: React.FC<TerminalProps> = ({ visible, height, onToggle, o
           depth: 0,
           timestamp: Date.now(),
         }]);
-  }, [lastRunRequest, runRequestVersion]);
+  }, [lastRunRequest, onShow, runRequestVersion]);
 
   useEffect(() => {
+    let cancelled = false;
     let unlisten: UnlistenFn | undefined;
 
     const setupListener = async () => {
       try {
-        unlisten = await listen<any>('test-event', (event) => {
+        const stopListening = await listen<any>('test-event', (event) => {
           const payload = event.payload;
           const timestamp = Date.now();
 
@@ -155,6 +156,28 @@ export const Terminal: React.FC<TerminalProps> = ({ visible, height, onToggle, o
               });
               break;
 
+            case 'CommandRetrying':
+              const retryIndent = '    '.repeat(payload.depth || 0);
+              setLogs(prev => [...prev, {
+                id: `retry-${timestamp}-${payload.index}-${prev.length}`,
+                message: `${retryIndent}↻ ${payload.flow_name || 'Flow'} [${payload.index}] retry ${payload.attempt || 1}/${payload.max_attempts || 1}`,
+                type: 'log',
+                depth: payload.depth || 0,
+                timestamp,
+              }]);
+              break;
+
+            case 'AppCrashed':
+              const crashIndent = '    '.repeat(payload.depth || 0);
+              setLogs(prev => [...prev, {
+                id: `app-crashed-${timestamp}-${payload.command_index}-${prev.length}`,
+                message: `${crashIndent}✗ App ${payload.app_id || 'unknown'} crashed in ${payload.flow_name || 'flow'} at command [${payload.command_index}]`,
+                type: 'error',
+                depth: payload.depth || 0,
+                timestamp,
+              }]);
+              break;
+
             case 'CommandSkipped':
               const skipIndent = '    '.repeat(payload.depth || 0);
               setLogs(prev => {
@@ -196,7 +219,11 @@ export const Terminal: React.FC<TerminalProps> = ({ visible, height, onToggle, o
           }
         });
 
-        unlistenRef.current = unlisten;
+        if (cancelled) {
+          stopListening();
+          return;
+        }
+        unlisten = stopListening;
       } catch (error) {
         console.error('Failed to setup terminal listener:', error);
       }
@@ -205,11 +232,12 @@ export const Terminal: React.FC<TerminalProps> = ({ visible, height, onToggle, o
     setupListener();
 
     return () => {
+      cancelled = true;
       if (unlisten) {
         unlisten();
       }
     };
-  }, []);
+  }, [onShow]);
 
   // Auto-scroll to bottom
   useEffect(() => {

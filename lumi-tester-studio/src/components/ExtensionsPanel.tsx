@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { AlertCircle, Check, Copy, Download, FileCode2, Plus, Puzzle, RefreshCw, ShieldCheck, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { AlertCircle, Check, Copy, Download, FileCode2, Plus, Puzzle, RefreshCw, ScanSearch, ShieldCheck, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
 import { openDialog } from '../utils/tauriUtils';
 import { useEditorStore, useFileStore } from '../stores';
 
@@ -18,6 +18,7 @@ interface ExtensionManifest {
     templates: Array<{ name: string; fileName: string; content: string }>;
     selectorPacks: Array<{ name: string; description: string; selectors: string[] }>;
     reportViews: Array<{ id: string; label: string; description: string }>;
+    inspectorGuides: Array<{ name: string; description: string; platforms: string[]; selectorExamples: string[] }>;
   };
 }
 
@@ -28,10 +29,10 @@ interface InstalledExtension {
 
 const contributionCount = (manifest: ExtensionManifest) => {
   const items = manifest.contributes;
-  return items.docs.length + items.snippets.length + items.templates.length + items.selectorPacks.length + items.reportViews.length;
+  return items.docs.length + items.snippets.length + items.templates.length + items.selectorPacks.length + items.reportViews.length + items.inspectorGuides.length;
 };
 
-export const ExtensionsPanel: React.FC = () => {
+export const ExtensionsPanel: React.FC<{ onOpenInspector?: () => void }> = ({ onOpenInspector }) => {
   const projectRoot = useFileStore(state => state.projectRoot);
   const [extensions, setExtensions] = useState<InstalledExtension[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,7 +140,7 @@ export const ExtensionsPanel: React.FC = () => {
         <div>
           <span className="ide-extension-eyebrow">LUMI IDE</span>
           <h1>Lumi Extensions</h1>
-          <p>Install YAML tools and reusable test content from a Lumi extension manifest.</p>
+          <p>Install YAML tools, reusable test content, and UI Inspector guidance from a Lumi extension manifest.</p>
         </div>
         <div className="ide-extension-actions">
           <button type="button" className="ide-extension-refresh" onClick={() => void refresh()} disabled={loading} title="Refresh extensions">
@@ -190,6 +191,7 @@ export const ExtensionsPanel: React.FC = () => {
                 <span>{count} contribution{count === 1 ? '' : 's'}</span>
                 <span>{manifest.contributes.snippets.length} snippets</span>
                 <span>{manifest.contributes.templates.length} templates</span>
+                <span>{manifest.contributes.inspectorGuides.length} Inspect guides</span>
               </div>
 
               {count > 0 && (
@@ -200,6 +202,7 @@ export const ExtensionsPanel: React.FC = () => {
                     {manifest.contributes.snippets.map((snippet, index) => <details key={`snippet-${index}`}><summary>Snippet · {snippet.prefix}</summary><p>{snippet.description}</p><pre>{snippet.body}</pre><button type="button" className="ide-extension-contribution-action" disabled={!extension.enabled} onClick={() => void copySnippet(snippet.prefix, snippet.body)}><Copy size={12} /> Copy snippet</button></details>)}
                     {manifest.contributes.templates.map((template, index) => <details key={`template-${index}`}><summary>Template · {template.name} ({template.fileName})</summary><pre>{template.content}</pre><button type="button" className="ide-extension-contribution-action" disabled={!extension.enabled || !projectRoot} onClick={() => void createTemplate(template)}><Plus size={12} /> Create in workspace</button></details>)}
                     {manifest.contributes.selectorPacks.map((pack, index) => <details key={`selectors-${index}`}><summary>Selector pack · {pack.name}</summary><p>{pack.description}</p><ul>{pack.selectors.map((selector, selectorIndex) => <li key={selectorIndex}><code>{selector}</code></li>)}</ul></details>)}
+                    {manifest.contributes.inspectorGuides.map((guide, index) => <details key={`inspect-${index}`}><summary>UI Inspector · {guide.name}</summary><p>{guide.description}</p>{guide.platforms.length > 0 && <small>Platforms: {guide.platforms.join(', ')}</small>}<ul>{guide.selectorExamples.map((selector, selectorIndex) => <li key={selectorIndex}><button type="button" className="ide-extension-inspector-selector" onClick={() => void copySnippet('Inspector selector', selector)}><code>{selector}</code><Copy size={12} /></button></li>)}</ul><button type="button" className="ide-extension-contribution-action" disabled={!extension.enabled || !onOpenInspector} onClick={onOpenInspector}><ScanSearch size={12} /> Open UI Inspector</button></details>)}
                     {manifest.contributes.reportViews.map(view => <div className="ide-extension-report-view" key={view.id}><strong>Report view · {view.label}</strong><span>{view.description}</span></div>)}
                   </div>
                 </details>

@@ -21,6 +21,7 @@
   --ide-raised: #2d2d2d;
   --ide-hover: #2a2d2e;
   --ide-border: #3c3c3c;
+  --ide-border-hover: #505050;
   --ide-border-soft: #2b2b2b;
   --ide-text: #cccccc;
   --ide-muted: #9d9d9d;
@@ -81,12 +82,138 @@ button:disabled {
 }
 
 button:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible,
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible,
 [tabindex]:focus-visible {
   outline: 1px solid var(--ide-accent-hover);
   outline-offset: -1px;
+}
+
+.ide-form-control {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 6px 9px;
+  color: var(--ide-text);
+  caret-color: var(--ide-accent-hover);
+  background: var(--ide-surface);
+  border: 1px solid var(--ide-border);
+  border-radius: var(--ide-radius-sm);
+  outline: none;
+  box-shadow: none;
+  color-scheme: dark;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.ide-form-control::placeholder {
+  color: var(--ide-subtle);
+  opacity: 1;
+}
+
+.ide-form-control:hover:not(:disabled) {
+  border-color: var(--ide-border-hover);
+}
+
+.ide-form-control:focus {
+  border-color: var(--ide-accent);
+  outline: none;
+  box-shadow: none;
+}
+
+.ide-form-control:disabled {
+  color: var(--ide-subtle);
+  background: var(--ide-activity);
+  cursor: not-allowed;
+}
+
+.ide-form-control--compact {
+  min-height: 26px;
+  padding: 3px 6px;
+}
+
+.ide-form-control--multiline {
+  min-height: 50px;
+  padding: 9px 11px;
+  line-height: 1.45;
+}
+
+.ide-ai-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  align-items: end;
+  gap: 8px;
+  min-width: 0;
+  padding: 3px;
+  border: 1px solid var(--ide-border);
+  border-radius: 10px;
+  background: var(--ide-surface);
+  transition: border-color 140ms ease;
+}
+
+.ide-ai-composer:focus-within {
+  border-color: var(--ide-accent);
+}
+
+.ide-ai-composer__input,
+.ide-ai-composer__input:focus {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 56px;
+  max-height: 140px;
+  box-sizing: border-box;
+  padding: 8px 6px;
+  color: var(--ide-text);
+  caret-color: var(--ide-accent-hover);
+  line-height: 1.45;
+  color-scheme: dark;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  outline: none;
+  box-shadow: none;
+  resize: none;
+}
+
+.ide-ai-composer__input::placeholder {
+  color: var(--ide-subtle);
+  opacity: 1;
+}
+
+select.ide-form-control,
+.ide-test-filters select,
+.ide-git-branch select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%239ca3af' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: 12px 12px;
+}
+
+select.ide-form-control {
+  padding-right: 28px;
+  background-position: right 8px center;
+}
+
+.ide-test-filters select {
+  padding-right: 22px;
+  background-position: right 1px center;
+}
+
+.ide-git-branch select {
+  padding-right: 24px;
+  background-position: right 5px center;
+}
+
+.ide-form-control--accent-text {
+  color: var(--ide-accent-hover);
+}
+
+.ide-form-control:-webkit-autofill,
+.ide-form-control:-webkit-autofill:hover,
+.ide-form-control:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ide-text);
+  -webkit-box-shadow: 0 0 0 1000px var(--ide-surface) inset;
 }
 
 ::selection {

@@ -1,4 +1,4 @@
-use super::WorkspaceState;
+use super::{collect_file_paths, WorkspaceState};
 use std::fs;
 use std::path::Path;
 use tempfile::tempdir;
@@ -39,6 +39,37 @@ fn directory_listing_shows_gitignored_files_and_respects_hidden_file_toggle() {
 }
 
 #[test]
+fn workspace_file_path_index_includes_nested_ignored_files_and_respects_hidden_toggle() {
+    let root = tempdir().unwrap();
+    fs::create_dir_all(root.path().join("flows/nested")).unwrap();
+    fs::create_dir_all(root.path().join("ignored-dir")).unwrap();
+    fs::create_dir_all(root.path().join(".private")).unwrap();
+    fs::create_dir_all(root.path().join(".git/objects")).unwrap();
+    fs::write(root.path().join(".gitignore"), "ignored-dir/\n").unwrap();
+    fs::write(root.path().join(".env"), "TOKEN=local").unwrap();
+    fs::write(
+        root.path().join("flows/nested/login.yaml"),
+        "---\n- wait: 1\n",
+    )
+    .unwrap();
+    fs::write(root.path().join("ignored-dir/fixture.json"), "{}").unwrap();
+    fs::write(root.path().join(".private/secrets.yaml"), "hidden").unwrap();
+    fs::write(root.path().join(".git/objects/internal"), "git data").unwrap();
+
+    let all_paths = collect_file_paths(root.path(), true).unwrap();
+    assert!(all_paths.contains(&".env".to_string()));
+    assert!(all_paths.contains(&"flows/nested/login.yaml".to_string()));
+    assert!(all_paths.contains(&"ignored-dir/fixture.json".to_string()));
+    assert!(all_paths.contains(&".private/secrets.yaml".to_string()));
+    assert!(!all_paths.iter().any(|path| path.starts_with(".git/")));
+
+    let visible_paths = collect_file_paths(root.path(), false).unwrap();
+    assert!(visible_paths.contains(&"flows/nested/login.yaml".to_string()));
+    assert!(visible_paths.contains(&"ignored-dir/fixture.json".to_string()));
+    assert!(!visible_paths.iter().any(|path| path.starts_with('.')));
+}
+
+#[test]
 fn workspace_rejects_parent_traversal_and_outside_paths() {
     let root = tempdir().unwrap();
     let outside = tempdir().unwrap();
@@ -59,7 +90,11 @@ fn relative_yaml_file_references_resolve_inside_workspace_only() {
     let root = tempdir().unwrap();
     fs::create_dir_all(root.path().join("flows/subflows")).unwrap();
     fs::create_dir_all(root.path().join("shared")).unwrap();
-    fs::write(root.path().join("flows/subflows/main.yaml"), "---\n- wait: 1\n").unwrap();
+    fs::write(
+        root.path().join("flows/subflows/main.yaml"),
+        "---\n- wait: 1\n",
+    )
+    .unwrap();
     fs::write(root.path().join("shared/data.csv"), "id\n1\n").unwrap();
     let workspace = open_workspace(root.path());
     let source = root.path().join("flows/subflows/main.yaml");

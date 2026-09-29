@@ -33,6 +33,15 @@ export const DeviceSelector: React.FC = () => {
   }, [refreshAllDevices]);
 
   useEffect(() => {
+    const openDeviceSelector = () => {
+      setIsOpen(true);
+      void refreshAllDevices();
+    };
+    window.addEventListener('lumi-open-device-selector', openDeviceSelector);
+    return () => window.removeEventListener('lumi-open-device-selector', openDeviceSelector);
+  }, [refreshAllDevices]);
+
+  useEffect(() => {
     if (!isOpen) return;
     const closeOnOutsidePointer = (event: PointerEvent) => {
       if (event.target instanceof Node && !rootRef.current?.contains(event.target)) setIsOpen(false);

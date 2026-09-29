@@ -92,6 +92,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
   },
   {
     name: 'stopApp',
+    aliases: ['stop'],
     category: 'App Management',
     description: 'Stop the current application',
     hasParams: false
@@ -131,6 +132,17 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     description: 'Select display for interaction (Android Auto)',
     hasParams: true,
     snippet: 'selectDisplay: "${1:0}"'
+  },
+  {
+    name: 'focusApp',
+    aliases: ['switchApp'],
+    category: 'App Management',
+    description: 'Choose which running app or window selectors target',
+    hasParams: true,
+    snippet: 'focusApp: "$1"',
+    params: [
+      { name: 'target', type: 'string', description: 'App bundle ID, app name, process name, or window title' }
+    ]
   },
 
   // Interaction
@@ -211,6 +223,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
   },
   {
     name: 'doubleTap',
+    aliases: ['doubleTapOn'],
     category: 'Interaction',
     description: 'Double tap on an element',
     hasParams: true,
@@ -285,6 +298,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
   },
   {
     name: 'longPress',
+    aliases: ['longPressOn'],
     category: 'Interaction',
     description: 'Long press on an element (1000ms)',
     hasParams: true,
@@ -529,6 +543,45 @@ export const LUMI_COMMANDS: LumiCommand[] = [
         params: SELECTOR_PARAMS
       }
     ]
+  },
+  {
+    name: 'click',
+    category: 'Interaction',
+    description: 'Click a web element by text or selector',
+    hasParams: true,
+    snippet: 'click: "$1"',
+    params: [
+      { name: 'text', type: 'string', description: 'Visible text to click' },
+      { name: 'selector', type: 'string', description: 'Web selector for the target element' }
+    ]
+  },
+  {
+    name: 'pinch',
+    category: 'Interaction',
+    description: 'Perform a two-finger pinch gesture to zoom in or out',
+    hasParams: true,
+    snippet: 'pinch:\n    direction: "${1|open,close|}"\n    percent: ${2:60}',
+    params: [
+      { name: 'direction', type: 'string', description: 'open to zoom in, close to zoom out' },
+      { name: 'at', type: 'object', description: 'Gesture center point or element selector' },
+      { name: 'percent', type: 'number', description: 'Finger spread as a percentage (0-100)' },
+      { name: 'duration', type: 'number', description: 'Gesture duration in milliseconds' }
+    ],
+    platforms: ['android', 'ios']
+  },
+  {
+    name: 'shove',
+    category: 'Interaction',
+    description: 'Perform a two-finger vertical drag to tilt a map camera',
+    hasParams: true,
+    snippet: 'shove:\n    direction: "${1|up,down|}"\n    distance: ${2:300}',
+    params: [
+      { name: 'direction', type: 'string', description: 'up to tilt into 3D, down to return to top-down' },
+      { name: 'at', type: 'object', description: 'Gesture center point or element selector' },
+      { name: 'distance', type: 'number', description: 'Finger travel distance in device pixels' },
+      { name: 'duration', type: 'number', description: 'Gesture duration in milliseconds' }
+    ],
+    platforms: ['android', 'ios']
   },
   {
     name: 'drag',
@@ -900,7 +953,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Assertions',
     description: 'Assert variable value',
     hasParams: true,
-    snippet: 'assertVar:\n    name: "$1"\n    equals: "$2"'
+    snippet: 'assertVar:\n    name: "${1:variable_name}"\n    expected: "${2:expected_value}"'
   },
   {
     name: 'assertColor',
@@ -1016,28 +1069,28 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Control Flow',
     description: 'Repeat commands',
     hasParams: true,
-    snippet: 'repeat:\n    times: ${1:5}\n    commands:\n        - $0'
+    snippet: 'repeat:\n    times: ${1:5}\n    commands:\n        - see: "${2:Expected text}"'
   },
   {
     name: 'retry',
     category: 'Control Flow',
     description: 'Retry commands on failure',
     hasParams: true,
-    snippet: 'retry:\n    times: ${1:3}\n    commands:\n        - $0'
+    snippet: 'retry:\n    maxRetries: ${1:3}\n    commands:\n        - see: "${2:Expected text}"'
   },
   {
     name: 'conditional',
     category: 'Control Flow',
     description: 'If-else condition',
     hasParams: true,
-    snippet: 'conditional:\n    if:\n        - see: "$1"\n    then:\n        - $0'
+    snippet: 'conditional:\n    condition:\n      visible: "${1:Expected text}"\n    then:\n      - see: "${2:Expected text}"\n    else:\n      - see: "${3:Fallback text}"'
   },
   {
     name: 'when',
     category: 'Control Flow',
     description: 'Execute nested commands when condition is true',
     hasParams: true,
-    snippet: 'when:\n    condition: ${1:true}\n    commands:\n        - $0'
+    snippet: 'when:\n    condition: { visible: "${1:Expected text}" }\n    commands:\n        - see: "${2:Expected text}"'
   },
   {
     name: 'forEach',
@@ -1045,7 +1098,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Control Flow',
     description: 'Declarative array iteration loop over items or objects',
     hasParams: true,
-    snippet: 'forEach:\n    item: ${1:item}\n    in: ${2:[1, 2, 3]}\n    commands:\n        - $0',
+    snippet: 'forEach:\n    item: ${1:item}\n    in: ${2:[1, 2, 3]}\n    commands:\n        - see: "${3:Expected text}"',
     params: [
       { name: 'item', type: 'string', description: 'Iteration variable name (default: item)' },
       { name: 'in', type: 'array', description: 'List of values or variable reference (${MY_LIST})' },
@@ -1057,7 +1110,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Control Flow',
     description: 'Declarative branching by pattern or variable value (replaces nested switch/case)',
     hasParams: true,
-    snippet: 'match: "${1:\\${ROLE\\}}"\n    cases:\n        ${2:admin}:\n            - $0\n    default:\n        - $3',
+    snippet: 'match: "${1:\\${ROLE\\}}"\n  cases:\n    ${2:admin}:\n      - see: "${3:Expected text}"\n  default:\n    - see: "${4:Fallback text}"',
     params: [
       { name: 'value', type: 'string', description: 'Expression or variable to match against' },
       { name: 'cases', type: 'object', description: 'Mapping of case values to command lists' },
@@ -1103,7 +1156,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
   // Media
   {
     name: 'takeScreenshot',
-    aliases: ['screenshot'],
+    aliases: ['screenshot', 'takeSnapshot', 'snapshot'],
     category: 'Media',
     description: 'Take a screenshot',
     hasParams: true,
@@ -1118,6 +1171,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
   },
   {
     name: 'stopRecording',
+    aliases: ['stopRecord'],
     category: 'Media',
     description: 'Stop video recording',
     hasParams: false
@@ -1134,7 +1188,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Media',
     description: 'Stop GIF capture and save',
     hasParams: true,
-    snippet: 'stopGifCapture: "$1.gif"'
+    snippet: 'stopGifCapture:\n    output: "${1:output.gif}"'
   },
 
   // Mock Location
@@ -1227,13 +1281,14 @@ export const LUMI_COMMANDS: LumiCommand[] = [
   },
   {
     name: 'airplaneMode',
+    aliases: ['toggleAirplaneMode'],
     category: 'System',
     description: 'Toggle airplane mode',
     hasParams: false
   },
   {
     name: 'setOrientation',
-    aliases: ['rotate'],
+    aliases: ['rotate', 'rotateScreen'],
     category: 'System',
     description: 'Set screen orientation',
     hasParams: true,
@@ -1241,6 +1296,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
   },
   {
     name: 'setLocale',
+    aliases: ['locale'],
     category: 'System',
     description: 'Set device locale (Android only)',
     hasParams: true,
@@ -1249,6 +1305,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
   },
   {
     name: 'sendLarkMessage',
+    aliases: ['sendlarkmessage', 'lark'],
     category: 'System',
     description: 'Send a notification to Lark/Feishu',
     hasParams: true,
@@ -1274,7 +1331,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Clipboard',
     description: 'Get clipboard to variable',
     hasParams: true,
-    snippet: 'getClipboard:\n    name: "$1"'
+    snippet: 'getClipboard: "${1:clipboard_content}"'
   },
   {
     name: 'assertClipboard',
@@ -1339,14 +1396,22 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'File Transfer',
     description: 'Push file to device',
     hasParams: true,
-    snippet: 'pushFile:\n    src: "$1"\n    dest: "$2"'
+    snippet: 'pushFile:\n    source: "$1"\n    destination: "$2"',
+    params: [
+      { name: 'source', type: 'string', description: 'Workspace file to copy to the device', required: true },
+      { name: 'destination', type: 'string', description: 'Destination path on the device', required: true },
+    ],
   },
   {
     name: 'pullFile',
     category: 'File Transfer',
     description: 'Pull file from device',
     hasParams: true,
-    snippet: 'pullFile:\n    src: "$1"\n    dest: "$2"'
+    snippet: 'pullFile:\n    source: "$1"\n    destination: "$2"',
+    params: [
+      { name: 'source', type: 'string', description: 'Source path on the device', required: true },
+      { name: 'destination', type: 'string', description: 'Workspace path to save the file to', required: true },
+    ],
   },
 
   // Deep Link
@@ -1394,7 +1459,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Performance',
     description: 'Assert performance metrics are within thresholds',
     hasParams: true,
-    snippet: 'assertPerformance:\n    ${1|cpu,memory,fps|}: ${2:50}',
+    snippet: 'assertPerformance:\n    metric: "${1|cpu,memory,fps,jank|}"\n    limit: "${2:80%}"',
     params: [
       { name: 'cpu', type: 'number', description: 'Max CPU usage %' },
       { name: 'memory', type: 'number', description: 'Max memory in MB' },
@@ -1451,7 +1516,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Media',
     description: 'Build GIF from captured frames',
     hasParams: true,
-    snippet: 'buildGif:\n    output: "${1:output.gif}"\n    delay: ${2:500}',
+    snippet: 'buildGif:\n    frames: ["${1:frame1}"]\n    output: "${2:output.gif}"\n    delay: ${3:500}',
     params: [
       { name: 'output', type: 'string', description: 'Output GIF file path' },
       { name: 'delay', type: 'number', description: 'Delay between frames in ms' },
@@ -1505,7 +1570,7 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Report',
     description: 'Export test report',
     hasParams: true,
-    snippet: 'exportReport:\n    format: "${1|html,json|}"\n    output: "${2:report}"',
+    snippet: 'exportReport:\n    path: "${1:report.json}"\n    format: "${2|json,html|}"',
     params: [
       { name: 'format', type: 'string', description: 'Report format: html, json' },
       { name: 'output', type: 'string', description: 'Output file path' }
@@ -1670,6 +1735,19 @@ export const LUMI_COMMANDS: LumiCommand[] = [
     category: 'Hardware Automation',
     description: 'Disconnect hardware Jig controller',
     hasParams: false
+  },
+  {
+    name: 'hwPing',
+    category: 'Hardware Automation',
+    description: 'Ping the hardware controller and optionally save its response',
+    hasParams: true,
+    snippet: 'hwPing: ${1:1}',
+    params: [
+      { name: 'port', type: 'string', description: 'Serial port override' },
+      { name: 'baudrate', type: 'number', description: 'Serial baud rate override' },
+      { name: 'nodeId', type: 'number', description: 'Hardware controller node ID' },
+      { name: 'saveAs', type: 'string', description: 'Variable name for the ping response' }
+    ]
   },
   {
     name: 'hwPowerOn',

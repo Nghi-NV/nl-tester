@@ -558,8 +558,7 @@ Ví dụ đầy đủ các tham số:
 ```yaml
 - assertVar:
     name: "user_name"
-    equals: "John Doe"
-    contains: "John"
+    expected: "John Doe"
 ```
 
 ### `generate`
@@ -596,7 +595,6 @@ Ví dụ đầy đủ các tham số:
 ```yaml
 - retry:
     maxRetries: 3
-    delayMs: 1000
     commands:
       - tap: "Submit"
       - see: "Success"

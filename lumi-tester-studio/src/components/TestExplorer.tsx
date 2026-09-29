@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import yaml from 'js-yaml';
-import { BadgeCheck, CircleAlert, Filter, FolderOpen, ListChecks, Play, Search, Square, XCircle } from 'lucide-react';
+import { BadgeCheck, Check, CircleAlert, Filter, FolderOpen, ListChecks, Loader2, Play, Search, ShieldCheck, Square, XCircle } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 import { useDeviceStore, useEditorStore, useExecutionStore, useFileStore } from '../stores';
 import { FileNode, TestResult } from '../types';
 import { runTestFlow } from '../services/runnerService';
@@ -11,6 +12,19 @@ interface LumiTestFile {
   content: string;
   platform: string;
   tags: string[];
+}
+
+interface ValidationIssue {
+  id: string;
+  name: string;
+  message: string;
+  line?: number;
+  column?: number;
+}
+
+interface YamlValidationResponse {
+  valid: boolean;
+  diagnostics: Array<{ message: string; line?: number; column?: number }>;
 }
 
 const getMetadata = (content: string) => {
@@ -47,7 +61,18 @@ export const TestExplorer: React.FC = () => {
   const [tag, setTag] = useState('all');
   const [platform, setPlatform] = useState('all');
   const [isLoading, setIsLoading] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationProgress, setValidationProgress] = useState(0);
+  const [validation, setValidation] = useState<{ checked: number; issues: ValidationIssue[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const validationRunId = useRef(0);
+
+  useEffect(() => {
+    validationRunId.current += 1;
+    setIsValidating(false);
+    setValidation(null);
+    setValidationProgress(0);
+  }, [projectRoot]);
 
   useEffect(() => {
     if (!projectRoot) {
@@ -132,6 +157,65 @@ export const TestExplorer: React.FC = () => {
     }).catch(runError => setError(String(runError)));
   };
 
+  const validateWorkspace = async () => {
+    if (!tests.length) return;
+    const currentRunId = ++validationRunId.current;
+    const testsToValidate = tests;
+    setIsValidating(true);
+    setValidation(null);
+    setValidationProgress(0);
+    setError(null);
+    const issues: ValidationIssue[] = [];
+    let nextIndex = 0;
+    let checked = 0;
+    const worker = async () => {
+      while (currentRunId === validationRunId.current && nextIndex < testsToValidate.length) {
+        const test = testsToValidate[nextIndex++];
+        try {
+          const result = await invoke<YamlValidationResponse>('validate_yaml_content', {
+            path: test.id,
+            content: test.content,
+          });
+          if (currentRunId !== validationRunId.current) return;
+          if (!result.valid) {
+            const diagnostic = result.diagnostics[0];
+            issues.push({
+              id: test.id,
+              name: test.name,
+              message: diagnostic?.message ?? 'YAML validation failed',
+              line: diagnostic?.line,
+              column: diagnostic?.column,
+            });
+          }
+        } catch (validationError) {
+          if (currentRunId !== validationRunId.current) return;
+          issues.push({ id: test.id, name: test.name, message: String(validationError), line: 1, column: 1 });
+        }
+        checked += 1;
+        if (checked === testsToValidate.length || checked % 8 === 0) setValidationProgress(checked);
+      }
+    };
+
+    try {
+      await Promise.all(Array.from({ length: Math.min(4, testsToValidate.length) }, () => worker()));
+      if (currentRunId !== validationRunId.current) return;
+      issues.sort((left, right) => left.id.localeCompare(right.id));
+      setValidation({ checked, issues });
+    } finally {
+      if (currentRunId === validationRunId.current) setIsValidating(false);
+    }
+  };
+
+  const openValidationIssue = async (issue: ValidationIssue) => {
+    if (!projectRoot) return;
+    const normalizedRoot = projectRoot.replace(/\\/g, '/').replace(/\/+$/, '');
+    const normalizedFile = issue.id.replace(/\\/g, '/');
+    const relativePath = normalizedFile.startsWith(`${normalizedRoot}/`)
+      ? normalizedFile.slice(normalizedRoot.length + 1)
+      : normalizedFile;
+    await useFileStore.getState().openSearchResult(relativePath, issue.line ?? 1, issue.column ?? 1);
+  };
+
   const statusIcon = (path: string) => {
     const result = lastResultFor(results, path);
     if (!result) return null;
@@ -145,9 +229,14 @@ export const TestExplorer: React.FC = () => {
     <section className="ide-side-view" aria-label="Test Explorer">
       <header className="ide-side-view-header">
         <span>TEST EXPLORER</span>
-        <button type="button" title="Queue all filtered tests" disabled={filteredTests.length === 0} onClick={() => void runTests(filteredTests, true)}>
-          <Play size={14} />
-        </button>
+        <div className="ide-side-view-header-actions">
+          <button type="button" title="Validate every YAML flow in this workspace" aria-label="Validate every YAML flow in this workspace" disabled={tests.length === 0 || isValidating} onClick={() => void validateWorkspace()}>
+            {isValidating ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+          </button>
+          <button type="button" title="Queue all filtered tests" aria-label="Queue all filtered tests" disabled={filteredTests.length === 0} onClick={() => void runTests(filteredTests, true)}>
+            <Play size={14} />
+          </button>
+        </div>
       </header>
       <div className="ide-test-filters">
         <label className="ide-test-search"><Search size={13} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Filter tests" /></label>
@@ -158,6 +247,18 @@ export const TestExplorer: React.FC = () => {
         <span>{filteredTests.length} tests</span>
         <span>{selectedPlatform} · {selectedDevice || 'select device'}</span>
       </div>
+      {isValidating && <div className="ide-test-validation-progress"><Loader2 size={13} className="animate-spin" /> Validating {validationProgress}/{tests.length} YAML flows</div>}
+      {validation && (
+        <div className={`ide-test-validation-summary${validation.issues.length ? ' has-errors' : ' is-valid'}`}>
+          <div><span>{validation.issues.length ? <CircleAlert size={14} /> : <Check size={14} />}{validation.issues.length ? `${validation.issues.length} files need attention` : `All ${validation.checked} YAML flows are valid`}</span></div>
+          {validation.issues.slice(0, 100).map(issue => (
+            <button type="button" key={issue.id} title={`${issue.id}:${issue.line ?? 1} · ${issue.message}`} onClick={() => void openValidationIssue(issue)}>
+              <strong>{issue.name}{issue.line ? `:${issue.line}` : ''}</strong><small>{issue.message}</small>
+            </button>
+          ))}
+          {validation.issues.length > 100 && <small className="ide-test-validation-more">Showing first 100 issues.</small>}
+        </div>
+      )}
       <div className="ide-test-list">
         {isLoading && <p className="ide-view-empty">Discovering test flows…</p>}
         {!isLoading && !projectRoot && <p className="ide-view-empty">Open a workspace to discover Lumi test flows.</p>}

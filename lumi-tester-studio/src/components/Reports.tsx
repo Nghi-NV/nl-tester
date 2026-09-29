@@ -1,5 +1,6 @@
 import React from 'react';
 import { useExecutionStore, useEditorStore } from '../stores';
+import { useFileStore } from '../stores';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line
@@ -13,7 +14,18 @@ import { ConfirmModal } from './ConfirmModal';
 import { StepDetailModal } from './StepDetailModal';
 
 export const Reports: React.FC = () => {
-  const { results, clearResults } = useExecutionStore();
+  const allResults = useExecutionStore(state => state.results);
+  const clearResults = useExecutionStore(state => state.clearResults);
+  const clearResultsForWorkspace = useExecutionStore(state => state.clearResultsForWorkspace);
+  const projectRoot = useFileStore(state => state.projectRoot);
+  const results = React.useMemo(() => {
+    if (!projectRoot) return allResults;
+    const root = projectRoot.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+    return allResults.filter(result => {
+      const filePath = result.fileId.replace(/\\/g, '/').toLowerCase();
+      return filePath === root || filePath.startsWith(`${root}/`);
+    });
+  }, [allResults, projectRoot]);
   const setActiveView = useEditorStore(state => state.setActiveView);
   const [selectedRun, setSelectedRun] = React.useState<TestResult | null>(null);
   const [selectedBatchId, setSelectedBatchId] = React.useState<string | null>(null);
@@ -93,7 +105,7 @@ export const Reports: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `nexus_report_${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `lumi_report_${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -105,7 +117,8 @@ export const Reports: React.FC = () => {
   };
 
   const confirmClearHistory = () => {
-    clearResults();
+    if (projectRoot) clearResultsForWorkspace(projectRoot);
+    else clearResults();
     setShowClearConfirm(false);
   };
 
@@ -119,7 +132,10 @@ export const Reports: React.FC = () => {
           >
             <ArrowLeft size={20} />
           </button>
-          <h1 className="text-xl font-bold text-white tracking-tight">Test Analytics Dashboard</h1>
+          <div>
+            <h1 className="text-xl font-bold text-white tracking-tight">Test Analytics Dashboard</h1>
+            <p className="text-xs text-slate-500 mt-1">{projectRoot ? `Workspace · ${projectRoot.split(/[\\/]/).filter(Boolean).pop()}` : 'All stored workspaces'}</p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -372,9 +388,11 @@ export const Reports: React.FC = () => {
       {/* Confirm Modal */}
       <ConfirmModal
         isOpen={showClearConfirm}
-        title="Clear Execution History?"
-        message="Are you sure you want to delete all test execution history? This action cannot be undone."
-        confirmLabel="Yes, Clear All"
+        title={projectRoot ? 'Clear Workspace Execution History?' : 'Clear Execution History?'}
+        message={projectRoot
+          ? `Delete stored test execution history for ${projectRoot.split(/[\\/]/).filter(Boolean).pop()}? Other workspaces will be kept.`
+          : 'Delete all stored test execution history? This action cannot be undone.'}
+        confirmLabel={projectRoot ? 'Clear Workspace' : 'Yes, Clear All'}
         isDangerous={true}
         onConfirm={confirmClearHistory}
         onCancel={() => setShowClearConfirm(false)}

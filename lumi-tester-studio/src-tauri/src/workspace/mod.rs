@@ -21,6 +21,49 @@ pub struct WorkspaceEntry {
     pub is_directory: bool,
 }
 
+pub(crate) fn collect_file_paths(root: &Path, show_hidden: bool) -> Result<Vec<String>, String> {
+    let root_for_filter = root.to_path_buf();
+    let mut walker = WalkBuilder::new(root);
+    walker
+        .hidden(!show_hidden)
+        .git_ignore(false)
+        .require_git(false)
+        .git_exclude(false)
+        .parents(false)
+        .follow_links(false)
+        .filter_entry(move |entry| {
+            entry.path() == root_for_filter
+                || !entry.path().file_name().is_some_and(|name| name == ".git")
+        });
+
+    let mut paths = Vec::new();
+    for item in walker.build() {
+        let Ok(entry) = item else {
+            continue;
+        };
+        let path = entry.path();
+        let Ok(metadata) = fs::symlink_metadata(path) else {
+            continue;
+        };
+        let is_file = if metadata.file_type().is_symlink() {
+            fs::canonicalize(path)
+                .map(|target| target.starts_with(root) && target.is_file())
+                .unwrap_or(false)
+        } else {
+            metadata.is_file()
+        };
+        if !is_file {
+            continue;
+        }
+
+        if let Ok(relative_path) = path.strip_prefix(root) {
+            paths.push(relative_path.to_string_lossy().replace('\\', "/"));
+        }
+    }
+    paths.sort();
+    Ok(paths)
+}
+
 impl WorkspaceState {
     fn root(&self) -> Result<PathBuf, String> {
         self.root
@@ -279,6 +322,78 @@ impl WorkspaceState {
         }
         fs::rename(source, &target).map_err(|error| error.to_string())?;
         Ok(target)
+    }
+
+    fn copy_entry(
+        &self,
+        requested: &Path,
+        destination: &Path,
+        name: &str,
+    ) -> Result<PathBuf, String> {
+        validate_entry_name(name)?;
+        let root = self.root()?;
+        let source = self.resolve_entry(requested)?;
+        if source == root {
+            return Err("The workspace root cannot be copied".to_string());
+        }
+        let destination = self.resolve_existing(destination)?;
+        if !destination.is_dir() {
+            return Err("The destination is not a directory".to_string());
+        }
+        if source.is_dir() && destination.starts_with(&source) {
+            return Err("A folder cannot be copied into itself".to_string());
+        }
+
+        let target = self.resolve_new_entry(&destination.join(name))?;
+        if fs::symlink_metadata(&target).is_ok() {
+            return Err("A file or folder with that name already exists".to_string());
+        }
+
+        copy_entry_contents(&source, &target)?;
+        Ok(target)
+    }
+}
+
+fn copy_entry_contents(source: &Path, destination: &Path) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(source).map_err(|error| error.to_string())?;
+    if metadata.file_type().is_symlink() {
+        return Err("Symbolic links cannot be copied from the Explorer".to_string());
+    }
+    if metadata.is_file() {
+        let mut source_file = fs::File::open(source).map_err(|error| error.to_string())?;
+        let mut destination_file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(destination)
+            .map_err(|error| error.to_string())?;
+        let result = (|| {
+            std::io::copy(&mut source_file, &mut destination_file)
+                .map_err(|error| error.to_string())?;
+            destination_file
+                .set_permissions(metadata.permissions())
+                .map_err(|error| error.to_string())
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(destination);
+        }
+        result
+    } else if metadata.is_dir() {
+        fs::create_dir(destination).map_err(|error| error.to_string())?;
+        let result = (|| {
+            for entry in fs::read_dir(source).map_err(|error| error.to_string())? {
+                let entry = entry.map_err(|error| error.to_string())?;
+                let child_destination = destination.join(entry.file_name());
+                copy_entry_contents(&entry.path(), &child_destination)?;
+            }
+            fs::set_permissions(destination, metadata.permissions())
+                .map_err(|error| error.to_string())
+        })();
+        if result.is_err() {
+            let _ = fs::remove_dir_all(destination);
+        }
+        result
+    } else {
+        Err("This workspace entry cannot be copied".to_string())
     }
 }
 

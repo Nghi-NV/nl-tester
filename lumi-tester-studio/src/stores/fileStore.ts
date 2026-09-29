@@ -13,6 +13,8 @@ import {
   createDir,
   createFile,
   deletePath,
+  copyWorkspaceEntry,
+  listWorkspaceFilePaths,
   openWorkspace,
   readDir,
   readFile,
@@ -35,11 +37,13 @@ interface FileStore {
   showHiddenFiles: boolean;
   dirtyFileIds: string[];
   fileValidation: Record<string, FileValidation>;
+  workspacePaths: string[];
   loadProject: (path: string) => Promise<void>;
   addFile: (parentId: string | null, type: 'file' | 'folder', name: string) => Promise<void>;
   deleteFile: (id: string) => Promise<void>;
   renameFile: (id: string, newName: string) => Promise<void>;
   moveFile: (id: string, newParentId: string | null, index: number) => Promise<void>;
+  copyEntry: (id: string, newParentId: string, newName: string) => Promise<void>;
   updateFileContent: (id: string, content: string) => void;
   setFileValidation: (id: string, validation?: FileValidation) => void;
   saveFile: (id: string) => Promise<void>;
@@ -49,11 +53,16 @@ interface FileStore {
   setShowHiddenFiles: (show: boolean) => Promise<void>;
   getFileContentByName: (name: string) => string | null;
   loadContent: (id: string) => Promise<void>;
+  revealFileInExplorer: (id: string) => Promise<void>;
   loadDescendantYamlFiles: (id: string) => Promise<FileNode[]>;
   openReferencedFile: (sourcePath: string, reference: string) => Promise<string>;
+  openWorkspaceFile: (relativePath: string) => Promise<string>;
   openSearchResult: (relativePath: string, lineNumber: number, column: number) => Promise<void>;
   refresh: () => Promise<void>;
+  refreshWorkspacePaths: () => Promise<void>;
 }
+
+let workspacePathScanVersion = 0;
 
 const collectOpenDirectories = (nodes: FileNode[]): Set<string> => {
   const open = new Set<string>();
@@ -159,6 +168,7 @@ export const useFileStore = create<FileStore>((set, get) => ({
   showHiddenFiles: true,
   dirtyFileIds: [],
   fileValidation: {},
+  workspacePaths: [],
 
   loadProject: async (path: string) => {
     set({ isLoading: true });
@@ -166,7 +176,8 @@ export const useFileStore = create<FileStore>((set, get) => ({
       const workspace = await openWorkspace(path);
       const files = await buildFileTree(workspace.path, get().showHiddenFiles);
       useEditorStore.getState().closeAllFiles();
-      set({ files, projectRoot: workspace.path, dirtyFileIds: [] });
+      set({ files, projectRoot: workspace.path, dirtyFileIds: [], workspacePaths: [] });
+      void get().refreshWorkspacePaths();
       localStorage.setItem('lumi_project_root', workspace.path);
     } catch (error) {
       console.error('Failed to load project', error);
@@ -186,7 +197,30 @@ export const useFileStore = create<FileStore>((set, get) => ({
       collectLoadedDirectories(files),
       openDirectories,
     );
-    set({ files: preserveDirtyContent(refreshed, files, dirtyFileIds) });
+    set({ files: preserveDirtyContent(refreshed, files, dirtyFileIds), workspacePaths: [] });
+    void get().refreshWorkspacePaths();
+  },
+
+  refreshWorkspacePaths: async () => {
+    const requestVersion = ++workspacePathScanVersion;
+    const { projectRoot } = get();
+    if (!projectRoot) {
+      set({ workspacePaths: [] });
+      return;
+    }
+
+    try {
+      // Keep hidden files such as .env in path completion even when Explorer hides them.
+      const workspacePaths = await listWorkspaceFilePaths(true);
+      const current = get();
+      if (requestVersion !== workspacePathScanVersion
+        || current.projectRoot !== projectRoot) return;
+      set({ workspacePaths });
+    } catch (error) {
+      if (requestVersion === workspacePathScanVersion) {
+        console.warn('Could not index workspace paths for YAML completion', error);
+      }
+    }
   },
 
   addFile: async (parentId, type, name) => {
@@ -230,6 +264,15 @@ export const useFileStore = create<FileStore>((set, get) => ({
     const newPath = await pathJoin(destination, source.name);
     await renamePath(id, newPath);
     useEditorStore.getState().replaceFilePath(id, newPath);
+    await get().refresh();
+  },
+
+  copyEntry: async (id, newParentId, newName) => {
+    if (!findFileById(get().files, id)) return;
+    if (get().dirtyFileIds.some(path => path === id || path.startsWith(`${id}/`) || path.startsWith(`${id}\\`))) {
+      await get().saveAllFiles();
+    }
+    await copyWorkspaceEntry(id, newParentId, newName);
     await get().refresh();
   },
 
@@ -285,6 +328,31 @@ export const useFileStore = create<FileStore>((set, get) => ({
     set(state => ({
       files: updateNodeInTree(state.files, id, current => ({ ...current, children, isOpen: true })),
     }));
+  },
+
+  revealFileInExplorer: async id => {
+    const root = get().projectRoot;
+    if (!root) return;
+
+    const normalizedRoot = root.replace(/\\/g, '/').replace(/\/+$/g, '') || '/';
+    const normalizedFile = id.replace(/\\/g, '/').replace(/\/+$/g, '');
+    const rootPrefix = normalizedRoot.endsWith('/') ? normalizedRoot : `${normalizedRoot}/`;
+    if (!normalizedFile.startsWith(rootPrefix)) return;
+
+    const segments = normalizedFile.slice(rootPrefix.length).split('/').filter(Boolean);
+    if (segments.length === 0) return;
+
+    let parent = root;
+    for (const segment of segments.slice(0, -1)) {
+      parent = await pathJoin(parent, segment);
+      const node = findFileById(get().files, parent);
+      if (node?.type !== 'folder') return;
+      if (!node.isOpen) await get().toggleFolder(parent);
+    }
+
+    const target = await pathJoin(root, ...segments);
+    const targetNode = findFileById(get().files, target);
+    if (targetNode?.type === 'folder' && !targetNode.isOpen) await get().toggleFolder(target);
   },
 
   setShowHiddenFiles: async show => {
@@ -353,12 +421,14 @@ export const useFileStore = create<FileStore>((set, get) => ({
     return resolved.path;
   },
 
-  openSearchResult: async (relativePath, lineNumber, column) => {
+  openWorkspaceFile: async relativePath => {
     const root = get().projectRoot;
     if (!root) throw new Error('Open a workspace first.');
-    const names = relativePath.split(/[\\/]/).filter(Boolean);
-    if (names.length === 0 || names.some(name => name === '.' || name === '..')) {
-      throw new Error('The search result path is invalid.');
+    const normalizedPath = relativePath.replace(/\\/g, '/');
+    const names = normalizedPath.split('/').filter(Boolean);
+    if (!normalizedPath || normalizedPath.startsWith('/') || /^[a-z]:\//i.test(normalizedPath)
+      || !names.length || names.some(name => name === '.' || name === '..')) {
+      throw new Error('The workspace path is invalid.');
     }
 
     const ids: string[] = [];
@@ -373,6 +443,11 @@ export const useFileStore = create<FileStore>((set, get) => ({
     set(state => ({
       files: insertReferencedFile(state.files, ids, names, 0, content, preserveContent),
     }));
+    return filePath;
+  },
+
+  openSearchResult: async (relativePath, lineNumber, column) => {
+    const filePath = await get().openWorkspaceFile(relativePath);
     useEditorStore.getState().openFileAt(filePath, lineNumber, column);
   },
 }));

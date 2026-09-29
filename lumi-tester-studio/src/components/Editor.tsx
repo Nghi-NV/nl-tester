@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useFileStore, useEditorStore, useExecutionStore, useDeviceStore, findFile, useExecutionStateStore } from '../stores';
+import { useFileStore, useEditorStore, useExecutionStore, useDeviceStore, findFile, getAllDescendantFiles, useExecutionStateStore } from '../stores';
 import { Terminal, AlertTriangle, FileJson, X, FolderOpen, Square, Braces, Loader2, CheckCircle2, CircleAlert, Clock3 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { runTestFlow } from '../services/runnerService';
@@ -32,9 +32,25 @@ interface EditorProps {
 export const Editor: React.FC<EditorProps> = ({ onOpenHelp, onOpenProject }) => {
     const files = useFileStore(state => state.files);
     const projectRoot = useFileStore(state => state.projectRoot);
+    const indexedWorkspacePaths = useFileStore(state => state.workspacePaths);
+    const workspacePaths = useMemo(() => {
+        if (indexedWorkspacePaths.length) return indexedWorkspacePaths;
+        if (!projectRoot) return [];
+        const root = projectRoot.replace(/\\/g, '/').replace(/\/+$/, '');
+        const prefix = root.endsWith('/') ? root : `${root}/`;
+        return [...new Set(files.flatMap(getAllDescendantFiles)
+            .filter(file => file.type === 'file')
+            .map(file => {
+                const path = file.id.replace(/\\/g, '/');
+                return path.startsWith(prefix) ? path.slice(prefix.length) : '';
+            })
+            .filter(Boolean))]
+            .sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' }));
+    }, [files, indexedWorkspacePaths, projectRoot]);
     const updateFileContent = useFileStore(state => state.updateFileContent);
     const saveFile = useFileStore(state => state.saveFile);
     const saveAllFiles = useFileStore(state => state.saveAllFiles);
+    const revealFileInExplorer = useFileStore(state => state.revealFileInExplorer);
     const setFileValidation = useFileStore(state => state.setFileValidation);
     const dirtyFileIds = useFileStore(state => state.dirtyFileIds);
     const openReferencedFile = useFileStore(state => state.openReferencedFile);
@@ -364,7 +380,10 @@ export const Editor: React.FC<EditorProps> = ({ onOpenHelp, onOpenProject }) => 
                         return (
                             <div
                                 key={fileId}
-                                onClick={() => openFile(fileId)}
+                                onClick={() => {
+                                    if (activeFileId === fileId) void revealFileInExplorer(fileId);
+                                    openFile(fileId);
+                                }}
                                 className={clsx(
                                     "group flex items-center gap-2 px-3 py-1.5 min-w-[120px] max-w-[180px] border-r border-slate-800 cursor-pointer text-xs",
                                     active
@@ -487,6 +506,8 @@ export const Editor: React.FC<EditorProps> = ({ onOpenHelp, onOpenProject }) => 
                                 onFailedStepClick={handleFailedStepClick}
                                 language={getEditorLanguage(activeNode.name)}
                                 sourcePath={activeFileId}
+                                workspaceRoot={projectRoot}
+                                workspacePaths={workspacePaths}
                                 onOpenPath={handleOpenReferencedPath}
                                 diagnostics={diagnostics}
                                 revealPosition={pendingReveal?.fileId === activeFileId ? pendingReveal : undefined}

@@ -60,7 +60,7 @@ export const SettingsModal: React.FC<Props> = ({ onClose }) => {
                   placeholder="Key"
                   value={v.key}
                   onChange={(e) => updateVar(idx, 'key', e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-cyan-500 outline-none flex-1"
+                  className="ide-form-control text-sm flex-1"
                 />
                 <div className="text-slate-600">=</div>
                 <input
@@ -68,7 +68,7 @@ export const SettingsModal: React.FC<Props> = ({ onClose }) => {
                   placeholder="Value"
                   value={v.value}
                   onChange={(e) => updateVar(idx, 'value', e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-cyan-300 focus:border-cyan-500 outline-none flex-1 font-mono"
+                  className="ide-form-control ide-form-control--accent-text text-sm flex-1 font-mono"
                 />
                 <button
                   onClick={() => removeVar(idx)}

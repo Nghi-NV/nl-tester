@@ -172,6 +172,15 @@
         </div>
       </section>
 
+      <section class="element-query-section" aria-label="Find UI elements">
+        <label class="element-query-title" for="elementQueryInput">Find UI elements <span>text · ID · label · type</span></label>
+        <div class="element-query-input-wrap">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input id="elementQueryInput" type="search" placeholder="Search this screen…" aria-label="Search UI elements" oninput="searchUiElements()" onkeydown="if(event.key==='Enter') selectSearchResult(0)">
+        </div>
+        <div id="elementQueryResults" class="element-query-results" role="listbox" aria-label="Matching UI elements" style="display:none"></div>
+      </section>
+
       <!-- Studio Tab Navigation -->
       <nav class="studio-tab-bar" id="tabBar" style="display:none">
         <button class="studio-tab active" id="tabSelectorsBtn" onclick="switchTab('selectors')">

@@ -72,6 +72,17 @@ pub fn read_workspace_dir(
 }
 
 #[tauri::command]
+pub async fn list_workspace_file_paths(
+    show_hidden: bool,
+    workspace: State<'_, WorkspaceState>,
+) -> Result<Vec<String>, String> {
+    let root = workspace.root()?;
+    tauri::async_runtime::spawn_blocking(move || super::collect_file_paths(&root, show_hidden))
+        .await
+        .map_err(|error| format!("Workspace path indexing failed: {error}"))?
+}
+
+#[tauri::command]
 pub async fn read_workspace_file(
     path: String,
     workspace: State<'_, WorkspaceState>,
@@ -133,5 +144,17 @@ pub fn move_workspace_entry(
 ) -> Result<String, String> {
     workspace
         .move_entry(Path::new(&path), Path::new(&destination), &name)
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn copy_workspace_entry(
+    path: String,
+    destination: String,
+    name: String,
+    workspace: State<'_, WorkspaceState>,
+) -> Result<String, String> {
+    workspace
+        .copy_entry(Path::new(&path), Path::new(&destination), &name)
         .map(|path| path.to_string_lossy().into_owned())
 }

@@ -137,6 +137,7 @@ hwReadColor,,hardware,Read color sensor RGBC and confidence,number|object,channe
 hwReadSensorLight,,hardware,Read color sensor LED light state,number|none,channel,,,all,- hwReadSensorLight: 1,
 assertDeviceState,checkDevice,camera,Assert camera profile region LED state,object,button|expect,camera|withinMs,no,all,"- assertDeviceState: { button: btn1, expect: RED }",
 waitDeviceState,,camera,Wait for camera profile region LED state,object,button|expect,camera|withinMs,no,all,"- waitDeviceState: { button: btn1, expect: GREEN }",
+getDeviceState,,camera,Read camera profile regions into a JSON variable,object,saveAs,camera,no,all,"- getDeviceState: { saveAs: device_state }",Stores all camera region states in the named JSON variable
 assertDeviceTransition,assertDeviceChange,camera,Assert LED state transition from state to state,object,button|from|to,camera|withinMs,no,all,"- assertDeviceTransition: { button: btn1, from: OFF, to: RED }",
 waitLedPattern,assertDevicePattern,camera,Wait for camera LED blink pattern,object,button|expect|count,withinMs|pulseMinMs|pulseMaxMs,no,all,"- waitLedPattern: { button: btn1, expect: PINK, count: 3 }",
 drag,dragFromTo,interaction,Continuous drag / Slider gesture,object,from|to,duration|durationMs,no,android|ios|web|macos|windows,"- drag: { from: { id: slider, offset: ""0%,50%"" }, to: { id: slider, offset: ""80%,50%"" }, duration: 500 }",Controls sliders seekbars and drag gestures

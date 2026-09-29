@@ -11,15 +11,17 @@ const TestExplorer = lazy(() => import('./components/TestExplorer').then(module 
 const InspectorPanel = lazy(() => import('./components/InspectorPanel').then(module => ({ default: module.InspectorPanel })));
 const ExtensionsPanel = lazy(() => import('./components/ExtensionsPanel').then(module => ({ default: module.ExtensionsPanel })));
 const WorkspaceSearchPanel = lazy(() => import('./components/WorkspaceSearchPanel').then(module => ({ default: module.WorkspaceSearchPanel })));
-import { useEditorStore, useAiStore, useFileStore, useExecutionStore } from './stores';
+const SourceControlPanel = lazy(() => import('./components/SourceControlPanel').then(module => ({ default: module.SourceControlPanel })));
+import { useEditorStore, useAiStore, useFileStore } from './stores';
 import { ActivityBar, ActivityId } from './components/ActivityBar';
 import { CommandPalette, PaletteCommand } from './components/CommandPalette';
+import { QuickOpen } from './components/QuickOpen';
 import { StatusBar } from './components/StatusBar';
 import { PaneResizeHandle } from './components/PaneResizeHandle';
 import { openDialog } from './utils/tauriUtils';
 import { isTauri } from './utils/tauriUtils';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Box, Search, Sparkles, Terminal as TerminalIcon } from 'lucide-react';
+import { Box, ScanSearch, Search, Sparkles, Terminal as TerminalIcon } from 'lucide-react';
 import { HashRouter } from 'react-router-dom';
 import { clsx } from 'clsx';
 import './App.css';
@@ -31,26 +33,37 @@ const App: React.FC = () => {
   const loadProject = useFileStore(state => state.loadProject);
   const projectRoot = useFileStore(state => state.projectRoot);
   const saveAllFiles = useFileStore(state => state.saveAllFiles);
-  const runRequestVersion = useExecutionStore(state => state.runRequestVersion);
   const [activeActivity, setActiveActivity] = useState<ActivityId | null>('explorer');
   const [isPaletteOpen, setPaletteOpen] = useState(false);
+  const [isQuickOpenOpen, setQuickOpenOpen] = useState(false);
+  const [isInspectorOpen, setInspectorOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [searchScope, setSearchScope] = useState<string | null>(null);
   const [explorerWidth, setExplorerWidth] = useState(276);
   const [aiWidth, setAiWidth] = useState(360);
+  const [inspectorWidth, setInspectorWidth] = useState(420);
   const [terminalHeight, setTerminalHeight] = useState(280);
   const [isTerminalVisible, setTerminalVisible] = useState(false);
+  const showTerminal = useCallback(() => setTerminalVisible(true), []);
+  const searchInFolder = useCallback((relativePath: string) => {
+    setSearchScope(relativePath);
+    setActiveActivity('search');
+    setActiveView('editor');
+  }, [setActiveView]);
+  const revealInExplorer = useCallback(() => {
+    setActiveActivity('explorer');
+    setActiveView('editor');
+  }, [setActiveView]);
+  const openInspector = useCallback(() => {
+    setInspectorOpen(true);
+    setActiveView('editor');
+  }, [setActiveView]);
 
-  useEffect(() => {
-    if (runRequestVersion > 0) setTerminalVisible(true);
-  }, [runRequestVersion]);
-
-  const openProject = useCallback(async () => {
-    const selected = await openDialog({ directory: true, multiple: false });
-    if (!selected || typeof selected !== 'string') return;
+  const openWorkspacePath = useCallback(async (path: string) => {
     try {
       if (useFileStore.getState().dirtyFileIds.length > 0) await saveAllFiles();
-      await loadProject(selected);
+      await loadProject(path);
       setActiveActivity('explorer');
       setActiveView('editor');
     } catch (error) {
@@ -58,28 +71,41 @@ const App: React.FC = () => {
     }
   }, [loadProject, saveAllFiles, setActiveView]);
 
+  const openProject = useCallback(async () => {
+    const selected = await openDialog({ directory: true, multiple: false });
+    if (!selected || typeof selected !== 'string') return;
+    await openWorkspacePath(selected);
+  }, [openWorkspacePath]);
+
   const commands = useMemo<PaletteCommand[]>(() => [
+    { id: 'quick-open', label: 'File: Quick Open', detail: 'Open a file by name (⌘P / Ctrl+P)', run: () => setQuickOpenOpen(true) },
     { id: 'open-folder', label: 'File: Open Folder...', detail: 'Open a Lumi Tester workspace', run: openProject },
     { id: 'toggle-explorer', label: 'View: Toggle Explorer', run: () => setActiveActivity(value => value === 'explorer' ? null : 'explorer') },
     { id: 'workspace-search', label: 'Search: Find in Files', detail: 'Search text across the open workspace', run: () => { setActiveActivity('search'); setActiveView('editor'); } },
     { id: 'test-explorer', label: 'Lumi: Show Test Explorer', run: () => { setActiveActivity('tests'); setActiveView('editor'); } },
-    { id: 'inspector', label: 'Lumi: Show UI Inspector', run: () => { setActiveActivity('inspector'); setActiveView('inspector'); } },
+    { id: 'inspector', label: 'Lumi: Show UI Inspector', run: openInspector },
     { id: 'extensions', label: 'Lumi: Manage Extensions', run: () => { setActiveActivity('extensions'); setActiveView('extensions'); } },
     { id: 'show-editor', label: 'View: Show Editor', run: () => setActiveView('editor') },
     { id: 'show-reports', label: 'Lumi: Show Test Reports', run: () => setActiveView('report') },
     { id: 'toggle-ai', label: 'Lumi: Toggle AI Assistant', run: toggleAi },
     { id: 'toggle-terminal', label: 'View: Toggle Terminal', detail: 'Show or hide the panel', run: () => setTerminalVisible(value => !value) },
     { id: 'settings', label: 'Preferences: Open Settings', run: () => setShowSettings(true) },
-  ], [openProject, setActiveView, toggleAi]);
+  ], [openInspector, openProject, setActiveView, setQuickOpenOpen, toggleAi]);
 
   const handleActivitySelect = (activity: ActivityId | 'settings') => {
     if (activity === 'settings') {
       setShowSettings(true);
       return;
     }
+    if (activity === 'inspector') {
+      if (!isInspectorOpen) setActiveView('editor');
+      else window.dispatchEvent(new Event('lumi-inspector-stop'));
+      setInspectorOpen(value => !value);
+      return;
+    }
     if (activity === activeActivity) {
       setActiveActivity(null);
-      if (activity === 'reports' || activity === 'inspector' || activity === 'extensions') setActiveView('editor');
+      if (activity === 'reports' || activity === 'extensions') setActiveView('editor');
       if (activity === 'ai' && isAiOpen) toggleAi();
       return;
     }
@@ -89,7 +115,6 @@ const App: React.FC = () => {
       if (!isAiOpen) toggleAi();
       setActiveView('editor');
     } else if (activity === 'reports') setActiveView('report');
-    else if (activity === 'inspector') setActiveView('inspector');
     else if (activity === 'extensions') setActiveView('extensions');
     else setActiveView('editor');
   };
@@ -100,6 +125,11 @@ const App: React.FC = () => {
         event.preventDefault();
         setActiveActivity('search');
         setActiveView('editor');
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'p') {
+        event.preventDefault();
+        setQuickOpenOpen(true);
         return;
       }
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'p') {
@@ -139,6 +169,24 @@ const App: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isTauri()) return;
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void getCurrentWindow().onDragDropEvent(event => {
+      if (event.payload.type !== 'drop') return;
+      const path = event.payload.paths[0];
+      if (path) void openWorkspacePath(path);
+    }).then(listener => {
+      if (cancelled) listener();
+      else unlisten = listener;
+    }).catch(error => console.error('Could not listen for dropped workspaces', error));
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [openWorkspacePath]);
+
   React.useEffect(() => {
     const savedRoot = localStorage.getItem('lumi_project_root');
     if (savedRoot) {
@@ -151,9 +199,10 @@ const App: React.FC = () => {
       <div className="ide-workbench">
         <ActivityBar
           active={activeActivity}
+          inspectorOpen={isInspectorOpen}
           onSelect={handleActivitySelect}
         />
-        {activeActivity === 'explorer' && <Sidebar width={explorerWidth} />}
+        {activeActivity === 'explorer' && <Sidebar width={explorerWidth} onSearchInFolder={searchInFolder} />}
         {activeActivity === 'explorer' && (
           <PaneResizeHandle
             orientation="vertical"
@@ -161,9 +210,10 @@ const App: React.FC = () => {
             onResize={delta => setExplorerWidth(width => Math.max(220, Math.min(520, width + delta)))}
           />
         )}
-        {activeActivity === 'search' && <Suspense fallback={<div className="ide-loading-surface">Loading search…</div>}><WorkspaceSearchPanel /></Suspense>}
+        {activeActivity === 'search' && <Suspense fallback={<div className="ide-loading-surface">Loading search…</div>}><WorkspaceSearchPanel scopePath={searchScope} onClearScope={() => setSearchScope(null)} /></Suspense>}
+        {activeActivity === 'source-control' && <Suspense fallback={<div className="ide-loading-surface">Loading Source Control…</div>}><SourceControlPanel /></Suspense>}
         {activeActivity === 'tests' && <Suspense fallback={<div className="ide-loading-surface">Loading tests…</div>}><TestExplorer /></Suspense>}
-        {activeActivity === 'extensions' && activeView !== 'extensions' && <Suspense fallback={<div className="ide-loading-surface">Loading extensions…</div>}><ExtensionsPanel /></Suspense>}
+        {activeActivity === 'extensions' && activeView !== 'extensions' && <Suspense fallback={<div className="ide-loading-surface">Loading extensions…</div>}><ExtensionsPanel onOpenInspector={openInspector} /></Suspense>}
 
         <main className="ide-main-area">
           <header className="ide-titlebar">
@@ -174,6 +224,17 @@ const App: React.FC = () => {
             </div>
             <div className="ide-titlebar-actions">
               <DeviceSelector />
+              <button
+                type="button"
+                onClick={openInspector}
+                className={clsx('ide-ai-trigger', 'ide-inspector-trigger', isInspectorOpen && 'is-active')}
+                title="Open UI Inspector"
+                aria-label="Open UI Inspector"
+                aria-pressed={isInspectorOpen}
+              >
+                <ScanSearch size={14} />
+                <span>Inspect</span>
+              </button>
               <button
                 onClick={() => setTerminalVisible(value => !value)}
                 className={clsx('ide-ai-trigger', isTerminalVisible && 'is-active')}
@@ -198,13 +259,28 @@ const App: React.FC = () => {
           </header>
 
           <section className="ide-work-area">
-            {activeView === 'report'
-              ? <Suspense fallback={<div className="ide-loading-surface">Loading reports…</div>}><Reports /></Suspense>
-              : activeView === 'inspector'
-                ? <Suspense fallback={<div className="ide-loading-surface">Loading Inspector…</div>}><InspectorPanel /></Suspense>
+            <div className="ide-primary-view">
+              {activeView === 'report'
+                ? <Suspense fallback={<div className="ide-loading-surface">Loading reports…</div>}><Reports /></Suspense>
                 : activeView === 'extensions'
-                  ? <Suspense fallback={<div className="ide-loading-surface">Loading extensions…</div>}><ExtensionsPanel /></Suspense>
+                  ? <Suspense fallback={<div className="ide-loading-surface">Loading extensions…</div>}><ExtensionsPanel onOpenInspector={openInspector} /></Suspense>
                   : <Editor onOpenHelp={() => setShowHelp(true)} onOpenProject={openProject} />}
+            </div>
+            {isInspectorOpen && (
+              <>
+                <PaneResizeHandle
+                  orientation="vertical"
+                  label="UI Inspector"
+                  reverse
+                  onResize={delta => setInspectorWidth(width => Math.max(320, Math.min(720, width + delta)))}
+                />
+                <aside className="ide-inspector-dock" style={{ width: inspectorWidth }}>
+                  <Suspense fallback={<div className="ide-loading-surface">Loading Inspector…</div>}>
+                    <InspectorPanel onClose={() => setInspectorOpen(false)} />
+                  </Suspense>
+                </aside>
+              </>
+            )}
             {isAiOpen && (
               <>
                 <PaneResizeHandle
@@ -214,7 +290,7 @@ const App: React.FC = () => {
                   onResize={delta => setAiWidth(width => Math.max(320, Math.min(620, width + delta)))}
                 />
                 <Suspense fallback={<div className="ide-ai-loading" style={{ width: aiWidth }}>Loading Lumi AI…</div>}>
-                  <AiAssistant width={aiWidth} />
+                  <AiAssistant width={aiWidth} onRevealInExplorer={revealInExplorer} />
                 </Suspense>
               </>
             )}
@@ -233,7 +309,7 @@ const App: React.FC = () => {
               visible={isTerminalVisible}
               height={terminalHeight}
               onToggle={() => setTerminalVisible(value => !value)}
-              onShow={() => setTerminalVisible(true)}
+              onShow={showTerminal}
             />
           </div>
           <StatusBar />
@@ -243,6 +319,7 @@ const App: React.FC = () => {
         {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
         {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
         <CommandPalette open={isPaletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
+        {isQuickOpenOpen && <QuickOpen onClose={() => setQuickOpenOpen(false)} />}
       </div>
     </HashRouter>
   );

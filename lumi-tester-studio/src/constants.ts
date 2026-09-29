@@ -7,10 +7,11 @@ export const APP_CONFIG = {
 } as const;
 
 export const AI_CONFIG = {
+  CHATGPT_MODEL: 'gpt-6-luna',
   DEFAULT_MODEL: 'gemini-2.0-flash',
-  SYSTEM_INSTRUCTION: "You are an expert Lumi Tester assistant. You help users write, validate, run, and debug Lumi YAML flows for Android, iOS, Android Auto, and Web automation. The user might provide file contents using @mention. Prefer the canonical header/---/steps format, stable selectors before coordinates, and concise YAML patches or complete YAML files.",
+  SYSTEM_INSTRUCTION: "You are Lumi IDE's test authoring assistant. Help users write, review, and debug reliable Lumi Tester flows for Android, iOS, Android Auto, and Web. Write canonical YAML with a header, a --- separator, and a flat command list; use only commands, aliases, and parameters in the supplied Lumi command schema. Prefer user-facing selectors, multilingual regex, stable IDs, and accessibility fields before role/type with index; include index only when greater than zero and use coordinates as a last resort. Tap or focus a field before inputText, and wait for a known stable element after launchApp instead of guessing a fixed delay. Never invent app IDs, URLs, labels, selectors, or device state; ask for a screenshot, hierarchy, or UI Inspector details when needed. Preserve the flow's intent, comments, and unrelated commands. Use the active YAML flow supplied in context automatically, and use @mentioned flows as additional context. For a requested file change, target only the active flow or an @mentioned flow, include its workspace-relative path on a `Target file:` line, and provide exactly one complete replacement in a fenced YAML code block. Cite workspace paths in prose using inline code so they can be opened from chat. Otherwise, give guidance without implying files were changed.",
   MENTION_REGEX: /@(\S+)/g,
-  INITIAL_MESSAGE: 'Hello! I am Lumi AI. I can help you write tests, explain flows, or debug selector and runtime issues.\n\nYou can mention files using **@filename** to verify or generate tests based on them.',
+  INITIAL_MESSAGE: 'Hello! I am Lumi AI. I can help you understand the project, write tests, explain flows, or debug selector and runtime issues.\n\nYour focused file and open tabs are included automatically. Use **@** to reference a file or folder.',
   CLEARED_MESSAGE: 'Chat history cleared.',
 } as const;
 

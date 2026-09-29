@@ -62,7 +62,9 @@ pub fn start_terminal(
 ) -> Result<TerminalInfo, String> {
     let working_directory = workspace.resolve_existing(std::path::Path::new(&workspace_path))?;
     if !working_directory.is_dir() {
-        return Err("Terminal working directory must be a folder inside the open workspace".to_string());
+        return Err(
+            "Terminal working directory must be a folder inside the open workspace".to_string(),
+        );
     }
     let (shell, mut command) = shell_command(&working_directory)?;
     let pty = native_pty_system();
@@ -90,7 +92,10 @@ pub fn start_terminal(
         .take_writer()
         .map_err(|error| error.to_string())?;
     let master = pair.master;
-    let id = format!("terminal-{}", NEXT_TERMINAL_ID.fetch_add(1, Ordering::Relaxed));
+    let id = format!(
+        "terminal-{}",
+        NEXT_TERMINAL_ID.fetch_add(1, Ordering::Relaxed)
+    );
     let sessions = Arc::clone(&terminals.sessions);
 
     sessions.lock().map_err(|error| error.to_string())?.insert(
@@ -161,7 +166,10 @@ pub fn write_terminal(
     if data.len() > 64 * 1024 {
         return Err("Terminal input exceeds 64 KiB".to_string());
     }
-    let mut sessions = terminals.sessions.lock().map_err(|error| error.to_string())?;
+    let mut sessions = terminals
+        .sessions
+        .lock()
+        .map_err(|error| error.to_string())?;
     let session = sessions
         .get_mut(&terminal_id)
         .ok_or_else(|| "Terminal session is no longer running".to_string())?;
@@ -182,7 +190,10 @@ pub fn resize_terminal(
     if cols == 0 || rows == 0 {
         return Ok(());
     }
-    let sessions = terminals.sessions.lock().map_err(|error| error.to_string())?;
+    let sessions = terminals
+        .sessions
+        .lock()
+        .map_err(|error| error.to_string())?;
     let session = sessions
         .get(&terminal_id)
         .ok_or_else(|| "Terminal session is no longer running".to_string())?;
@@ -215,7 +226,9 @@ pub fn stop_terminal(
     }
 }
 
-fn shell_command(_working_directory: &std::path::Path) -> Result<(PathBuf, CommandBuilder), String> {
+fn shell_command(
+    _working_directory: &std::path::Path,
+) -> Result<(PathBuf, CommandBuilder), String> {
     #[cfg(unix)]
     let shell = std::env::var_os("SHELL")
         .map(PathBuf::from)
@@ -227,7 +240,10 @@ fn shell_command(_working_directory: &std::path::Path) -> Result<(PathBuf, Comma
         .unwrap_or_else(|| PathBuf::from("powershell.exe"));
 
     if shell.is_absolute() && !shell.is_file() {
-        return Err(format!("Configured shell does not exist: {}", shell.display()));
+        return Err(format!(
+            "Configured shell does not exist: {}",
+            shell.display()
+        ));
     }
 
     let mut command = CommandBuilder::new(&shell);
