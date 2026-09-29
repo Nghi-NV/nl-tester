@@ -91,6 +91,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Validate Lumi IDE release tag
+        id: release_version
         shell: bash
         run: |
           version="$(node -p "require('./lumi-tester-studio/package.json').version")"
@@ -99,6 +100,7 @@ jobs:
             echo "Expected tag $expected_tag, got $GITHUB_REF_NAME" >&2
             exit 1
           fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Download installers
         uses: actions/download-artifact@v8
@@ -117,7 +119,7 @@ jobs:
       - name: Publish Lumi IDE release
         uses: softprops/action-gh-release@v3
         with:
-          name: Lumi IDE ${{ github.ref_name }}
+          name: Lumi IDE v${{ steps.release_version.outputs.version }}
           tag_name: ${{ github.ref_name }}
           files: release-files/*
           fail_on_unmatched_files: true
