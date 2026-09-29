@@ -1,0 +1,90 @@
+name: Lumi IDE Build
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/lumi-ide-build.yml"
+      - "lumi-tester-studio/**"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/lumi-ide-build.yml"
+      - "lumi-tester-studio/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lumi-ide-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macOS
+            runner: macos-latest
+            bundles: dmg
+          - platform: Windows
+            runner: windows-latest
+            bundles: msi,nsis
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: yarn
+          cache-dependency-path: lumi-tester-studio/yarn.lock
+
+      - name: Enable pinned Yarn
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: lumi-tester-studio
+        run: yarn install --frozen-lockfile
+
+      - name: Download platform binaries
+        working-directory: lumi-tester-studio
+        run: yarn download-binaries
+
+      - name: Build Lumi IDE installers
+        working-directory: lumi-tester-studio
+        run: yarn tauri build --ci --no-sign --bundles "${{ matrix.bundles }}"
+
+      - name: Upload macOS installer
+        if: matrix.platform == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Lumi-IDE-macOS
+          path: lumi-tester-studio/src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Windows installers
+        if: matrix.platform == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Lumi-IDE-Windows
+          path: |
+            lumi-tester-studio/src-tauri/target/release/bundle/msi/*.msi
+            lumi-tester-studio/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 30
