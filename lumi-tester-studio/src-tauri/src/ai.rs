@@ -198,6 +198,16 @@ fn run_provider(
 ) -> Result<String, String> {
     let mut command = Command::new(binary);
     command.current_dir(workspace);
+    let codex_last_message_path = if provider == "codex" {
+        let file = tempfile::Builder::new()
+            .prefix("lumi-codex-response-")
+            .suffix(".txt")
+            .tempfile()
+            .map_err(|error| format!("Could not prepare a Codex response file: {error}"))?;
+        Some(file.into_temp_path())
+    } else {
+        None
+    };
     match provider {
         "codex" => {
             command
@@ -214,8 +224,11 @@ fn run_provider(
                     model
                         .filter(|value| !value.trim().is_empty())
                         .unwrap_or("gpt-6-luna"),
-                )
-                .arg(prompt);
+                );
+            if let Some(path) = &codex_last_message_path {
+                command.arg("--output-last-message").arg(path.as_os_str());
+            }
+            command.arg(prompt);
         }
         "agy" => {
             command
@@ -233,7 +246,10 @@ fn run_provider(
 
     #[cfg(unix)]
     command.process_group(0);
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     let mut child = command
         .spawn()
         .map_err(|error| format!("Could not start {}: {error}", binary.display()))?;
@@ -331,7 +347,7 @@ fn run_provider(
         .map_err(|_| "AI stderr did not close after the process exited".to_string())?;
     let (stderr, stderr_truncated) =
         stderr.map_err(|error| format!("Could not read AI stderr: {error}"))?;
-    if stdout_truncated || stderr_truncated {
+    if stderr_truncated || (stdout_truncated && provider != "codex") {
         return Err("AI process output exceeded the 1 MiB limit".to_string());
     }
     if !was_cancelled {
@@ -346,9 +362,20 @@ fn run_provider(
             }
         }
     }
-    let response = stdout.trim().to_string();
+    let codex_last_message = codex_last_message_path
+        .as_deref()
+        .map(read_codex_last_message)
+        .transpose()?
+        .flatten();
+    if stdout_truncated && codex_last_message.is_none() {
+        return Err("Codex output exceeded the 1 MiB limit without a final response".to_string());
+    }
+    let response = codex_last_message.unwrap_or_else(|| stdout.trim().to_string());
     if response.is_empty() && !was_cancelled {
-        return Err(format!("{} returned an empty response", binary.display()));
+        return Err(format!(
+            "{} completed without a final response. Check that Codex CLI is signed in and try again.",
+            binary.display()
+        ));
     }
     if provider == "agy" && !was_cancelled {
         let normalized_response = response.to_ascii_lowercase();
@@ -533,6 +560,23 @@ fn codex_completed_message(output: &[u8]) -> Option<String> {
         }
     }
     None
+}
+
+fn read_codex_last_message(path: &Path) -> Result<Option<String>, String> {
+    let file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("Could not read the Codex response file: {error}")),
+    };
+    let mut output = Vec::new();
+    file.take((MAX_AI_OUTPUT_BYTES + 1) as u64)
+        .read_to_end(&mut output)
+        .map_err(|error| format!("Could not read the Codex response file: {error}"))?;
+    if output.len() > MAX_AI_OUTPUT_BYTES {
+        return Err("Codex final response exceeded the 1 MiB limit".to_string());
+    }
+    let response = String::from_utf8_lossy(&output).trim().to_string();
+    Ok((!response.is_empty()).then_some(response))
 }
 
 fn terminate_child(child: &mut std::process::Child) {
