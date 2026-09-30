@@ -3345,6 +3345,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
+name = "lumi-ide"
+version = "0.1.4"
+dependencies = [
+ "globset",
+ "ignore",
+ "libc",
+ "lumi-tester",
+ "portable-pty",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "lumi-tester"
 version = "0.1.45"
 dependencies = [
@@ -3393,27 +3414,6 @@ dependencies = [
  "walkdir",
  "which 5.0.0",
  "zip",
-]
-
-[[package]]
-name = "lumi-tester-studio"
-version = "0.1.0"
-dependencies = [
- "globset",
- "ignore",
- "libc",
- "lumi-tester",
- "portable-pty",
- "regex",
- "serde",
- "serde_json",
- "serde_yaml",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tempfile",
- "tokio",
 ]
 
 [[package]]

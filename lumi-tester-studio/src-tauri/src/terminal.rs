@@ -17,10 +17,19 @@ pub struct TerminalSessions {
 
 impl Drop for TerminalSessions {
     fn drop(&mut self) {
-        if let Ok(mut sessions) = self.sessions.lock() {
-            for (_, mut session) in sessions.drain() {
-                let _ = session.killer.kill();
-            }
+        self.stop_all();
+    }
+}
+
+impl TerminalSessions {
+    pub fn stop_all(&self) {
+        let sessions = self
+            .sessions
+            .lock()
+            .map(|mut sessions| sessions.drain().map(|(_, session)| session).collect::<Vec<_>>())
+            .unwrap_or_default();
+        for mut session in sessions {
+            let _ = session.killer.kill();
         }
     }
 }

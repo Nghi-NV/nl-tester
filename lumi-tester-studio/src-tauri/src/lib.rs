@@ -3,7 +3,7 @@ use lumi_tester::runner::{events::TestEvent, executor::TestExecutor, state::Test
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tauri::{Emitter, Window};
+use tauri::{Emitter, Manager, Window};
 
 mod ai;
 mod extensions;
@@ -120,6 +120,25 @@ pub struct StudioRunResult {
 #[derive(Default)]
 struct ActiveRuns {
     cancel: Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>,
+}
+
+impl ActiveRuns {
+    fn cancel_all(&self) {
+        let senders = self
+            .cancel
+            .lock()
+            .map(|mut runs| runs.drain().map(|(_, sender)| sender).collect::<Vec<_>>())
+            .unwrap_or_default();
+        for sender in senders {
+            let _ = sender.send(());
+        }
+    }
+}
+
+fn stop_background_processes(app: &tauri::AppHandle) {
+    app.state::<ai::AiRequestState>().cancel_all();
+    app.state::<ActiveRuns>().cancel_all();
+    app.state::<terminal::TerminalSessions>().stop_all();
 }
 
 #[derive(Default)]
@@ -928,7 +947,7 @@ async fn list_devices(platform: String) -> Result<Vec<DeviceInfo>, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .manage(workspace::WorkspaceState::default())
         .manage(ai::AiRequestState::default())
         .manage(ActiveRuns::default())
@@ -936,6 +955,11 @@ pub fn run() {
         .manage(terminal::TerminalSessions::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+                stop_background_processes(window.app_handle());
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             run_test_flow,
             stop_test_flow,
@@ -978,8 +1002,14 @@ pub fn run() {
             workspace::move_workspace_entry,
             workspace::copy_workspace_entry
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
+            stop_background_processes(app_handle);
+        }
+    });
 }
 
 #[cfg(test)]

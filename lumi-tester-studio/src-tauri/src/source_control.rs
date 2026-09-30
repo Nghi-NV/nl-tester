@@ -202,7 +202,6 @@ fn status_at(root: &Path) -> Result<SourceControlSnapshot, String> {
             "status",
             "--porcelain=v1",
             "-z",
-            "--relative",
             "--untracked-files=all",
             "--no-renames",
         ],

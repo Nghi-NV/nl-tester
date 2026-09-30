@@ -21,6 +21,16 @@ pub struct AiRequestState {
     active: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
 }
 
+impl AiRequestState {
+    pub fn cancel_all(&self) {
+        if let Ok(active) = self.active.lock() {
+            for cancelled in active.values() {
+                cancelled.store(true, Ordering::Release);
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct AiResponseDelta {

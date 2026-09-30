@@ -25,7 +25,7 @@ interface CodeLensRuntime {
   actions: LumiRunActions;
 }
 
-const codeLensRuntimeRegistryKey = Symbol.for('lumi-studio.yaml-code-lens-runtimes');
+const codeLensRuntimeRegistryKey = Symbol.for('lumi-ide.yaml-code-lens-runtimes');
 const getCodeLensRuntimeRegistry = () => {
   const globalObject = globalThis as any;
   return (globalObject[codeLensRuntimeRegistryKey] ??= new Map<object, CodeLensRuntime>()) as Map<object, CodeLensRuntime>;
@@ -1480,9 +1480,9 @@ export const registerLumiYamlCodeLenses = (monaco: Monaco, actions: LumiRunActio
   const runtime: CodeLensRuntime = { actions };
   registry.set(monaco as object, runtime);
 
-  monaco.editor.registerCommand('lumi-studio.runAll', () => runtime.actions.runAll());
-  monaco.editor.registerCommand('lumi-studio.runCommand', (_accessor: any, index: number) => runtime.actions.runCommand(index));
-  monaco.editor.registerCommand('lumi-studio.runFromCommand', (_accessor: any, index: number) => runtime.actions.runFromCommand(index));
+  monaco.editor.registerCommand('lumi-ide.runAll', () => runtime.actions.runAll());
+  monaco.editor.registerCommand('lumi-ide.runCommand', (_accessor: any, index: number) => runtime.actions.runCommand(index));
+  monaco.editor.registerCommand('lumi-ide.runFromCommand', (_accessor: any, index: number) => runtime.actions.runFromCommand(index));
 
   monaco.languages.registerCodeLensProvider('yaml', {
     provideCodeLenses(model: any) {
@@ -1508,10 +1508,10 @@ export const registerLumiYamlCodeLenses = (monaco: Monaco, actions: LumiRunActio
       };
 
       const runAllLine = separatorIndex >= 0 ? separatorIndex : rootCommands[0]?.lineIndex ?? 0;
-      addLens(runAllLine, 'lumi-studio.runAll', '▶ Run All');
+      addLens(runAllLine, 'lumi-ide.runAll', '▶ Run All');
       rootCommands.forEach((command, index) => {
-        addLens(command.lineIndex, 'lumi-studio.runCommand', `▷ Run [${index}]`, [index]);
-        addLens(command.lineIndex, 'lumi-studio.runFromCommand', `▶ Run from [${index}]`, [index]);
+        addLens(command.lineIndex, 'lumi-ide.runCommand', `▷ Run [${index}]`, [index]);
+        addLens(command.lineIndex, 'lumi-ide.runFromCommand', `▶ Run from [${index}]`, [index]);
       });
 
       return { lenses };

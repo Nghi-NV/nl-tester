@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Editor } from './components/Editor';
 import { DeviceSelector } from './components/DeviceSelector';
@@ -45,6 +45,7 @@ const App: React.FC = () => {
   const [inspectorWidth, setInspectorWidth] = useState(420);
   const [terminalHeight, setTerminalHeight] = useState(280);
   const [isTerminalVisible, setTerminalVisible] = useState(false);
+  const closeInProgress = useRef(false);
   const showTerminal = useCallback(() => setTerminalVisible(true), []);
   const searchInFolder = useCallback((relativePath: string) => {
     setSearchScope(relativePath);
@@ -151,13 +152,22 @@ const App: React.FC = () => {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
     void getCurrentWindow().onCloseRequested(async event => {
+      if (closeInProgress.current) {
+        event.preventDefault();
+        return;
+      }
       if (useFileStore.getState().dirtyFileIds.length === 0) return;
       event.preventDefault();
+      closeInProgress.current = true;
       try {
         await useFileStore.getState().saveAllFiles();
-        await getCurrentWindow().close();
+        if (useFileStore.getState().dirtyFileIds.length > 0) {
+          throw new Error('Some files changed while they were being saved. Try closing again.');
+        }
+        await getCurrentWindow().destroy();
       } catch (error) {
-        window.alert(`Could not save all files: ${String(error)}`);
+        closeInProgress.current = false;
+        window.alert(`Could not close Lumi IDE: ${String(error)}`);
       }
     }).then(listener => {
       if (cancelled) listener();
