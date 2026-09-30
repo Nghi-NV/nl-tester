@@ -955,11 +955,6 @@ pub fn run() {
         .manage(terminal::TerminalSessions::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .on_window_event(|window, event| {
-            if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
-                stop_background_processes(window.app_handle());
-            }
-        })
         .invoke_handler(tauri::generate_handler![
             run_test_flow,
             stop_test_flow,
@@ -1006,8 +1001,13 @@ pub fn run() {
         .expect("error while building tauri application");
 
     app.run(|app_handle, event| {
-        if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
-            stop_background_processes(app_handle);
+        match event {
+            tauri::RunEvent::WindowEvent {
+                event: tauri::WindowEvent::Destroyed,
+                ..
+            } if app_handle.webview_windows().is_empty() => app_handle.exit(0),
+            tauri::RunEvent::ExitRequested { .. } => stop_background_processes(app_handle),
+            _ => {}
         }
     });
 }

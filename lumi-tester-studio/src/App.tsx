@@ -166,8 +166,19 @@ const App: React.FC = () => {
         }
         await getCurrentWindow().destroy();
       } catch (error) {
-        closeInProgress.current = false;
-        window.alert(`Could not close Lumi IDE: ${String(error)}`);
+        const closeWithoutSaving = window.confirm(
+          `Lumi IDE could not save your changes: ${String(error)}\n\nClose anyway and discard unsaved changes?`,
+        );
+        if (closeWithoutSaving) {
+          try {
+            await getCurrentWindow().destroy();
+          } catch (destroyError) {
+            closeInProgress.current = false;
+            window.alert(`Could not close Lumi IDE: ${String(destroyError)}`);
+          }
+        } else {
+          closeInProgress.current = false;
+        }
       }
     }).then(listener => {
       if (cancelled) listener();

@@ -102,6 +102,20 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare release notes
+        working-directory: lumi-tester-studio
+        shell: bash
+        run: |
+          awk -v version="${{ steps.release_version.outputs.version }}" '
+            $0 ~ "^## \\[" version "\\]" { in_section=1; next }
+            in_section && /^## / { exit }
+            in_section { print }
+          ' CHANGELOG.md > ../release-notes.md
+          if [[ ! -s ../release-notes.md ]]; then
+            echo "No changelog entry found for version ${{ steps.release_version.outputs.version }}" >&2
+            exit 1
+          fi
+
       - name: Download installers
         uses: actions/download-artifact@v8
         with:
@@ -124,7 +138,4 @@ jobs:
           files: release-files/*
           fail_on_unmatched_files: true
           make_latest: false
-          body: |
-            Lumi IDE desktop installers for macOS and Windows.
-
-            Installers in this release are currently unsigned.
+          body_path: release-notes.md

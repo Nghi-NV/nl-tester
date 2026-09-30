@@ -1,7 +1,7 @@
-# 🎨 Lumi Tester Studio
-A professional Desktop IDE for mobile and web automation testing, built with Tauri, React, and TypeScript.
+# Lumi IDE
+A lightweight desktop IDE for mobile and web automation testing, built with Tauri, React, and TypeScript.
 
-Lumi Tester Studio provides a seamless experience for authoring, managing, and executing test cases using the `lumi-tester` engine.
+Lumi IDE provides a focused workspace for authoring, managing, and executing test cases using the `lumi-tester` engine.
 
 ## ✨ Key Features
 
@@ -40,4 +40,3 @@ yarn tauri build
 
 ## 📝 License
 See the root [LICENSE](../LICENSE) file.
-
