@@ -134,14 +134,12 @@ Winget manifests are attached to each release. After the package is accepted int
 winget install NghiNV.LumiTester
 ```
 
-### Lumi Tester Studio (Desktop App)
+### Lumi IDE (Desktop App)
 
-Download the latest installers from the [Releases](https://github.com/Nghi-NV/nl-tester/releases) page:
+Lumi IDE has its own versioned releases. The repository-wide GitHub **Latest** label can point to a CLI or extension release, so choose the newest release titled **Lumi IDE vX.Y.Z**. The current IDE release is [v0.2.1](https://github.com/Nghi-NV/nl-tester/releases/tag/lumi-ide-v0.2.1):
 
-- **Windows**: `lumi-tester-studio-setup.exe`
-- **macOS (Apple Silicon)**: `lumi-tester-studio-apple-silicon.dmg`
-- **macOS (Intel)**: `lumi-tester-studio-intel.dmg`
-- **Linux**: `lumi-tester-studio.AppImage`
+- **macOS (Apple Silicon)**: [DMG installer](https://github.com/Nghi-NV/nl-tester/releases/download/lumi-ide-v0.2.1/Lumi.IDE_0.2.1_aarch64.dmg)
+- **Windows (x64)**: [EXE installer](https://github.com/Nghi-NV/nl-tester/releases/download/lumi-ide-v0.2.1/Lumi.IDE_0.2.1_x64-setup.exe) or [MSI installer](https://github.com/Nghi-NV/nl-tester/releases/download/lumi-ide-v0.2.1/Lumi.IDE_0.2.1_x64_en-US.msi)
 
 ### Lumi Tester (CLI Tool)
 
