@@ -1,7 +1,7 @@
 use super::{WorkspaceEntry, WorkspaceState};
 use serde::Serialize;
 use std::path::Path;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,6 +21,7 @@ pub struct WorkspaceFileReference {
 #[tauri::command]
 pub fn open_workspace(
     path: String,
+    app: AppHandle,
     workspace: State<'_, WorkspaceState>,
 ) -> Result<WorkspaceInfo, String> {
     let canonical = std::fs::canonicalize(path).map_err(|error| error.to_string())?;
@@ -33,6 +34,7 @@ pub fn open_workspace(
         .unwrap_or("Workspace")
         .to_string();
     workspace.set_root(canonical.clone())?;
+    crate::recent_projects::record(&app, canonical.clone());
     Ok(WorkspaceInfo {
         path: canonical.to_string_lossy().into_owned(),
         name,

@@ -21,6 +21,8 @@ import { PaneResizeHandle } from './components/PaneResizeHandle';
 import { openDialog } from './utils/tauriUtils';
 import { isTauri } from './utils/tauriUtils';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { Box, ScanSearch, Search, Sparkles, Terminal as TerminalIcon } from 'lucide-react';
 import { HashRouter } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -152,33 +154,32 @@ const App: React.FC = () => {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
     void getCurrentWindow().onCloseRequested(async event => {
+      event.preventDefault();
       if (closeInProgress.current) {
-        event.preventDefault();
         return;
       }
-      if (useFileStore.getState().dirtyFileIds.length === 0) return;
-      event.preventDefault();
       closeInProgress.current = true;
       try {
-        await useFileStore.getState().saveAllFiles();
         if (useFileStore.getState().dirtyFileIds.length > 0) {
-          throw new Error('Some files changed while they were being saved. Try closing again.');
-        }
-        await getCurrentWindow().destroy();
-      } catch (error) {
-        const closeWithoutSaving = window.confirm(
-          `Lumi IDE could not save your changes: ${String(error)}\n\nClose anyway and discard unsaved changes?`,
-        );
-        if (closeWithoutSaving) {
           try {
-            await getCurrentWindow().destroy();
-          } catch (destroyError) {
-            closeInProgress.current = false;
-            window.alert(`Could not close Lumi IDE: ${String(destroyError)}`);
+            await useFileStore.getState().saveAllFiles();
+            if (useFileStore.getState().dirtyFileIds.length > 0) {
+              throw new Error('Some files changed while they were being saved. Try closing again.');
+            }
+          } catch (error) {
+            const closeWithoutSaving = window.confirm(
+              `Lumi IDE could not save your changes: ${String(error)}\n\nClose anyway and discard unsaved changes?`,
+            );
+            if (!closeWithoutSaving) {
+              closeInProgress.current = false;
+              return;
+            }
           }
-        } else {
-          closeInProgress.current = false;
         }
+        await invoke('exit_application');
+      } catch (error) {
+        closeInProgress.current = false;
+        window.alert(`Could not close Lumi IDE: ${String(error)}`);
       }
     }).then(listener => {
       if (cancelled) listener();
@@ -209,11 +210,46 @@ const App: React.FC = () => {
   }, [openWorkspacePath]);
 
   React.useEffect(() => {
-    const savedRoot = localStorage.getItem('lumi_project_root');
-    if (savedRoot) {
-      void loadProject(savedRoot).catch(error => console.error('Could not restore workspace', error));
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    const openPendingProjects = async () => {
+      const paths = await invoke<string[]>('take_pending_recent_projects');
+      for (const path of paths) {
+        if (cancelled) return;
+        await openWorkspacePath(path);
+      }
+      return paths.length;
+    };
+    const restoreWorkspace = async () => {
+      const pendingCount = await openPendingProjects();
+      if (cancelled || pendingCount || useFileStore.getState().projectRoot) return;
+      const savedRoot = localStorage.getItem('lumi_project_root');
+      if (savedRoot) await loadProject(savedRoot);
+    };
+
+    if (!isTauri()) {
+      const savedRoot = localStorage.getItem('lumi_project_root');
+      if (savedRoot) {
+        void loadProject(savedRoot).catch(error => console.error('Could not restore workspace', error));
+      }
+      return () => { cancelled = true; };
     }
-  }, [loadProject]);
+
+    void listen('lumi-open-recent-project', () => {
+      void openPendingProjects().catch(error => console.error('Could not open recent workspace', error));
+    }).then(listener => {
+      if (cancelled) listener();
+      else {
+        unlisten = listener;
+        void restoreWorkspace().catch(error => console.error('Could not restore workspace', error));
+      }
+    }).catch(error => console.error('Could not listen for recent workspaces', error));
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [loadProject, openWorkspacePath]);
 
   return (
     <HashRouter>

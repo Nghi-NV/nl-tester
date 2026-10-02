@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFileStore, useEditorStore, useExecutionStore, useDeviceStore, findFile, getAllDescendantFiles, useExecutionStateStore } from '../stores';
-import { Terminal, AlertTriangle, FileJson, X, FolderOpen, Square, Braces, Loader2, CheckCircle2, CircleAlert, Clock3 } from 'lucide-react';
+import { Terminal, AlertTriangle, FileJson, X, FolderOpen, Square, Braces, Loader2, CheckCircle2, CircleAlert, Clock3, Eye, Code2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { runTestFlow } from '../services/runnerService';
 import { invoke } from '@tauri-apps/api/core';
@@ -10,6 +10,12 @@ const EditorCore = React.lazy(async () => {
     await import('./editor/monacoSetup');
     return import('./editor/editorCore').then(module => ({ default: module.EditorCore }));
 });
+
+const FilePreview = React.lazy(() => import('./FilePreview').then(module => ({ default: module.FilePreview })));
+
+const previewableExtensions = new Set([
+    'html', 'htm', 'md', 'markdown', 'mmd', 'mermaid', 'svg', 'json', 'csv',
+]);
 
 const getEditorLanguage = (filename: string) => {
     const extension = filename.split('.').pop()?.toLowerCase();
@@ -61,6 +67,10 @@ export const Editor: React.FC<EditorProps> = ({ onOpenHelp, onOpenProject }) => 
 
     const activeNode = findFile(files, activeFileId);
     const content = activeNode?.content || '';
+    const activeExtension = activeNode?.name.split('.').pop()?.toLowerCase() ?? '';
+    const canPreviewActiveFile = previewableExtensions.has(activeExtension);
+    const [previewFileIds, setPreviewFileIds] = useState<Set<string>>(() => new Set());
+    const isPreviewingActiveFile = !!activeFileId && previewFileIds.has(activeFileId);
     const [fileLoadError, setFileLoadError] = useState<{ fileId: string; message: string } | null>(null);
     const [loadAttempt, setLoadAttempt] = useState(0);
     const [runNotice, setRunNotice] = useState<{
@@ -407,6 +417,24 @@ export const Editor: React.FC<EditorProps> = ({ onOpenHelp, onOpenProject }) => 
                     })}
                 </div>
                 <div className="ide-editor-actions flex items-center gap-1 shrink-0 px-2">
+                    {activeNode && canPreviewActiveFile && (
+                        <button
+                            type="button"
+                            onClick={() => setPreviewFileIds(current => {
+                                const next = new Set(current);
+                                if (next.has(activeNode.id)) next.delete(activeNode.id);
+                                else next.add(activeNode.id);
+                                return next;
+                            })}
+                            className="ide-editor-preview-toggle"
+                            title={isPreviewingActiveFile ? 'Show source' : 'Preview file'}
+                            aria-label={isPreviewingActiveFile ? 'Show source' : 'Preview file'}
+                            aria-pressed={isPreviewingActiveFile}
+                        >
+                            {isPreviewingActiveFile ? <Code2 size={14} /> : <Eye size={14} />}
+                            <span>{isPreviewingActiveFile ? 'Code' : 'Preview'}</span>
+                        </button>
+                    )}
                     {activeNode && runningNodeIds.includes(activeNode.id) && (
                         <button
                             type="button"
@@ -489,6 +517,10 @@ export const Editor: React.FC<EditorProps> = ({ onOpenHelp, onOpenProject }) => 
                                 ) : <span>Loading file…</span>}
                             </div>
                         </div>
+                    ) : isPreviewingActiveFile ? (
+                        <React.Suspense fallback={<div className="ide-loading-surface">Preparing preview…</div>}>
+                            <FilePreview filename={activeNode.name} content={content} />
+                        </React.Suspense>
                     ) : (
                         <React.Suspense fallback={<div className="ide-loading-surface">Loading editor…</div>}>
                             <EditorCore

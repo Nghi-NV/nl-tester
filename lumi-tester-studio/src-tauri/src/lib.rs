@@ -5,8 +5,10 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager, Window};
 
+mod adb_server;
 mod ai;
 mod extensions;
+mod recent_projects;
 mod search;
 mod source_control;
 mod terminal;
@@ -120,6 +122,23 @@ pub struct StudioRunResult {
 #[derive(Default)]
 struct ActiveRuns {
     cancel: Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>,
+}
+
+#[derive(Default)]
+struct PendingRecentProjects(Mutex<Vec<String>>);
+
+#[tauri::command]
+fn take_pending_recent_projects(state: tauri::State<'_, PendingRecentProjects>) -> Vec<String> {
+    state
+        .0
+        .lock()
+        .map(|mut paths| paths.drain(..).collect())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn exit_application(app: tauri::AppHandle) {
+    app.exit(0);
 }
 
 impl ActiveRuns {
@@ -868,9 +887,13 @@ fn get_lumi_yaml_schema() -> &'static str {
 }
 
 #[tauri::command]
-async fn list_devices(platform: String) -> Result<Vec<DeviceInfo>, String> {
+async fn list_devices(
+    platform: String,
+    adb_server: tauri::State<'_, adb_server::AdbServerLifecycle>,
+) -> Result<Vec<DeviceInfo>, String> {
     match platform.as_str() {
         "android" => {
+            adb_server.mark_started_if_missing();
             let devices = lumi_tester::driver::android::adb::get_devices()
                 .await
                 .map_err(|e| e.to_string())?;
@@ -949,10 +972,16 @@ async fn list_devices(platform: String) -> Result<Vec<DeviceInfo>, String> {
 pub fn run() {
     let app = tauri::Builder::default()
         .manage(workspace::WorkspaceState::default())
+        .manage(adb_server::AdbServerLifecycle::default())
         .manage(ai::AiRequestState::default())
         .manage(ActiveRuns::default())
+        .manage(PendingRecentProjects::default())
         .manage(ActiveInspector::default())
         .manage(terminal::TerminalSessions::default())
+        .setup(|app| {
+            adb_server::cleanup_orphaned_app_server(app.handle());
+            Ok(())
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
@@ -995,20 +1024,48 @@ pub fn run() {
             workspace::create_workspace_dir,
             workspace::remove_workspace_entry,
             workspace::move_workspace_entry,
-            workspace::copy_workspace_entry
+            workspace::copy_workspace_entry,
+            take_pending_recent_projects,
+            exit_application
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(|app_handle, event| {
-        match event {
-            tauri::RunEvent::WindowEvent {
-                event: tauri::WindowEvent::Destroyed,
-                ..
-            } if app_handle.webview_windows().is_empty() => app_handle.exit(0),
-            tauri::RunEvent::ExitRequested { .. } => stop_background_processes(app_handle),
-            _ => {}
+    app.run(|app_handle, event| match event {
+        #[cfg(target_os = "macos")]
+        tauri::RunEvent::Opened { urls } => {
+            let paths = urls
+                .into_iter()
+                .filter_map(|url| url.to_file_path().ok())
+                .filter(|path| path.is_dir())
+                .filter_map(|path| std::fs::canonicalize(path).ok())
+                .map(|path| path.to_string_lossy().into_owned())
+                .collect::<Vec<_>>();
+            if !paths.is_empty() {
+                let pending = app_handle.state::<PendingRecentProjects>();
+                if let Ok(mut queued) = pending.0.lock() {
+                    for path in paths {
+                        if !queued.contains(&path) {
+                            queued.push(path);
+                        }
+                    }
+                }
+                let _ = app_handle.emit("lumi-open-recent-project", ());
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
         }
+        tauri::RunEvent::WindowEvent {
+            event: tauri::WindowEvent::Destroyed,
+            ..
+        } if app_handle.webview_windows().is_empty() => app_handle.exit(0),
+        tauri::RunEvent::ExitRequested { .. } => {
+            stop_background_processes(app_handle);
+            adb_server::cleanup_on_exit(app_handle);
+        }
+        _ => {}
     });
 }
 
