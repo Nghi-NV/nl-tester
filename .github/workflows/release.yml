@@ -75,6 +75,9 @@ jobs:
     needs: test
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -120,6 +123,52 @@ jobs:
 
       - name: Build lumi-tester
         run: cargo build --release --locked --target ${{ matrix.target }} --manifest-path lumi-tester/Cargo.toml
+
+      - name: Upload unsigned Windows CLI for SignPath
+        if: runner.os == 'Windows'
+        id: upload-unsigned-windows-cli
+        uses: actions/upload-artifact@v7
+        with:
+          path: lumi-tester/target/${{ matrix.target }}/release/lumi-tester.exe
+          if-no-files-found: error
+          retention-days: 1
+          archive: false
+
+      - name: Sign Windows CLI with SignPath
+        if: runner.os == 'Windows'
+        uses: SignPath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload-unsigned-windows-cli.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: ${{ runner.temp }}/signpath/${{ matrix.target }}
+          skip-decompress: true
+
+      - name: Replace Windows CLI with signed artifact
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $signedBinary = Join-Path $env:RUNNER_TEMP "signpath/${{ matrix.target }}/lumi-tester.exe"
+          $targetBinary = Join-Path $env:GITHUB_WORKSPACE "lumi-tester/target/${{ matrix.target }}/release/lumi-tester.exe"
+
+          if (-not (Test-Path -LiteralPath $signedBinary)) {
+            throw "SignPath did not return the signed Windows CLI at $signedBinary."
+          }
+
+          $signature = Get-AuthenticodeSignature -FilePath $signedBinary
+          if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+            throw "SignPath returned an invalid Authenticode signature: $($signature.StatusMessage)"
+          }
+
+          Copy-Item -LiteralPath $signedBinary -Destination $targetBinary -Force
+          $targetSignature = Get-AuthenticodeSignature -FilePath $targetBinary
+          if ($targetSignature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+            throw "The copied Windows CLI has an invalid Authenticode signature: $($targetSignature.StatusMessage)"
+          }
 
       - name: Prepare CLI asset
         shell: bash
