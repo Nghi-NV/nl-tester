@@ -206,7 +206,7 @@ fn run_provider(
     request_id: &str,
     cancelled: &AtomicBool,
 ) -> Result<String, String> {
-    let mut command = Command::new(binary);
+    let mut command = command_for_binary(binary);
     lumi_tester::utils::process::configure_hidden_std_command(&mut command);
     command.current_dir(workspace);
     let codex_last_message_path = if provider == "codex" {
@@ -397,6 +397,23 @@ fn run_provider(
         }
     }
     Ok(response)
+}
+
+fn command_for_binary(binary: &Path) -> Command {
+    #[cfg(windows)]
+    if binary
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("ps1"))
+    {
+        let mut command = Command::new("powershell.exe");
+        command
+            .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-File"])
+            .arg(binary);
+        return command;
+    }
+
+    Command::new(binary)
 }
 
 struct AiOutputDecoder<'a> {
@@ -694,31 +711,61 @@ fn is_sensitive_context_path(path: &Path) -> bool {
 }
 
 fn resolve_executable(path: &Path) -> Option<PathBuf> {
-    let candidate = if path.components().count() == 1 {
+    let candidates = if path.components().count() == 1 {
         let mut matches = std::env::var_os("PATH")
             .into_iter()
             .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
-            .map(|directory| directory.join(path))
+            .flat_map(|directory| executable_candidates(&directory.join(path)))
             .collect::<Vec<_>>();
         if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
-            matches.extend([
-                home.join(".local/bin").join(path),
-                home.join(".npm-global/bin").join(path),
-                home.join(".cargo/bin").join(path),
-            ]);
+            for directory in [".local/bin", ".npm-global/bin", ".cargo/bin"] {
+                matches.extend(executable_candidates(&home.join(directory).join(path)));
+            }
         }
         #[cfg(target_os = "macos")]
-        matches.extend([
-            PathBuf::from("/opt/homebrew/bin").join(path),
-            PathBuf::from("/usr/local/bin").join(path),
-        ]);
+        for directory in ["/opt/homebrew/bin", "/usr/local/bin"] {
+            matches.extend(executable_candidates(&PathBuf::from(directory).join(path)));
+        }
         matches
-            .into_iter()
-            .find(|candidate| is_executable(candidate))?
     } else {
-        path.to_path_buf()
+        executable_candidates(path)
     };
-    is_executable(&candidate).then(|| candidate.canonicalize().unwrap_or(candidate))
+
+    candidates
+        .into_iter()
+        .find(|candidate| is_executable(candidate))
+        .map(|candidate| normalize_executable_path(candidate.canonicalize().unwrap_or(candidate)))
+}
+
+fn normalize_executable_path(path: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    if let Some(path) = path.to_str() {
+        if let Some(unc_path) = path.strip_prefix(r"\\?\UNC\") {
+            return PathBuf::from(format!(r"\\{unc_path}"));
+        }
+        if let Some(local_path) = path.strip_prefix(r"\\?\") {
+            return PathBuf::from(local_path);
+        }
+    }
+
+    path
+}
+
+fn executable_candidates(path: &Path) -> Vec<PathBuf> {
+    if path.extension().is_some() {
+        return vec![path.to_path_buf()];
+    }
+
+    #[cfg(windows)]
+    {
+        return ["exe", "ps1"]
+            .into_iter()
+            .map(|extension| path.with_extension(extension))
+            .collect();
+    }
+
+    #[cfg(not(windows))]
+    vec![path.to_path_buf()]
 }
 
 fn is_executable(path: &Path) -> bool {
@@ -793,5 +840,29 @@ mod tests {
         for path in [".env.example", ".env.sample", "flows/login.yaml"] {
             assert!(!is_sensitive_context_path(Path::new(path)), "{path}");
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_resolves_and_launches_powershell_cli_shims() {
+        let directory = tempfile::tempdir().unwrap();
+        let shim = directory.path().join("codex.ps1");
+        std::fs::write(&shim, "exit 17").unwrap();
+
+        let binary = resolve_executable(&directory.path().join("codex")).unwrap();
+        assert_eq!(binary, shim);
+
+        let mut command = command_for_binary(&binary);
+        let script_path = command.get_args().nth(3).unwrap().to_string_lossy();
+        assert!(!script_path.starts_with(r"\\?\"));
+        lumi_tester::utils::process::configure_hidden_std_command(&mut command);
+        let output = command.output().unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(17),
+            "stdout: {}; stderr: {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 }
