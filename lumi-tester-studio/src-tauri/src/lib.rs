@@ -379,6 +379,36 @@ async fn run_test_flow(
     command_index: Option<usize>,
     from_command_index: Option<usize>,
 ) -> Result<StudioRunResult, String> {
+    // Keep the command future small while Tauri creates it from the WebView IPC
+    // callback. The executor future includes all platform driver branches and
+    // can otherwise exceed the native UI thread's stack on optimized builds.
+    Box::pin(run_test_flow_inner(
+        window,
+        workspace,
+        active_runs,
+        content,
+        file_path,
+        run_id,
+        platform,
+        device,
+        command_index,
+        from_command_index,
+    ))
+    .await
+}
+
+async fn run_test_flow_inner(
+    window: Window,
+    workspace: tauri::State<'_, workspace::WorkspaceState>,
+    active_runs: tauri::State<'_, ActiveRuns>,
+    content: String,
+    file_path: String,
+    run_id: String,
+    platform: String,
+    device: Option<String>,
+    command_index: Option<usize>,
+    from_command_index: Option<usize>,
+) -> Result<StudioRunResult, String> {
     // Keep the temporary flow beside the source so relative data/env paths resolve as usual.
     let original_path = workspace.resolve_existing(std::path::Path::new(&file_path))?;
     let parent_dir = original_path.parent().unwrap_or(std::path::Path::new("."));
