@@ -1,0 +1,8 @@
+platform: windows
+appId: 'C:\Program Files (x86)\ETS6\ETS6N.exe'
+tags: [desktop, windows, ets6, demo-mode]
+---
+- tap:
+    point: "63%,89.5%"
+- wait: 7000
+- screenshot: "ets6-demo-home.webp"

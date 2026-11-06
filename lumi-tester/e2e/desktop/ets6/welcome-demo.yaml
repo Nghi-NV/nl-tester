@@ -1,0 +1,10 @@
+platform: windows
+appId: 'C:\Program Files (x86)\ETS6\ETS6N.exe'
+tags: [desktop, windows, ets6, demo-mode, functional]
+defaultTimeout: 10000
+---
+- launchApp
+- tap:
+    point: "62%,79%"
+- wait: 7000
+- screenshot: ets6-after-run-demo.webp

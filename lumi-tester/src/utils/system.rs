@@ -252,9 +252,11 @@ pub fn open_url(url: &str) -> Result<()> {
     #[cfg(target_os = "macos")]
     let status = std::process::Command::new("open").arg(url).status();
     #[cfg(target_os = "windows")]
-    let status = std::process::Command::new("cmd")
-        .args(["/C", "start", "", url])
-        .status();
+    let status = {
+        let mut command = std::process::Command::new("cmd");
+        crate::utils::process::configure_hidden_std_command(&mut command);
+        command.args(["/C", "start", "", url]).status()
+    };
     #[cfg(all(unix, not(target_os = "macos")))]
     let status = std::process::Command::new("xdg-open").arg(url).status();
 

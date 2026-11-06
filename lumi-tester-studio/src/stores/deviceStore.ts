@@ -5,21 +5,23 @@ import { invoke } from '@tauri-apps/api/core';
 export interface Device {
   id: string; // Serial
   name: string; // Model or Serial
-  platform: 'android' | 'ios' | 'web';
+  platform: 'android' | 'ios' | 'web' | 'windows';
 }
+
+export type Platform = 'android' | 'ios' | 'web' | 'windows';
 
 interface DeviceStore {
   devices: Device[];
   allDevices: Device[]; // All devices from all platforms
   selectedDevice: string | null; // Serial
-  selectedPlatform: 'android' | 'ios' | 'web';
+  selectedPlatform: Platform;
   isLoading: boolean;
 
   // Actions
   refreshDevices: () => Promise<void>;
   refreshAllDevices: () => Promise<void>; // Load all devices from all platforms
   setSelectedDevice: (deviceId: string | null) => void;
-  setSelectedPlatform: (platform: 'android' | 'ios' | 'web') => void;
+  setSelectedPlatform: (platform: Platform) => void;
 }
 
 export const useDeviceStore = create<DeviceStore>()(

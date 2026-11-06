@@ -247,7 +247,9 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
-    let output = Command::new("git")
+    let mut command = Command::new("git");
+    lumi_tester::utils::process::configure_hidden_std_command(&mut command);
+    let output = command
         .current_dir(root)
         .args(args)
         .output()

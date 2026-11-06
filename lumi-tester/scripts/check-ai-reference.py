@@ -9,6 +9,7 @@ import importlib.util
 import io
 import json
 import re
+import shlex
 import sys
 import tempfile
 from pathlib import Path, PurePosixPath
@@ -554,12 +555,27 @@ def validate_helper_script_behavior() -> list[str]:
             "--debug",
         ]
     )
+    expected_agent_check_command = shlex.join(
+        [
+            "agent-check",
+            "tests/generated/login",
+            "--platform",
+            "android",
+            "--device",
+            "emulator-5554",
+            "--run",
+            "--output",
+            "./output/login",
+            "--summary-json",
+            str(summary_target),
+            "--debug",
+        ]
+    )
     if (
         not agent_check_run.run
         or agent_check_run.device != "emulator-5554"
         or agent_check_run.summary_json != str(summary_target)
-        or agent_check_run.command_line
-        != f"agent-check tests/generated/login --platform android --device emulator-5554 --run --output ./output/login --summary-json {summary_target} --debug"
+        or agent_check_run.command_line != expected_agent_check_command
         or agent_check_run.extra != ["--debug"]
     ):
         errors.append(f"{HELPER_SCRIPT}: agent-check should preserve runtime args")

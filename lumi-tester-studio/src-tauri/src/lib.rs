@@ -422,6 +422,8 @@ async fn run_test_flow(
                         .map_err(|error| error.to_string())?,
                 ) as Box<dyn PlatformDriver>)
             }
+            "windows" => Ok(Box::new(lumi_tester::driver::windows::WindowsDriver::new())
+                as Box<dyn PlatformDriver>),
             _ => Err(format!("Unknown platform: {}", platform)),
         }
     };

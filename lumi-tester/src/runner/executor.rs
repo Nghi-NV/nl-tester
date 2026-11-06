@@ -2957,10 +2957,24 @@ impl TestExecutor {
                     }
                 }
 
-                let mut cmd = std::process::Command::new("sh");
-                cmd.arg("-c").arg(&cmd_str);
-
-                let output = cmd.output()?;
+                let output = if cfg!(target_os = "windows") {
+                    let mut command = std::process::Command::new("powershell.exe");
+                    crate::utils::process::configure_hidden_std_command(&mut command);
+                    command
+                        .args([
+                            "-NoProfile",
+                            "-ExecutionPolicy",
+                            "Bypass",
+                            "-Command",
+                            &cmd_str,
+                        ])
+                        .output()?
+                } else {
+                    std::process::Command::new("sh")
+                        .arg("-c")
+                        .arg(&cmd_str)
+                        .output()?
+                };
 
                 if !output.status.success() && params.fail_on_error {
                     anyhow::bail!("Script failed: {}", String::from_utf8_lossy(&output.stderr));

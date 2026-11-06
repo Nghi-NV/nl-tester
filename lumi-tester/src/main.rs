@@ -1963,7 +1963,9 @@ fn windows_powershell_check(name: &str, script: &str) -> DoctorCheck {
         );
     }
 
-    match std::process::Command::new("powershell")
+    let mut command = std::process::Command::new("powershell");
+    utils::process::configure_hidden_std_command(&mut command);
+    match command
         .args([
             "-NoProfile",
             "-ExecutionPolicy",
@@ -2173,7 +2175,12 @@ mod tests {
         let files = collect_test_files(&dir).unwrap();
         let relative = files
             .iter()
-            .map(|p| p.strip_prefix(&dir).unwrap().to_string_lossy().to_string())
+            .map(|p| {
+                p.strip_prefix(&dir)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
             .collect::<Vec<_>>();
 
         assert_eq!(relative, vec!["main.yaml", "subflows/login.yaml"]);

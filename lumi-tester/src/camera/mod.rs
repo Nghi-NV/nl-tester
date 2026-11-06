@@ -199,9 +199,11 @@ fn open_browser(url: &str) {
     #[cfg(target_os = "macos")]
     let _ = std::process::Command::new("open").arg(url).spawn();
     #[cfg(target_os = "windows")]
-    let _ = std::process::Command::new("cmd")
-        .args(["/C", "start", "", url])
-        .spawn();
+    {
+        let mut command = std::process::Command::new("cmd");
+        crate::utils::process::configure_hidden_std_command(&mut command);
+        let _ = command.args(["/C", "start", "", url]).spawn();
+    }
     #[cfg(all(unix, not(target_os = "macos")))]
     let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }

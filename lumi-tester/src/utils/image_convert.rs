@@ -54,8 +54,13 @@ pub fn convert_to_webp_in_place(path: &Path) -> Result<PathBuf> {
         .with_context(|| format!("failed to write {}", webp_path.display()))?;
 
     // Only remove the source once the WebP write succeeded - never leave the
-    // caller with neither file.
-    let _ = std::fs::remove_file(path);
+    // caller with neither file. When the caller already used a `.webp`
+    // extension for a PNG source, `webp_path` equals `path`; the write above
+    // has replaced the PNG with WebP, so removing `path` would delete the
+    // converted screenshot itself.
+    if webp_path != path {
+        let _ = std::fs::remove_file(path);
+    }
 
     Ok(webp_path)
 }
@@ -117,6 +122,33 @@ mod tests {
         // exact pixels written to the source PNG, not just "close enough" -
         // this is failure evidence, so no compression artifacts are allowed.
         let decoded = image::open(&webp_path).unwrap().to_rgb8();
+        let original: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::from_fn(64, 32, |x, y| {
+            if (x + y) % 2 == 0 {
+                Rgb([255, 255, 255])
+            } else {
+                Rgb([10, 20, 30])
+            }
+        });
+        assert_eq!(decoded.as_raw(), original.as_raw());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn converts_png_with_webp_extension_without_deleting_output() {
+        let dir = std::env::temp_dir().join(format!("lumi_webp_test_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("shot.webp");
+        write_test_png(&path);
+
+        let webp_path = convert_to_webp_in_place(&path).expect("conversion should succeed");
+
+        assert_eq!(webp_path, path);
+        assert!(webp_path.exists(), "converted WebP should remain at the input path");
+        let bytes = std::fs::read(&webp_path).unwrap();
+        assert!(bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP");
+
+        let decoded = image::load_from_memory(&bytes).unwrap().to_rgb8();
         let original: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::from_fn(64, 32, |x, y| {
             if (x + y) % 2 == 0 {
                 Rgb([255, 255, 255])

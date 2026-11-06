@@ -1,0 +1,9 @@
+platform: windows
+appId: 'C:\Program Files (x86)\ETS6\ETS6N.exe'
+tags: [desktop, windows, ets6, smoke]
+---
+- launchApp
+- waitUntilVisible:
+    type: Window
+    timeout: 30000
+- screenshot: ets6-home.webp

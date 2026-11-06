@@ -75,7 +75,9 @@ fn stop_server() {
     let Ok(adb) = lumi_tester::utils::binary_resolver::find_adb() else {
         return;
     };
-    let _ = Command::new(adb)
+    let mut command = Command::new(adb);
+    lumi_tester::utils::process::configure_hidden_std_command(&mut command);
+    let _ = command
         .arg("kill-server")
         .stdout(Stdio::null())
         .stderr(Stdio::null())

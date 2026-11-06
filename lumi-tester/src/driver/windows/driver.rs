@@ -70,7 +70,9 @@ impl WindowsDriver {
         let executable = "powershell";
         let timeout = Duration::from_secs(30);
 
-        let mut child = Command::new(executable)
+        let mut command = Command::new(executable);
+        crate::utils::process::configure_hidden_std_command(&mut command);
+        let mut child = command
             .args([
                 "-NoProfile",
                 "-ExecutionPolicy",
@@ -133,7 +135,7 @@ Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 public class LumiMouse {{
-  [DllImport("user32.dll")] public struct POINT {{ public int X; public int Y; }}
+  [StructLayout(LayoutKind.Sequential)] public struct POINT {{ public int X; public int Y; }}
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT lpPoint);
   [DllImport("user32.dll")] public static extern void mouse_event(int dwFlags, int dx, int dy, int cButtons, int dwExtraInfo);
@@ -336,13 +338,25 @@ using System.Runtime.InteropServices;
 public class LumiWin32 {{
   [DllImport("user32.dll")]
   public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")]
+  public static extern bool BringWindowToTop(IntPtr hWnd);
+  [DllImport("user32.dll")]
+  public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
 }}
 "@
-$process = Start-Process -FilePath {} -PassThru
+$appPath = {}
+$processName = [System.IO.Path]::GetFileNameWithoutExtension($appPath)
+$process = Get-Process -Name $processName -ErrorAction SilentlyContinue |
+  Where-Object {{ $_.MainWindowHandle -ne [IntPtr]::Zero }} |
+  Sort-Object StartTime -Descending |
+  Select-Object -First 1
+if (-not $process) {{ $process = Start-Process -FilePath $appPath -PassThru }}
 try {{ [void]$process.WaitForInputIdle(10000) }} catch {{ }}
 for ($i = 0; $i -lt 40; $i++) {{
   $process.Refresh()
   if ($process.MainWindowHandle -ne [IntPtr]::Zero) {{
+    [void][LumiWin32]::ShowWindowAsync($process.MainWindowHandle, 9)
+    [void][LumiWin32]::BringWindowToTop($process.MainWindowHandle)
     [void][LumiWin32]::SetForegroundWindow($process.MainWindowHandle)
     break
   }}
@@ -499,7 +513,7 @@ Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 public class LumiMouse {{
-  [DllImport("user32.dll")] public struct POINT {{ public int X; public int Y; }}
+  [StructLayout(LayoutKind.Sequential)] public struct POINT {{ public int X; public int Y; }}
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT lpPoint);
   [DllImport("user32.dll")] public static extern void mouse_event(int dwFlags, int dx, int dy, int cButtons, int dwExtraInfo);

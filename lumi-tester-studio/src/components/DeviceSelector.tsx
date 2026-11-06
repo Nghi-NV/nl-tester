@@ -1,17 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useDeviceStore } from '../stores';
+import { useDeviceStore, type Platform } from '../stores';
 import { Check, ChevronDown, CircleAlert, Monitor, RefreshCw, Smartphone } from 'lucide-react';
 import { clsx } from 'clsx';
-
-type Platform = 'android' | 'ios' | 'web';
 
 const platformLabel: Record<Platform, string> = {
   android: 'Android',
   ios: 'iOS',
   web: 'Web',
+  windows: 'Windows',
 };
 
-const platformIcon = (platform: Platform) => platform === 'web'
+const platformIcon = (platform: Platform) => platform === 'web' || platform === 'windows'
   ? <Monitor size={14} />
   : <Smartphone size={14} className={platform === 'android' ? 'is-android' : 'is-ios'} />;
 
@@ -57,13 +56,15 @@ export const DeviceSelector: React.FC = () => {
     };
   }, [isOpen]);
 
-  const devicesFor = (platform: Exclude<Platform, 'web'>) => allDevices
+  const devicesFor = (platform: Exclude<Platform, 'web' | 'windows'>) => allDevices
     .filter(device => device.platform === platform)
     .sort((left, right) => left.name.localeCompare(right.name));
   const activeDevice = allDevices.find(device => device.id === selectedDevice && device.platform === selectedPlatform);
   const selectedLabel = selectedPlatform === 'web'
     ? 'Web Browser'
-    : activeDevice?.name.replace(/\s*\([^)]+\)$/, '') || selectedDevice || 'No Device Selected';
+    : selectedPlatform === 'windows'
+      ? 'Windows Desktop'
+      : activeDevice?.name.replace(/\s*\([^)]+\)$/, '') || selectedDevice || 'No Device Selected';
 
   const select = (platform: Platform, deviceId: string | null) => {
     setSelectedPlatform(platform);
@@ -72,7 +73,8 @@ export const DeviceSelector: React.FC = () => {
   };
 
   const renderPlatform = (platform: Platform) => {
-    const devices = platform === 'web' ? [] : devicesFor(platform);
+    const usesLocalPlatform = platform === 'web' || platform === 'windows';
+    const devices = usesLocalPlatform ? [] : devicesFor(platform);
     const isPlatformSelected = selectedPlatform === platform && !selectedDevice;
     return (
       <section className="ide-device-group" key={platform} aria-label={`${platformLabel[platform]} devices`}>
@@ -87,17 +89,20 @@ export const DeviceSelector: React.FC = () => {
             Use platform
           </button>
         </div>
-        {platform === 'web' ? (
+        {usesLocalPlatform ? (
           <button
             type="button"
             role="option"
-            aria-selected={selectedPlatform === 'web'}
-            className={clsx('ide-device-option', selectedPlatform === 'web' && 'is-selected')}
-            onClick={() => select('web', null)}
+            aria-selected={selectedPlatform === platform}
+            className={clsx('ide-device-option', selectedPlatform === platform && 'is-selected')}
+            onClick={() => select(platform, null)}
           >
-            <span className="ide-device-option-icon">{platformIcon('web')}</span>
-            <span className="ide-device-option-copy"><strong>Web Browser</strong><small>Run with the local browser</small></span>
-            {selectedPlatform === 'web' && <Check size={15} className="ide-device-check" />}
+            <span className="ide-device-option-icon">{platformIcon(platform)}</span>
+            <span className="ide-device-option-copy">
+              <strong>{platform === 'web' ? 'Web Browser' : 'Windows Desktop'}</strong>
+              <small>{platform === 'web' ? 'Run with the local browser' : 'Run on this computer'}</small>
+            </span>
+            {selectedPlatform === platform && <Check size={15} className="ide-device-check" />}
           </button>
         ) : devices.length > 0 ? devices.map(device => {
           const isSelected = selectedPlatform === platform && selectedDevice === device.id;
@@ -142,7 +147,7 @@ export const DeviceSelector: React.FC = () => {
           if (!isOpen) void refreshAllDevices();
         }}
       >
-        <span className={clsx('ide-device-status-dot', selectedPlatform === 'web' || activeDevice ? 'is-connected' : 'is-idle')} />
+        <span className={clsx('ide-device-status-dot', selectedPlatform === 'web' || selectedPlatform === 'windows' || activeDevice ? 'is-connected' : 'is-idle')} />
         {platformIcon(selectedPlatform)}
         <span className="ide-device-trigger-label">{selectedLabel}</span>
         <ChevronDown size={12} />
@@ -160,9 +165,10 @@ export const DeviceSelector: React.FC = () => {
             {renderPlatform('android')}
             {renderPlatform('ios')}
             {renderPlatform('web')}
+            {renderPlatform('windows')}
           </div>
           <div className="ide-device-menu-footer">
-            {selectedDevice && !activeDevice && selectedPlatform !== 'web'
+            {selectedDevice && !activeDevice && selectedPlatform !== 'web' && selectedPlatform !== 'windows'
               ? 'Previously selected device is not connected.'
               : 'Device selection is used when running a test.'}
           </div>

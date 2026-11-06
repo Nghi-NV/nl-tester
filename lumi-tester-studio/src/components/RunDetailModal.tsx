@@ -97,7 +97,7 @@ export const RunDetailModal: React.FC<RunDetailModalProps> = ({ run, onClose, on
                       {!isFlow && (
                         <div className="flex items-center justify-between mt-1">
                           <span className="text-xs text-slate-500 flex items-center gap-1">
-                            <Clock size={10} /> {step.duration ? `${step.duration}ms` : 'Pending'}
+                            <Clock size={10} /> {step.duration !== undefined ? `${step.duration}ms` : step.status === 'running' ? 'Running' : '—'}
                           </span>
                           <span className="text-[10px] text-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                             <Eye size={10} /> View Details

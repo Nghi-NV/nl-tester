@@ -270,8 +270,10 @@ impl ScreenCapture {
                 r#"Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height; $graphics = [System.Drawing.Graphics]::FromImage($bmp); $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size); $bmp.Save('{}', [System.Drawing.Imaging.ImageFormat]::Png); $graphics.Dispose(); $bmp.Dispose()"#,
                 temp_path_str.replace("'", "''")
             );
-            let status = tokio::process::Command::new("powershell")
-                .args(&["-NoProfile", "-NonInteractive", "-Command", &script])
+            let mut command = tokio::process::Command::new("powershell");
+            crate::utils::process::configure_hidden_tokio_command(&mut command);
+            let status = command
+                .args(["-NoProfile", "-NonInteractive", "-Command", &script])
                 .status()
                 .await?;
             if status.success() && temp_path.exists() {

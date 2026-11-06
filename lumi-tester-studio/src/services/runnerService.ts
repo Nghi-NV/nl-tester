@@ -584,6 +584,7 @@ export const runTestFlow = async (
                     const absIndex = globalOffset + payload.index;
                     if (steps[absIndex]) {
                         steps[absIndex].status = 'passed';
+                        steps[absIndex].duration = payload.duration_ms;
                     }
 
                     // Update execution state store for the file containing this command
@@ -657,6 +658,7 @@ export const runTestFlow = async (
                     const absIndex = globalOffset + payload.index;
                     if (steps[absIndex]) {
                         steps[absIndex].status = 'failed';
+                        steps[absIndex].duration = payload.duration_ms;
                         steps[absIndex].error = payload.error;
                         steps[absIndex].logs?.push(`Error: ${payload.error}`);
                     }

@@ -207,6 +207,7 @@ fn run_provider(
     cancelled: &AtomicBool,
 ) -> Result<String, String> {
     let mut command = Command::new(binary);
+    lumi_tester::utils::process::configure_hidden_std_command(&mut command);
     command.current_dir(workspace);
     let codex_last_message_path = if provider == "codex" {
         let file = tempfile::Builder::new()

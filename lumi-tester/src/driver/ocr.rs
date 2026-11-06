@@ -249,7 +249,9 @@ foreach ($line in $result.Lines) {{
             image_path.to_string_lossy().replace("\\", "\\\\")
         );
 
-        let output = Command::new("powershell")
+        let mut command = Command::new("powershell");
+        crate::utils::process::configure_hidden_std_command(&mut command);
+        let output = command
             .args(["-NoProfile", "-Command", &ps_script])
             .output()
             .context("Failed to run Windows OCR")?;
