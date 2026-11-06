@@ -1777,7 +1777,7 @@ fn launch_chrome_externally() -> Result<()> {
             let app_path = &path_str[..app_idx + 4];
             println!("{} Launching Chrome via 'open' command from: {}", "🍎".blue(), app_path);
 
-            let status = std::process::Command::new("open")
+            let status = crate::utils::process::hidden_std_command("open")
                 .args(["-n", "-a", app_path, "--args"])
                 .args([
                     "--remote-debugging-port=9222",
@@ -1799,7 +1799,7 @@ fn launch_chrome_externally() -> Result<()> {
 
     println!("{} Launching detached Chrome binary from: {}", "🌐".blue(), chrome_path.display());
 
-    let mut cmd = std::process::Command::new(&chrome_path);
+    let mut cmd = crate::utils::process::hidden_std_command(&chrome_path);
     cmd.args([
         "--remote-debugging-port=9222",
         "--no-first-run",
@@ -1829,7 +1829,7 @@ fn launch_chrome_externally() -> Result<()> {
 fn find_chrome_explicitly() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "macos")]
     {
-        if let Ok(output) = std::process::Command::new("mdfind")
+        if let Ok(output) = crate::utils::process::hidden_std_command("mdfind")
             .args(["kMDItemCFBundleIdentifier", "com.google.Chrome"])
             .output()
         {

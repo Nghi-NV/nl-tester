@@ -145,7 +145,7 @@ impl AudioService {
 
         let adb_path = crate::utils::binary_resolver::find_adb()
             .unwrap_or_else(|_| std::path::PathBuf::from("adb"));
-        let _ = tokio::process::Command::new(adb_path)
+        let _ = crate::utils::process::hidden_tokio_command(adb_path)
             .args(&args)
             .output()
             .await?;

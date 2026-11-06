@@ -250,15 +250,15 @@ fn extract_zip(archive_path: &Path, target_dir: &Path) -> Result<()> {
 /// macOS, `cmd /C start` on Windows, `xdg-open` on other Unix (Linux).
 pub fn open_url(url: &str) -> Result<()> {
     #[cfg(target_os = "macos")]
-    let status = std::process::Command::new("open").arg(url).status();
+    let status = crate::utils::process::hidden_std_command("open").arg(url).status();
     #[cfg(target_os = "windows")]
     let status = {
-        let mut command = std::process::Command::new("cmd");
+        let mut command = crate::utils::process::hidden_std_command("cmd");
         crate::utils::process::configure_hidden_std_command(&mut command);
         command.args(["/C", "start", "", url]).status()
     };
     #[cfg(all(unix, not(target_os = "macos")))]
-    let status = std::process::Command::new("xdg-open").arg(url).status();
+    let status = crate::utils::process::hidden_std_command("xdg-open").arg(url).status();
 
     match status {
         Ok(s) if s.success() => Ok(()),

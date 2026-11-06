@@ -1,5 +1,5 @@
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
@@ -53,7 +53,7 @@ fn server_is_running() -> bool {
 
 #[cfg(target_os = "macos")]
 fn server_executable_path() -> Option<std::path::PathBuf> {
-    let pids = Command::new("/usr/sbin/lsof")
+    let pids = lumi_tester::utils::process::hidden_std_command("/usr/sbin/lsof")
         .args(["-t", "-iTCP:5037", "-sTCP:LISTEN"])
         .output()
         .ok()?;
@@ -62,7 +62,7 @@ fn server_executable_path() -> Option<std::path::PathBuf> {
         .next()?
         .trim()
         .to_string();
-    let files = Command::new("/usr/sbin/lsof")
+    let files = lumi_tester::utils::process::hidden_std_command("/usr/sbin/lsof")
         .args(["-a", "-p", &pid, "-d", "txt", "-Fn"])
         .output()
         .ok()?;
@@ -75,7 +75,7 @@ fn stop_server() {
     let Ok(adb) = lumi_tester::utils::binary_resolver::find_adb() else {
         return;
     };
-    let mut command = Command::new(adb);
+    let mut command = lumi_tester::utils::process::hidden_std_command(adb);
     lumi_tester::utils::process::configure_hidden_std_command(&mut command);
     let _ = command
         .arg("kill-server")

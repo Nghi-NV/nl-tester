@@ -247,7 +247,7 @@ impl IosDriver {
     /// combines `clearState` with `permissions` - both call paths need the real logic).
     async fn clear_app_state_impl(&self, bundle_id: &str) {
         if self.is_simulator {
-            let container_result = tokio::process::Command::new("xcrun")
+            let container_result = crate::utils::process::hidden_tokio_command("xcrun")
                 .args(&["simctl", "get_app_container", &self.udid, bundle_id, "data"])
                 .output()
                 .await;
@@ -262,7 +262,7 @@ impl IosDriver {
                         for folder in &subfolders {
                             let folder_path = format!("{}/{}", container_path, folder);
                             if std::path::Path::new(&folder_path).exists() {
-                                let _ = tokio::process::Command::new("sh")
+                                let _ = crate::utils::process::hidden_tokio_command("sh")
                                     .args(&[
                                         "-c",
                                         &format!("rm -rf {}/* 2>/dev/null || true", folder_path),
@@ -275,7 +275,7 @@ impl IosDriver {
                 }
             }
 
-            let _ = tokio::process::Command::new("xcrun")
+            let _ = crate::utils::process::hidden_tokio_command("xcrun")
                 .args(&["simctl", "privacy", &self.udid, "reset", "all", bundle_id])
                 .output()
                 .await;
@@ -1067,7 +1067,7 @@ impl IosDriver {
     /// Input text via clipboard (simulator only)
     async fn input_text_clipboard(&self, text: &str) -> Result<()> {
         // 1. Set clipboard
-        let mut child = tokio::process::Command::new("xcrun")
+        let mut child = crate::utils::process::hidden_tokio_command("xcrun")
             .args(&["simctl", "pbcopy", &self.udid])
             .stdin(std::process::Stdio::piped())
             .spawn()
@@ -1920,7 +1920,7 @@ impl PlatformDriver for IosDriver {
                  xcrun devicectl equivalent for streaming device logs exists)"
             );
         }
-        let output = tokio::process::Command::new("xcrun")
+        let output = crate::utils::process::hidden_tokio_command("xcrun")
             .args(&["simctl", "spawn", &self.udid, "log", "show", "--style", "compact", "--last", "2m"])
             .output()
             .await
@@ -1980,7 +1980,7 @@ impl PlatformDriver for IosDriver {
                  (no xcrun devicectl equivalent for screen recording exists)"
             );
         }
-        let child = tokio::process::Command::new("xcrun")
+        let child = crate::utils::process::hidden_tokio_command("xcrun")
             .args(&["simctl", "io", &self.udid, "recordVideo", path])
             .spawn()?;
 
@@ -1998,7 +1998,7 @@ impl PlatformDriver for IosDriver {
             // Since child.kill() is SIGKILL, we should try to send SIGINT if possible.
             // On MacOS/Linux we can use kill -2
             if let Some(pid) = child.id() {
-                let _ = std::process::Command::new("kill")
+                let _ = crate::utils::process::hidden_std_command("kill")
                     .args(&["-2", &pid.to_string()])
                     .output();
             } else {
@@ -2150,7 +2150,7 @@ impl PlatformDriver for IosDriver {
                     continue;
                 }
 
-                let status = std::process::Command::new("xcrun")
+                let status = crate::utils::process::hidden_std_command("xcrun")
                     .args(&[
                         "simctl",
                         "privacy",
@@ -2190,7 +2190,7 @@ impl PlatformDriver for IosDriver {
 
             if std::path::Path::new(&keychain_path).exists() {
                 // Delete keychain database files
-                let _ = tokio::process::Command::new("sh")
+                let _ = crate::utils::process::hidden_tokio_command("sh")
                     .args(&[
                         "-c",
                         &format!("rm -f {}/*.db* 2>/dev/null || true", keychain_path),
@@ -2470,7 +2470,7 @@ impl PlatformDriver for IosDriver {
                     // Simulators only understand `simctl location`; real devices use the
                     // agent's `set_location` (XCTRunnerDaemonSession-based, see agent.rs).
                     if is_simulator {
-                        let _ = tokio::process::Command::new("xcrun")
+                        let _ = crate::utils::process::hidden_tokio_command("xcrun")
                             .args(&[
                                 "simctl",
                                 "location",
@@ -2538,7 +2538,7 @@ impl PlatformDriver for IosDriver {
 
     async fn stop_mock_location(&self) -> Result<()> {
         if self.is_simulator {
-            let _ = tokio::process::Command::new("xcrun")
+            let _ = crate::utils::process::hidden_tokio_command("xcrun")
                 .args(&["simctl", "location", &self.udid, "clear"])
                 .output()
                 .await;
@@ -2720,7 +2720,7 @@ impl PlatformDriver for IosDriver {
             // PlatformDriver doesn't store current app ID.
             // Let's implement a heuristic: get highest CPU user process.
 
-            let output = tokio::process::Command::new("xcrun")
+            let output = crate::utils::process::hidden_tokio_command("xcrun")
                 .args(&["simctl", "spawn", &self.udid, "ps", "aux"])
                 .output()
                 .await?;
@@ -2792,7 +2792,7 @@ impl PlatformDriver for IosDriver {
     async fn set_locale(&self, locale: &str) -> Result<()> {
         if self.is_simulator {
             // iOS Simulator: use simctl to set AppleLanguages
-            let output = std::process::Command::new("xcrun")
+            let output = crate::utils::process::hidden_std_command("xcrun")
                 .args(&[
                     "simctl",
                     "spawn",

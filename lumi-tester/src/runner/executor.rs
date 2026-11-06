@@ -128,7 +128,7 @@ fn open_camera_view(url: &str) {
     #[cfg(target_os = "windows")]
     let command = ("cmd", vec!["/C", "start", "", url]);
 
-    let _ = std::process::Command::new(command.0)
+    let _ = crate::utils::process::hidden_std_command(command.0)
         .args(command.1)
         .spawn();
 }
@@ -2958,7 +2958,7 @@ impl TestExecutor {
                 }
 
                 let output = if cfg!(target_os = "windows") {
-                    let mut command = std::process::Command::new("powershell.exe");
+                    let mut command = crate::utils::process::hidden_std_command("powershell.exe");
                     crate::utils::process::configure_hidden_std_command(&mut command);
                     command
                         .args([
@@ -2970,7 +2970,7 @@ impl TestExecutor {
                         ])
                         .output()?
                 } else {
-                    std::process::Command::new("sh")
+                    crate::utils::process::hidden_std_command("sh")
                         .arg("-c")
                         .arg(&cmd_str)
                         .output()?
@@ -4380,7 +4380,7 @@ impl TestExecutor {
                     .map(|arg| self.context.substitute_vars(arg))
                     .collect();
 
-                let mut cmd = tokio::process::Command::new(&py_exe);
+                let mut cmd = crate::utils::process::hidden_tokio_command(&py_exe);
                 cmd.arg(&script_path);
                 for arg in &substituted_args {
                     cmd.arg(arg);
@@ -5110,7 +5110,7 @@ impl TestExecutor {
                             );
                             let adb_path = crate::utils::binary_resolver::find_adb()
                                 .unwrap_or_else(|_| std::path::PathBuf::from("adb"));
-                            let _ = std::process::Command::new(adb_path)
+                            let _ = crate::utils::process::hidden_std_command(adb_path)
                                 .args(&[
                                     "shell",
                                     "settings",
@@ -5153,7 +5153,7 @@ impl TestExecutor {
                     if id == 0 && self.driver.platform_name() == "android" {
                         let adb_path = crate::utils::binary_resolver::find_adb()
                             .unwrap_or_else(|_| std::path::PathBuf::from("adb"));
-                        let _ = std::process::Command::new(adb_path)
+                        let _ = crate::utils::process::hidden_std_command(adb_path)
                             .args(&[
                                 "shell",
                                 "settings",

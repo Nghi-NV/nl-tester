@@ -9,7 +9,6 @@ use anyhow::{Context, Result};
 use log;
 use regex::Regex;
 use std::collections::HashMap;
-use std::process::Command;
 use std::time::Instant;
 
 /// Result of OCR text detection
@@ -153,7 +152,7 @@ impl OcrEngine {
         // Find the compiled OCR helper binary
         let helper_path = Self::find_ocr_helper()?;
 
-        let output = Command::new(&helper_path)
+        let output = crate::utils::process::hidden_std_command(&helper_path)
             .arg(image_path)
             .output()
             .context("Failed to run macOS Vision OCR")?;
@@ -249,7 +248,7 @@ foreach ($line in $result.Lines) {{
             image_path.to_string_lossy().replace("\\", "\\\\")
         );
 
-        let mut command = Command::new("powershell");
+        let mut command = crate::utils::process::hidden_std_command("powershell");
         crate::utils::process::configure_hidden_std_command(&mut command);
         let output = command
             .args(["-NoProfile", "-Command", &ps_script])
@@ -283,7 +282,7 @@ foreach ($line in $result.Lines) {{
 
     // ==================== Tesseract CLI (Fallback) ====================
     fn run_tesseract(&self, image_path: &std::path::Path) -> Result<Vec<OcrMatch>> {
-        let output = Command::new("tesseract")
+        let output = crate::utils::process::hidden_std_command("tesseract")
             .arg(image_path)
             .arg("stdout")
             .arg("-l")

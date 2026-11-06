@@ -10,7 +10,6 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::process::Stdio;
-use tokio::process::Command;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct IosTarget {
@@ -49,7 +48,7 @@ pub async fn list_targets() -> Result<Vec<IosTarget>> {
 }
 
 async fn list_simulators() -> Result<Vec<IosTarget>> {
-    let output = Command::new("xcrun")
+    let output = crate::utils::process::hidden_tokio_command("xcrun")
         .args(&["simctl", "list", "devices", "--json"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -103,7 +102,7 @@ async fn list_simulators() -> Result<Vec<IosTarget>> {
 /// feels slow, worse than idb" symptom this was found chasing down.
 async fn list_real_devices() -> Result<Vec<IosTarget>> {
     let json_path = std::env::temp_dir().join(format!("lumi_devicectl_{}.json", std::process::id()));
-    let output = Command::new("xcrun")
+    let output = crate::utils::process::hidden_tokio_command("xcrun")
         .args([
             "devicectl",
             "list",
@@ -238,7 +237,7 @@ async fn fetch_devicectl_json(udid: &str, subcommand: &[&str]) -> Result<Option<
         subcommand.join("_"),
         std::process::id()
     ));
-    let output = Command::new("xcrun")
+    let output = crate::utils::process::hidden_tokio_command("xcrun")
         .arg("devicectl")
         .args(subcommand)
         .args(["--device", udid, "--json-output"])
@@ -262,13 +261,13 @@ async fn fetch_devicectl_json(udid: &str, subcommand: &[&str]) -> Result<Option<
 
 pub async fn install_app(udid: &str, app_path: &str, is_simulator: bool) -> Result<()> {
     let output = if is_simulator {
-        Command::new("xcrun")
+        crate::utils::process::hidden_tokio_command("xcrun")
             .args(&["simctl", "install", udid, app_path])
             .output()
             .await
             .context("Failed to run xcrun simctl install")?
     } else {
-        Command::new("xcrun")
+        crate::utils::process::hidden_tokio_command("xcrun")
             .args(&["devicectl", "device", "install", "app", "--device", udid, app_path])
             .output()
             .await
@@ -282,13 +281,13 @@ pub async fn install_app(udid: &str, app_path: &str, is_simulator: bool) -> Resu
 
 pub async fn uninstall_app(udid: &str, bundle_id: &str, is_simulator: bool) -> Result<()> {
     let output = if is_simulator {
-        Command::new("xcrun")
+        crate::utils::process::hidden_tokio_command("xcrun")
             .args(&["simctl", "uninstall", udid, bundle_id])
             .output()
             .await
             .context("Failed to run xcrun simctl uninstall")?
     } else {
-        Command::new("xcrun")
+        crate::utils::process::hidden_tokio_command("xcrun")
             .args(&["devicectl", "device", "uninstall", "app", "--device", udid, bundle_id])
             .output()
             .await
@@ -307,13 +306,13 @@ pub async fn uninstall_app(udid: &str, bundle_id: &str, is_simulator: bool) -> R
 /// DeveloperDiskImage version mismatch).
 pub async fn launch_app(udid: &str, bundle_id: &str, is_simulator: bool) -> Result<()> {
     let output = if is_simulator {
-        Command::new("xcrun")
+        crate::utils::process::hidden_tokio_command("xcrun")
             .args(&["simctl", "launch", udid, bundle_id])
             .output()
             .await
             .context("Failed to run xcrun simctl launch")?
     } else {
-        Command::new("xcrun")
+        crate::utils::process::hidden_tokio_command("xcrun")
             .args(&[
                 "devicectl", "device", "process", "launch", "--terminate-existing",
                 "--device", udid, bundle_id,
@@ -330,7 +329,7 @@ pub async fn launch_app(udid: &str, bundle_id: &str, is_simulator: bool) -> Resu
 
 pub async fn terminate_app(udid: &str, bundle_id: &str, is_simulator: bool) -> Result<()> {
     if is_simulator {
-        let _ = Command::new("xcrun")
+        let _ = crate::utils::process::hidden_tokio_command("xcrun")
             .args(&["simctl", "terminate", udid, bundle_id])
             .output()
             .await;
@@ -340,7 +339,7 @@ pub async fn terminate_app(udid: &str, bundle_id: &str, is_simulator: bool) -> R
     // `process list` lookup - the agent's `terminate_app` (`[XCUIApplication terminate]`)
     // is the reliable real-device path and doesn't need this at all; this is only hit
     // as a last-resort fallback when the agent is unavailable, so best-effort is fine.
-    if let Ok(list_output) = Command::new("xcrun")
+    if let Ok(list_output) = crate::utils::process::hidden_tokio_command("xcrun")
         .args(&["devicectl", "device", "info", "processes", "--device", udid])
         .output()
         .await
@@ -351,7 +350,7 @@ pub async fn terminate_app(udid: &str, bundle_id: &str, is_simulator: bool) -> R
             .find(|l| l.contains(bundle_id))
             .and_then(|l| l.split_whitespace().next())
         {
-            let _ = Command::new("xcrun")
+            let _ = crate::utils::process::hidden_tokio_command("xcrun")
                 .args(&["devicectl", "device", "process", "terminate", "--device", udid, "--pid", pid])
                 .output()
                 .await;
@@ -382,7 +381,7 @@ pub async fn push_file(
         tokio::fs::copy(source, &dest_path).await.context("Failed to copy file into simulator app container")?;
         return Ok(());
     }
-    let output = Command::new("xcrun")
+    let output = crate::utils::process::hidden_tokio_command("xcrun")
         .args(&[
             "devicectl", "device", "copy", "to", "--device", udid,
             "--source", source, "--destination", dest,
@@ -410,7 +409,7 @@ pub async fn pull_file(
         tokio::fs::copy(&source_path, dest).await.context("Failed to copy file from simulator app container")?;
         return Ok(());
     }
-    let output = Command::new("xcrun")
+    let output = crate::utils::process::hidden_tokio_command("xcrun")
         .args(&[
             "devicectl", "device", "copy", "from", "--device", udid,
             "--source", source, "--destination", dest,
@@ -426,7 +425,7 @@ pub async fn pull_file(
 }
 
 async fn simctl_app_container(udid: &str, bundle_id: &str, kind: &str) -> Result<String> {
-    let output = Command::new("xcrun")
+    let output = crate::utils::process::hidden_tokio_command("xcrun")
         .args(&["simctl", "get_app_container", udid, bundle_id, kind])
         .output()
         .await
@@ -444,7 +443,7 @@ async fn simctl_app_container(udid: &str, bundle_id: &str, kind: &str) -> Result
 /// deep-link opening is a genuine, honest gap, not silently faked.
 pub async fn open_url(udid: &str, url: &str, is_simulator: bool) -> Result<()> {
     if is_simulator {
-        let output = Command::new("xcrun")
+        let output = crate::utils::process::hidden_tokio_command("xcrun")
             .args(&["simctl", "openurl", udid, url])
             .output()
             .await
@@ -461,7 +460,7 @@ pub async fn open_url(udid: &str, url: &str, is_simulator: bool) -> Result<()> {
 }
 
 pub async fn screenshot_simulator(udid: &str, output_path: &str) -> Result<()> {
-    let output = Command::new("xcrun")
+    let output = crate::utils::process::hidden_tokio_command("xcrun")
         .args(&["simctl", "io", udid, "screenshot", output_path])
         .output()
         .await

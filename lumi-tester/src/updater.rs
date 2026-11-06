@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VersionCheckReport {
@@ -432,7 +431,7 @@ pub async fn install_latest_extension(repo: &str, ide_selector: Option<&str>) ->
             ide.executable.display()
         );
 
-        match Command::new(&ide.executable)
+        match crate::utils::process::hidden_std_command(&ide.executable)
             .arg("--install-extension")
             .arg(&vsix_path_arg)
             .arg("--force")
@@ -541,7 +540,7 @@ fn choose_supported_ides(ides: Vec<SupportedIde>) -> Result<Vec<SupportedIde>> {
 fn detect_installed_extension_version() -> Option<String> {
     let ides = discover_supported_ides();
     for ide in &ides {
-        if let Ok(output) = Command::new(&ide.executable)
+        if let Ok(output) = crate::utils::process::hidden_std_command(&ide.executable)
             .args(["--list-extensions", "--show-versions"])
             .output()
         {
@@ -676,7 +675,7 @@ pub async fn run_update(options: UpdateOptions) -> Result<()> {
                     );
                     proc_pb.set_position(30);
 
-                    let status = Command::new(&ide.executable)
+                    let status = crate::utils::process::hidden_std_command(&ide.executable)
                         .args(["--install-extension", &vsix_path.to_string_lossy(), "--force"])
                         .status();
 
@@ -861,7 +860,7 @@ fn replace_executable(temp_file: &Path, target_exe: &Path) -> Result<()> {
 
         #[cfg(target_os = "macos")]
         {
-            let _ = Command::new("codesign")
+            let _ = crate::utils::process::hidden_std_command("codesign")
                 .args(["-s", "-", "-f", &target_exe.to_string_lossy()])
                 .output();
         }

@@ -1,7 +1,6 @@
 use crate::utils::binary_resolver;
 use anyhow::{Context, Result};
 use std::process::Stdio;
-use tokio::process::Command;
 
 /// Represents an Android device
 #[derive(Debug, Clone)]
@@ -25,7 +24,7 @@ pub async fn get_foreground_package(serial: Option<&str>) -> Result<Option<Strin
 /// Get list of connected Android devices
 pub async fn get_devices() -> Result<Vec<Device>> {
     let adb_path = binary_resolver::find_adb()?;
-    let output = Command::new(adb_path)
+    let output = crate::utils::process::hidden_tokio_command(adb_path)
         .args(["devices"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -68,7 +67,7 @@ pub async fn shell(serial: Option<&str>, cmd: &str) -> Result<String> {
     args.push(cmd);
 
     let adb_path = binary_resolver::find_adb()?;
-    let output = Command::new(adb_path)
+    let output = crate::utils::process::hidden_tokio_command(adb_path)
         .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -96,7 +95,7 @@ pub async fn exec(serial: Option<&str>, args: &[&str]) -> Result<String> {
     full_args.extend_from_slice(args);
 
     let adb_path = binary_resolver::find_adb()?;
-    let output = Command::new(adb_path)
+    let output = crate::utils::process::hidden_tokio_command(adb_path)
         .args(&full_args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -126,7 +125,7 @@ pub async fn exec_out(serial: Option<&str>, cmd: &str) -> Result<String> {
     args.push(cmd);
 
     let adb_path = binary_resolver::find_adb()?;
-    let output = Command::new(adb_path)
+    let output = crate::utils::process::hidden_tokio_command(adb_path)
         .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -158,7 +157,7 @@ pub async fn exec_out_binary(serial: Option<&str>, cmd: &str) -> Result<Vec<u8>>
     args.push(cmd);
 
     let adb_path = binary_resolver::find_adb()?;
-    let output = Command::new(adb_path)
+    let output = crate::utils::process::hidden_tokio_command(adb_path)
         .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -190,7 +189,7 @@ pub async fn pull(serial: Option<&str>, remote: &str, local: &str) -> Result<()>
     let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
     let adb_path = binary_resolver::find_adb()?;
-    let output = Command::new(adb_path)
+    let output = crate::utils::process::hidden_tokio_command(adb_path)
         .args(&args_ref)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -222,7 +221,7 @@ pub async fn install(serial: Option<&str>, apk_path: &str) -> Result<()> {
     let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
     let adb_path = binary_resolver::find_adb()?;
-    let output = Command::new(adb_path)
+    let output = crate::utils::process::hidden_tokio_command(adb_path)
         .args(&args_ref)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -254,7 +253,7 @@ pub async fn push(serial: Option<&str>, local: &str, remote: &str) -> Result<()>
     let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
     let adb_path = binary_resolver::find_adb()?;
-    let output = Command::new(adb_path)
+    let output = crate::utils::process::hidden_tokio_command(adb_path)
         .args(&args_ref)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

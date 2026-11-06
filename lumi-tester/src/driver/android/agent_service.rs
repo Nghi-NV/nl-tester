@@ -220,7 +220,7 @@ impl AgentService {
 
         let adb_path = crate::utils::binary_resolver::find_adb()
             .map_err(|e| anyhow!("Failed to find adb: {}", e))?;
-        let output = tokio::process::Command::new(adb_path)
+        let output = crate::utils::process::hidden_tokio_command(adb_path)
             .args(&args)
             .output()
             .await
@@ -297,7 +297,7 @@ impl AgentService {
 
         let adb_path = crate::utils::binary_resolver::find_adb()
             .map_err(|e| anyhow!("Failed to find adb: {}", e))?;
-        let output = tokio::process::Command::new(adb_path)
+        let output = crate::utils::process::hidden_tokio_command(adb_path)
             .args(&args)
             .output()
             .await

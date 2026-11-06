@@ -214,7 +214,7 @@ async fn concat_videos_ffmpeg(segments: &[std::path::PathBuf], output: &std::pat
         return false;
     }
 
-    let result = tokio::process::Command::new(ffmpeg_path)
+    let result = crate::utils::process::hidden_tokio_command(ffmpeg_path)
         .args([
             "-y",
             "-f",
@@ -2255,7 +2255,7 @@ impl PlatformDriver for AndroidDriver {
                 let remote_path = format!("/sdcard/lumi_rec_{}.mp4", idx);
                 let adb_path = crate::utils::binary_resolver::find_adb()
                     .unwrap_or_else(|_| std::path::PathBuf::from("adb"));
-                let Ok(mut child) = tokio::process::Command::new(adb_path)
+                let Ok(mut child) = crate::utils::process::hidden_tokio_command(adb_path)
                     .args(&[
                         "-s",
                         serial.as_deref().unwrap_or(""),

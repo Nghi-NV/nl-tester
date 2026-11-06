@@ -118,7 +118,7 @@ impl ScreenCapture {
         args.push("screencap");
         args.push("-p");
 
-        let output = tokio::process::Command::new(&adb_path)
+        let output = crate::utils::process::hidden_tokio_command(&adb_path)
             .args(&args)
             .output()
             .await?;
@@ -165,7 +165,7 @@ impl ScreenCapture {
     /// Capture macOS screenshot: captures specific app window if target_app provided, else full screen
     async fn capture_macos_bytes(&self, target_app: Option<&str>) -> Result<(Vec<u8>, u32, u32)> {
         let temp_path = std::env::temp_dir().join(format!("lumi_inspector_macos_{}.png", uuid::Uuid::new_v4()));
-        let mut cmd = tokio::process::Command::new("screencapture");
+        let mut cmd = crate::utils::process::hidden_tokio_command("screencapture");
         cmd.arg("-x");
 
         let mut actual_w = self.screen_width;
@@ -234,7 +234,7 @@ impl ScreenCapture {
         // Fast fallback ONLY for iOS Simulator using native simctl
         if is_sim && !udid.is_empty() {
             let temp_path = std::env::temp_dir().join(format!("lumi_ios_screenshot_{}.png", uuid::Uuid::new_v4()));
-            let output = tokio::process::Command::new("xcrun")
+            let output = crate::utils::process::hidden_tokio_command("xcrun")
                 .args(&["simctl", "io", udid, "screenshot", temp_path.to_str().unwrap()])
                 .output()
                 .await;
@@ -270,7 +270,7 @@ impl ScreenCapture {
                 r#"Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height; $graphics = [System.Drawing.Graphics]::FromImage($bmp); $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size); $bmp.Save('{}', [System.Drawing.Imaging.ImageFormat]::Png); $graphics.Dispose(); $bmp.Dispose()"#,
                 temp_path_str.replace("'", "''")
             );
-            let mut command = tokio::process::Command::new("powershell");
+            let mut command = crate::utils::process::hidden_tokio_command("powershell");
             crate::utils::process::configure_hidden_tokio_command(&mut command);
             let status = command
                 .args(["-NoProfile", "-NonInteractive", "-Command", &script])
@@ -395,7 +395,7 @@ pub async fn is_ios_simulator(udid: &str) -> bool {
     if udid.len() != 36 || udid.split('-').count() != 5 {
         return false;
     }
-    let output = tokio::process::Command::new("xcrun")
+    let output = crate::utils::process::hidden_tokio_command("xcrun")
         .args(&["simctl", "list", "devices"])
         .output()
         .await;

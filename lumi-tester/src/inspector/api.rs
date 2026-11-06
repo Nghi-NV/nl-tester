@@ -1549,7 +1549,7 @@ async fn get_packages(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         // apps only, matching the Android path's `-3` filter, so this doesn't get
         // cluttered with hundreds of Apple system apps.
         let udid = state.device_serial.clone().unwrap_or_default();
-        return match tokio::process::Command::new("idb")
+        return match crate::utils::process::hidden_tokio_command("idb")
             .args(["list-apps", "--udid", &udid])
             .output()
             .await

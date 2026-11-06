@@ -239,7 +239,8 @@ fn run_provider(
             if let Some(path) = &codex_last_message_path {
                 command.arg("--output-last-message").arg(path.as_os_str());
             }
-            command.arg(prompt);
+            // Codex accepts the prompt on stdin. Passing the full workspace context
+            // as a positional argument can exceed Windows' 32,767 character limit.
         }
         "agy" => {
             command
@@ -257,13 +258,26 @@ fn run_provider(
 
     #[cfg(unix)]
     command.process_group(0);
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    if provider == "codex" {
+        command.stdin(Stdio::piped());
+    } else {
+        command.stdin(Stdio::null());
+    }
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = command
         .spawn()
         .map_err(|error| format!("Could not start {}: {error}", binary.display()))?;
+    if provider == "codex" {
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| "Codex process has no stdin pipe".to_string())?;
+        let prompt = prompt.to_owned();
+        thread::spawn(move || {
+            use std::io::Write;
+            let _ = stdin.write_all(prompt.as_bytes());
+        });
+    }
     let stdout = child
         .stdout
         .take()
@@ -408,7 +422,14 @@ fn command_for_binary(binary: &Path) -> Command {
     {
         let mut command = Command::new("powershell.exe");
         command
-            .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-File"])
+            .args([
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+            ])
             .arg(binary);
         return command;
     }
@@ -863,6 +884,47 @@ mod tests {
             "stdout: {}; stderr: {}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_powershell_cli_shims_accept_large_prompts_on_stdin() {
+        use std::io::Write;
+        use std::process::Stdio;
+
+        let directory = tempfile::tempdir().unwrap();
+        let shim = directory.path().join("codex.ps1");
+        std::fs::write(
+            &shim,
+            "$prompt = [Console]::In.ReadToEnd(); [Console]::Out.Write($prompt.Length)",
+        )
+        .unwrap();
+
+        let mut command = command_for_binary(&shim);
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        lumi_tester::utils::process::configure_hidden_std_command(&mut command);
+        let mut child = command.spawn().unwrap();
+        let prompt = "x".repeat(112 * 1024);
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(prompt.as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+
+        assert!(
+            output.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            prompt.len().to_string()
         );
     }
 }

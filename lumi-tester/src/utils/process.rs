@@ -1,5 +1,7 @@
 //! Helpers for launching background processes without flashing console windows.
 
+use std::ffi::OsStr;
+
 #[cfg(any(windows, test))]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
@@ -28,6 +30,20 @@ pub fn configure_hidden_tokio_command(command: &mut tokio::process::Command) {
 
     #[cfg(not(windows))]
     let _ = command;
+}
+
+/// Create a standard process command that will not open a console window on Windows.
+pub fn hidden_std_command(program: impl AsRef<OsStr>) -> std::process::Command {
+    let mut command = std::process::Command::new(program);
+    configure_hidden_std_command(&mut command);
+    command
+}
+
+/// Create an async process command that will not open a console window on Windows.
+pub fn hidden_tokio_command(program: impl AsRef<OsStr>) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(program);
+    configure_hidden_tokio_command(&mut command);
+    command
 }
 
 #[cfg(test)]

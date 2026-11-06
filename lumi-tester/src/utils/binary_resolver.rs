@@ -242,21 +242,21 @@ pub fn find_ffmpeg() -> Result<PathBuf> {
 /// Tạo Command với binary đã resolve
 pub fn command_with_resolved_binary(name: &str) -> Result<Command> {
     let binary_path = find_binary(name)?;
-    let cmd = Command::new(binary_path);
+    let cmd = crate::utils::process::hidden_std_command(binary_path);
     Ok(cmd)
 }
 
 /// Tạo Command với ADB đã resolve
 pub fn adb_command() -> Result<Command> {
     let adb_path = find_adb()?;
-    let cmd = Command::new(adb_path);
+    let cmd = crate::utils::process::hidden_std_command(adb_path);
     Ok(cmd)
 }
 
 /// Tạo Command với IDB đã resolve
 pub fn idb_command() -> Result<Command> {
     let idb_path = find_idb()?;
-    let cmd = Command::new(idb_path);
+    let cmd = crate::utils::process::hidden_std_command(idb_path);
     Ok(cmd)
 }
 

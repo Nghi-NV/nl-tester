@@ -75,7 +75,7 @@ impl AndroidAutoDriver {
 
         println!("  {} Starting Android Auto DHU...", "🚗".cyan());
 
-        let mut child = tokio::process::Command::new(&dhu_path)
+        let mut child = crate::utils::process::hidden_tokio_command(&dhu_path)
             .arg("--usb")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

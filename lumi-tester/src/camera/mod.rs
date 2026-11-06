@@ -197,13 +197,13 @@ pub async fn run_detect(
 /// Best-effort open the default browser.
 fn open_browser(url: &str) {
     #[cfg(target_os = "macos")]
-    let _ = std::process::Command::new("open").arg(url).spawn();
+    let _ = crate::utils::process::hidden_std_command("open").arg(url).spawn();
     #[cfg(target_os = "windows")]
     {
-        let mut command = std::process::Command::new("cmd");
+        let mut command = crate::utils::process::hidden_std_command("cmd");
         crate::utils::process::configure_hidden_std_command(&mut command);
         let _ = command.args(["/C", "start", "", url]).spawn();
     }
     #[cfg(all(unix, not(target_os = "macos")))]
-    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+    let _ = crate::utils::process::hidden_std_command("xdg-open").arg(url).spawn();
 }

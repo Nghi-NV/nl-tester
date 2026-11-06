@@ -6,7 +6,6 @@ use anyhow::Result;
 use colored::Colorize;
 use std::path::PathBuf;
 use std::process::Stdio;
-use tokio::process::Command;
 
 const SCHEME: &str = "LumiIOSAgentRunner";
 
@@ -63,7 +62,7 @@ fn find_agent_project() -> Option<PathBuf> {
 /// `agent::agent_port_for`'s doc comment for why a shared host port is a real bug, not
 /// just a theoretical one).
 async fn start_iproxy(udid: &str, host_port: u16, device_port: u16) -> Result<tokio::process::Child> {
-    let child = Command::new("iproxy")
+    let child = crate::utils::process::hidden_tokio_command("iproxy")
         .args([&host_port.to_string(), &device_port.to_string(), "-u", udid])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -72,7 +71,7 @@ async fn start_iproxy(udid: &str, host_port: u16, device_port: u16) -> Result<to
 }
 
 async fn launch_agent(project_dir: &std::path::Path, udid: &str) -> Result<()> {
-    let mut child = Command::new("xcodebuild")
+    let mut child = crate::utils::process::hidden_tokio_command("xcodebuild")
         .current_dir(project_dir)
         .args([
             "test-without-building",

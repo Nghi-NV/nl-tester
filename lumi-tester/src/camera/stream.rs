@@ -55,7 +55,7 @@ fn ffmpeg() -> Result<PathBuf> {
 /// Capture a single frame from an RTSP URL as an RGB image (JPEG via FFmpeg).
 pub fn snapshot(rtsp: &str, transport: Option<&str>) -> Result<RgbImage> {
     let bin = ffmpeg()?;
-    let mut child = std::process::Command::new(&bin)
+    let mut child = crate::utils::process::hidden_std_command(&bin)
         .args([
             "-nostdin",
             "-loglevel",
@@ -213,7 +213,7 @@ fn reader_loop(
     };
 
     while !stop.load(Ordering::SeqCst) {
-        let mut child = match std::process::Command::new(&bin)
+        let mut child = match crate::utils::process::hidden_std_command(&bin)
             .args([
                 "-nostdin",
                 "-loglevel",

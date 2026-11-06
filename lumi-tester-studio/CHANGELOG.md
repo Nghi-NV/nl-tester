@@ -1,5 +1,11 @@
 # Lumi IDE Changelog
 
+## [0.2.2] - 2026-11-06
+
+### Fixed
+- Windows command runs no longer open visible terminal windows or crash the studio.
+- Codex CLI launches correctly on Windows when installed through its PowerShell shim.
+
 ## [0.2.1] - 2026-10-02
 
 ### Added

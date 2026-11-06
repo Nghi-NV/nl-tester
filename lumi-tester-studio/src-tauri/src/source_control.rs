@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::path::{Component, Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::Output;
 use tauri::State;
 
 const MAX_DIFF_BYTES: usize = 1024 * 1024;
@@ -247,7 +247,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
-    let mut command = Command::new("git");
+    let mut command = lumi_tester::utils::process::hidden_std_command("git");
     lumi_tester::utils::process::configure_hidden_std_command(&mut command);
     let output = command
         .current_dir(root)

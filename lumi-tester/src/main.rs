@@ -1170,7 +1170,7 @@ async fn async_main() -> anyhow::Result<()> {
                 args.push("shell".to_string());
                 args.push(format!("getevent -lt {}", dev));
 
-                let mut child = tokio::process::Command::new(&adb_path)
+                let mut child = crate::utils::process::hidden_tokio_command(&adb_path)
                     .args(&args)
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::null())
@@ -1963,7 +1963,7 @@ fn windows_powershell_check(name: &str, script: &str) -> DoctorCheck {
         );
     }
 
-    let mut command = std::process::Command::new("powershell");
+    let mut command = crate::utils::process::hidden_std_command("powershell");
     utils::process::configure_hidden_std_command(&mut command);
     match command
         .args([

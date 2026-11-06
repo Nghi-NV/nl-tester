@@ -3,7 +3,6 @@ use clap::ValueEnum;
 use colored::Colorize;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
-use tokio::process::Command;
 use uuid::Uuid;
 
 const SKILL_FILES: &[&str] = &[
@@ -372,7 +371,7 @@ async fn install_mcp(repo: &str, version: &str, target: &str, ai_home: &Path) ->
     tokio::fs::create_dir_all(&package_dir).await?;
     download_to_file(&url, &tgz).await?;
 
-    let status = Command::new(&npm)
+    let status = crate::utils::process::hidden_tokio_command(&npm)
         .arg("install")
         .arg("--prefix")
         .arg(&package_dir)
@@ -391,7 +390,7 @@ async fn install_mcp(repo: &str, version: &str, target: &str, ai_home: &Path) ->
         anyhow::bail!("MCP server was not installed at {}", server_path.display());
     }
 
-    let node_status = Command::new(&node)
+    let node_status = crate::utils::process::hidden_tokio_command(&node)
         .arg("--check")
         .arg(&server_path)
         .status()

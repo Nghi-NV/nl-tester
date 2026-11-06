@@ -7,7 +7,6 @@ use anyhow::{Context, Result};
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::process::Command;
 use tokio::sync::Mutex;
 
 use crate::driver::android::adb;
@@ -491,7 +490,7 @@ impl EventRecorder {
         args.push("shell".to_string());
         args.push(format!("getevent -lt {}", touch_device));
 
-        let mut child = Command::new(&adb_path)
+        let mut child = crate::utils::process::hidden_tokio_command(&adb_path)
             .args(&args)
             .stdout(Stdio::piped())
             .stderr(Stdio::null())

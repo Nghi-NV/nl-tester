@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::thread;
 use std::time::Duration;
 
@@ -26,7 +26,7 @@ impl MacosBridge {
 
     /// Execute a Swift script via stdin
     pub fn run_swift(script: &str, args: &[&str]) -> Result<String> {
-        let mut child = Command::new("swift")
+        let mut child = crate::utils::process::hidden_std_command("swift")
             .arg("-")
             .args(args)
             .stdin(Stdio::piped())
@@ -97,7 +97,7 @@ if hypot(__guardP2.x - __guardP1.x, __guardP2.y - __guardP1.y) > 15 {
 
     /// Execute an AppleScript snippet via osascript
     pub fn run_osascript(script: &str) -> Result<String> {
-        let output = Command::new("osascript")
+        let output = crate::utils::process::hidden_std_command("osascript")
             .arg("-e")
             .arg(script)
             .output()
@@ -377,18 +377,18 @@ exit(1)
         let is_running = self.find_app_pid(app_target)?.is_some();
         if !is_running {
             if app_target.ends_with(".app") || app_target.starts_with('/') {
-                let status = Command::new("open").arg("-g").arg(app_target).status()?;
+                let status = crate::utils::process::hidden_std_command("open").arg("-g").arg(app_target).status()?;
                 if !status.success() {
-                    let _ = Command::new("open").arg(app_target).status();
+                    let _ = crate::utils::process::hidden_std_command("open").arg(app_target).status();
                 }
             } else {
-                let status = Command::new("open")
+                let status = crate::utils::process::hidden_std_command("open")
                     .arg("-g")
                     .arg("-b")
                     .arg(app_target)
                     .status()?;
                 if !status.success() {
-                    let _ = Command::new("open").arg("-b").arg(app_target).status();
+                    let _ = crate::utils::process::hidden_std_command("open").arg("-b").arg(app_target).status();
                 }
             }
         }
@@ -417,13 +417,13 @@ exit(1)
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or(app_target);
-            let _ = Command::new("killall").arg(app_name).status();
+            let _ = crate::utils::process::hidden_std_command("killall").arg(app_name).status();
         } else {
             let _ = Self::run_osascript(&format!(
                 "tell application id \"{}\" to quit",
                 app_target
             ));
-            let _ = Command::new("killall").arg(app_target).status();
+            let _ = crate::utils::process::hidden_std_command("killall").arg(app_target).status();
         }
         Ok(())
     }
@@ -643,7 +643,7 @@ exit(0)
         if let Some(parent) = Path::new(path).parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let status = Command::new("screencapture")
+        let status = crate::utils::process::hidden_std_command("screencapture")
             .arg("-x")
             .arg(path)
             .status()
@@ -739,7 +739,7 @@ print("\(Int(bounds.width))x\(Int(bounds.height))")
 
     /// Open URL in default browser
     pub fn open_url(&self, url: &str) -> Result<()> {
-        Command::new("open")
+        crate::utils::process::hidden_std_command("open")
             .arg(url)
             .status()
             .map_err(|e| anyhow::anyhow!("Failed to open URL: {}", e))?;
@@ -770,7 +770,7 @@ if let tiff = newImg.tiffRepresentation,
 }
 exit(1)
 "#;
-        let output = Command::new("swift")
+        let output = crate::utils::process::hidden_std_command("swift")
             .arg("-e")
             .arg(SCRIPT)
             .arg(app_path)

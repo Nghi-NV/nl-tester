@@ -195,7 +195,7 @@ async fn ensure_port_free(port: u16) {
         return;
     }
 
-    let lsof = tokio::process::Command::new("lsof")
+    let lsof = crate::utils::process::hidden_tokio_command("lsof")
         .args(["-ti", &format!("tcp:{}", port), "-sTCP:LISTEN"])
         .output()
         .await;
@@ -215,7 +215,7 @@ async fn ensure_port_free(port: u16) {
     let mut killed_any = false;
     let mut left_unrelated = false;
     for pid in pids {
-        let ps = tokio::process::Command::new("ps")
+        let ps = crate::utils::process::hidden_tokio_command("ps")
             .args(["-p", &pid.to_string(), "-o", "command="])
             .output()
             .await;
@@ -232,7 +232,7 @@ async fn ensure_port_free(port: u16) {
                 "  🔧 Port {} is held by a stale lumi-tester process (pid {}) - stopping it...",
                 port, pid
             );
-            let _ = tokio::process::Command::new("kill")
+            let _ = crate::utils::process::hidden_tokio_command("kill")
                 .args(["-9", &pid.to_string()])
                 .output()
                 .await;
